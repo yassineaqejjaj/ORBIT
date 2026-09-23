@@ -39,7 +39,7 @@ os.environ.update(
         "ORBIT_DATABASE_URL": f"{PG_SERVER_URL.replace('postgresql://', 'postgresql+asyncpg://', 1)}/{TEST_DATABASE}",
         "ORBIT_OPENSEARCH_URL": os.environ.get("ORBIT_TEST_OPENSEARCH_URL", "http://localhost:9201"),
         "ORBIT_VALKEY_URL": os.environ.get("ORBIT_TEST_VALKEY_URL", "redis://localhost:6380/15"),
-        "ORBIT_INDEX_PREFIX": "orbit-test",
+        "ORBIT_INDEX_PREFIX": os.environ.get("ORBIT_TEST_INDEX_PREFIX", "orbit-test"),
         "ORBIT_EMBEDDING_PROVIDER": "hash",
         "ORBIT_RERANKER": "heuristic",
         "ORBIT_OBJECT_STORE_PATH": OBJECTS_DIR,
@@ -84,7 +84,9 @@ async def _recreate_database() -> None:
 def _delete_test_indices() -> None:
     url = os.environ["ORBIT_OPENSEARCH_URL"]
     with contextlib.suppress(httpx.HTTPError):
-        httpx.delete(f"{url}/orbit-test-*", timeout=10)
+        prefix = os.environ["ORBIT_INDEX_PREFIX"]
+        # Explicit names (no wildcard) so parallel test runs with other prefixes are untouched.
+        httpx.delete(f"{url}/{prefix}-chunks-v1,{prefix}-memory-v1?ignore_unavailable=true", timeout=10)
 
 
 @pytest.fixture(scope="session")
