@@ -1,0 +1,194 @@
+"""Context requests (``POST /projects/{slug}/context``), packages, decisions and feedback."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+
+from pydantic import Field
+
+from app.enums import (
+    CandidateType,
+    FeedbackFlag,
+    Intent,
+    MemoryKind,
+    MemoryScope,
+    PrincipalKind,
+    ReasonCode,
+    SourceKind,
+)
+from app.schemas.agents import AgentRef
+from app.schemas.common import ApiModel, ClassificationLevel, InputModel
+from app.schemas.users import UserRef
+
+
+class BaseSnapshotRef(InputModel):
+    name: str = Field(min_length=1, max_length=120)
+    version: int | None = Field(default=None, ge=1)
+
+
+class SaveSnapshotRef(InputModel):
+    name: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9][A-Za-z0-9._\-]*$")
+
+
+class ContextRequestIn(InputModel):
+    task: str = Field(min_length=1, max_length=8000)
+    intent: Intent | None = None
+    agent_id: uuid.UUID | None = None
+    on_behalf_of: uuid.UUID | None = None
+    token_budget: int | None = Field(default=None, ge=500, le=32000)
+    scopes: list[MemoryScope] | None = None
+    source_kinds: list[SourceKind] | None = None
+    include_sources: bool = True
+    freshness_days: int | None = Field(default=None, ge=1, le=36500)
+    max_classification: ClassificationLevel | None = None
+    min_relevance: float | None = Field(default=None, ge=0, le=1)
+    session_id: str | None = Field(default=None, max_length=200)
+    base_snapshot: BaseSnapshotRef | None = None
+    save_snapshot: SaveSnapshotRef | None = None
+    explain: bool | None = Field(
+        default=None, description="Défaut : true pour un humain, false pour un agent"
+    )
+
+
+class Scores(ApiModel):
+    bm25: float | None = None
+    dense: float | None = None
+    rrf: float | None = None
+    rerank: float | None = None
+    freshness: float | None = None
+    final: float = 0.0
+
+
+class ContextItem(ApiModel):
+    citation: str
+    candidate_type: CandidateType
+    id: str
+    document_id: uuid.UUID | None = None
+    memory_item_id: uuid.UUID | None = None
+    title: str
+    source_kind: SourceKind | None = None
+    memory_kind: MemoryKind | None = None
+    memory_scope: MemoryScope | None = None
+    uri: str | None = None
+    version: int | None = None
+    excerpt: str
+    tokens: int
+    scores: Scores
+    classification: int
+    date: datetime | None = None
+    pii_redacted: bool = False
+    reason_code: ReasonCode
+    reason_detail: str = ""
+
+
+class ExcludedItem(ApiModel):
+    candidate_type: CandidateType
+    id: str | None = None
+    title: str | None = None
+    excerpt: str | None = None
+    source_kind: SourceKind | None = None
+    memory_kind: MemoryKind | None = None
+    classification: int | None = None
+    scores: Scores = Field(default_factory=Scores)
+    reason_code: ReasonCode
+    reason_detail: str = ""
+    redacted: bool = False
+    related_citation: str | None = None
+
+
+class ContextTimings(ApiModel):
+    understand: float = 0
+    retrieve: float = 0
+    fuse: float = 0
+    rerank: float = 0
+    govern: float = 0
+    select: float = 0
+    compress: float = 0
+    package: float = 0
+    total: float = 0
+
+
+class ContextSnapshotInfo(ApiModel):
+    id: uuid.UUID
+    name: str
+    version: int
+
+
+class ContextConfig(ApiModel):
+    retrieval: str = "hybrid-bm25-knn-rrf-v1"
+    reranker: str
+    embedding_model: str
+    llm: str | None = None
+
+
+class ContextPackage(ApiModel):
+    request_id: uuid.UUID
+    trace_id: str
+    task: str
+    intent: Intent
+    created_at: datetime
+    context: str
+    items: list[ContextItem]
+    excluded: list[ExcludedItem]
+    exclusion_summary: dict[ReasonCode, int]
+    tokens_used: int
+    token_budget: int
+    candidates_count: int
+    timings: ContextTimings
+    snapshot: ContextSnapshotInfo | None = None
+    config: ContextConfig
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ItemFlag(InputModel):
+    citation: str = Field(min_length=1, max_length=16)
+    flag: FeedbackFlag
+
+
+class FeedbackIn(InputModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str | None = Field(default=None, max_length=4000)
+    item_flags: list[ItemFlag] | None = Field(default=None, max_length=100)
+
+
+class ItemFlagView(ApiModel):
+    citation: str
+    flag: FeedbackFlag
+
+
+class ContextFeedback(ApiModel):
+    id: uuid.UUID
+    actor_type: PrincipalKind
+    actor_id: uuid.UUID | None
+    rating: int
+    comment: str | None
+    item_flags: list[ItemFlagView]
+    created_at: datetime
+
+
+class ContextRequestDetail(ContextPackage):
+    feedback: list[ContextFeedback] = Field(default_factory=list)
+
+
+class SnapshotRef(ApiModel):
+    name: str
+    version: int
+
+
+class ContextRequestSummary(ApiModel):
+    id: uuid.UUID
+    trace_id: str
+    task: str
+    intent: Intent
+    agent: AgentRef | None
+    user: UserRef | None
+    latency_ms: int
+    tokens_used: int
+    token_budget: int
+    included_count: int
+    excluded_count: int
+    candidates_count: int
+    snapshot: SnapshotRef | None
+    rating: float | None
+    created_at: datetime

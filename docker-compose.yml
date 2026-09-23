@@ -1,0 +1,143 @@
+# ORBIT — complete platform: `docker compose up -d --build` (see Makefile for shortcuts).
+# Host ports: web 3000, api 8000, postgres 5433, opensearch 9201, valkey 6380.
+
+name: orbit
+
+x-backend-env: &backend-env
+  ORBIT_ENV: ${ORBIT_ENV:-development}
+  ORBIT_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-orbit}:${POSTGRES_PASSWORD:-orbit}@postgres:5432/${POSTGRES_DB:-orbit}
+  ORBIT_OPENSEARCH_URL: http://opensearch:9200
+  ORBIT_VALKEY_URL: redis://valkey:6379/0
+  ORBIT_OBJECT_STORE_PATH: /data/objects
+
+x-backend: &backend
+  build:
+    context: ./backend
+    args:
+      ORBIT_EMBEDDING_MODEL: ${ORBIT_EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
+      PRELOAD_RERANKER: ${PRELOAD_RERANKER:-false}
+      ORBIT_RERANKER_MODEL: ${ORBIT_RERANKER_MODEL:-jinaai/jina-reranker-v2-base-multilingual}
+  image: orbit-backend:latest
+  env_file:
+    - path: .env
+      required: false
+  restart: unless-stopped
+  volumes:
+    - orbit_objects:/data/objects
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-orbit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orbit}
+      POSTGRES_DB: ${POSTGRES_DB:-orbit}
+    ports:
+      - "5433:5432"
+    volumes:
+      - orbit_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  opensearch:
+    image: opensearchproject/opensearch:2.19.6
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: "false"
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms768m -Xmx768m
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9201:9200"
+    volumes:
+      - orbit_os:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--appendonly", "yes", "--save", "60", "1000"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - orbit_valkey:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    <<: *backend
+    command: ["api"]
+    environment:
+      <<: *backend-env
+      ORBIT_SERVICE_NAME: orbit-api
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  worker:
+    <<: *backend
+    command: ["worker"]
+    environment:
+      <<: *backend-env
+      ORBIT_SERVICE_NAME: orbit-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    stop_grace_period: 40s
+
+  web:
+    build:
+      context: ./frontend
+    image: orbit-web:latest
+    restart: unless-stopped
+    environment:
+      ORBIT_API_URL: http://api:8000
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  orbit_pg:
+  orbit_os:
+  orbit_valkey:
+  orbit_objects:

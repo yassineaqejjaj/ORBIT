@@ -1,0 +1,84 @@
+[project]
+name = "orbit-backend"
+version = "1.0.0"
+description = "ORBIT — plateforme de contexte et de mémoire pour agents IA (API, worker, serveur MCP)."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "email-validator>=2.2",
+    "python-multipart>=0.0.18",
+    "argon2-cffi>=23.1",
+    "pyjwt>=2.10",
+    "opensearch-py[async]>=2.8",
+    "aiohttp>=3.11",
+    "redis>=5.2",
+    "fastembed>=0.5",
+    "numpy>=1.26",
+    "httpx>=0.28",
+    "pypdf>=5.1",
+    "python-docx>=1.1",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.3",
+    "markdown-it-py>=3.0",
+    "python-slugify>=8.0",
+    "mcp>=1.2",
+    "opentelemetry-api>=1.28",
+    "opentelemetry-sdk>=1.28",
+    "opentelemetry-exporter-otlp-proto-http>=1.28",
+    "opentelemetry-instrumentation-fastapi>=0.49b0",
+    "prometheus-client>=0.21",
+    "orjson>=3.10",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "SIM", "RUF"]
+ignore = [
+    "B008",    # FastAPI Depends() in defaults
+    "RUF001",  # French typography (’, «, ») in strings is intentional
+    "RUF002",
+    "RUF003",
+    "RUF012",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011", "E501", "ASYNC109", "ASYNC110", "ASYNC240"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+known-third-party = ["alembic"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+ignore_missing_imports = true
+warn_unused_ignores = true

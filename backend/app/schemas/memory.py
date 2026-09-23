@@ -1,0 +1,158 @@
+"""Memory items, provenance, history, relations and the memory graph."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Any, Literal
+
+from pydantic import Field
+
+from app.enums import (
+    ActorType,
+    MemoryEventType,
+    MemoryKind,
+    MemoryScope,
+    MemoryStatus,
+    RelationNodeType,
+    RelationType,
+)
+from app.schemas.common import AclPrincipals, ApiModel, ClassificationLevel, InputModel, Tags
+
+
+class MemoryItem(ApiModel):
+    id: uuid.UUID
+    lineage_id: uuid.UUID
+    version: int
+    is_current: bool
+    scope: MemoryScope
+    kind: MemoryKind
+    status: MemoryStatus
+    title: str
+    content: str
+    confidence: float
+    classification: int
+    acl_principals: list[str]
+    tags: list[str]
+    subject_user_id: uuid.UUID | None
+    session_id: str | None
+    expires_at: datetime | None
+    valid_from: datetime
+    valid_to: datetime | None
+    supersedes_id: uuid.UUID | None
+    superseded_by_id: uuid.UUID | None
+    created_by_type: ActorType
+    created_by_id: uuid.UUID | None
+    created_by_label: str = ""
+    provenance_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class Provenance(ApiModel):
+    id: uuid.UUID
+    document_id: uuid.UUID | None
+    document_title: str | None = None
+    chunk_id: uuid.UUID | None
+    context_request_id: uuid.UUID | None
+    source_label: str
+    excerpt: str
+    created_at: datetime
+
+
+class MemoryEvent(ApiModel):
+    id: uuid.UUID
+    memory_item_id: uuid.UUID
+    event: MemoryEventType
+    actor_type: ActorType
+    actor_id: uuid.UUID | None
+    actor_label: str = ""
+    reason: str | None
+    data: dict[str, Any]
+    created_at: datetime
+
+
+class Relation(ApiModel):
+    id: uuid.UUID
+    rel_type: RelationType
+    direction: Literal["out", "in"]
+    other_type: RelationNodeType
+    other_id: uuid.UUID
+    other_title: str | None = None
+    confidence: float
+    detail: str | None
+    created_at: datetime
+
+
+class MemoryDetail(ApiModel):
+    item: MemoryItem
+    provenance: list[Provenance]
+    history: list[MemoryEvent]
+    versions: list[MemoryItem]
+    relations: list[Relation]
+
+
+class ProvenanceIn(InputModel):
+    document_id: uuid.UUID | None = None
+    chunk_id: uuid.UUID | None = None
+    excerpt: str | None = Field(default=None, max_length=4000)
+    source_label: str | None = Field(default=None, max_length=300)
+
+
+class MemoryIn(InputModel):
+    scope: MemoryScope
+    kind: MemoryKind
+    title: str = Field(min_length=1, max_length=300)
+    content: str = Field(min_length=1, max_length=20000)
+    classification: ClassificationLevel | None = None
+    acl_principals: AclPrincipals | None = None
+    tags: Tags | None = None
+    subject_user_id: uuid.UUID | None = None
+    session_id: str | None = Field(default=None, max_length=200)
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    supersedes_id: uuid.UUID | None = None
+    status: Literal["proposed", "validated"] | None = None
+    provenance: list[ProvenanceIn] | None = Field(default=None, max_length=50)
+
+
+class MemoryUpdateIn(InputModel):
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    content: str | None = Field(default=None, min_length=1, max_length=20000)
+    tags: Tags | None = None
+    valid_to: datetime | None = None
+    classification: ClassificationLevel | None = None
+    kind: MemoryKind | None = None
+
+
+class ReasonIn(InputModel):
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class ReasonRequiredIn(InputModel):
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class SupersedeIn(InputModel):
+    by_id: uuid.UUID
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class GraphNode(ApiModel):
+    id: str
+    type: str
+    label: str
+    kind: str | None = None
+    status: str | None = None
+
+
+class GraphEdge(ApiModel):
+    source: str
+    target: str
+    rel_type: RelationType
+
+
+class MemoryGraph(ApiModel):
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]

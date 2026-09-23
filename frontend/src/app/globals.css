@@ -1,0 +1,393 @@
+@import "tailwindcss";
+
+/* Class-based dark mode: <html class="dark"> (set before paint by the theme script). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* -------------------------------------------------------------------------- */
+/* Design tokens — light                                                      */
+/* -------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --surface: #f7f9fa; /* app canvas behind cards, sidebar */
+  --surface-raised: #ffffff;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+
+  /* Brand — ORBIT teal (#0E9384). `--primary` is one step darker for AA text contrast. */
+  --brand: #0e9384;
+  --brand-soft: #e6f6f4;
+  --primary: #107569;
+  --primary-hover: #125d56;
+  --primary-foreground: #ffffff;
+
+  /* NOVA constellation accents (subtle use only) */
+  --nova: #d92d20; /* NOVA Core */
+  --orbit: #0e9384; /* ORBIT */
+  --forge: #7a5af8; /* FORGE */
+
+  /* Neutrals */
+  --secondary: #f1f4f6;
+  --secondary-foreground: #1e293b;
+  --muted: #f1f4f6;
+  --muted-foreground: #5b6b7f;
+  --subtle-foreground: #8593a3;
+  --accent: #eef2f5;
+  --accent-foreground: #0f172a;
+  --border: #e3e8ee;
+  --border-strong: #cfd7e0;
+  --input: #d5dde5;
+  --ring: #0e9384;
+
+  /* Feedback */
+  --destructive: #c4320a;
+  --destructive-hover: #a3290a;
+  --destructive-foreground: #ffffff;
+  --success: #067647;
+  --warning: #b54708;
+  --info: #175cd3;
+
+  /* Sidebar */
+  --sidebar: #f7f9fa;
+  --sidebar-foreground: #334155;
+  --sidebar-muted: #64748b;
+  --sidebar-border: #e6ebf0;
+  --sidebar-accent: #e9eef2;
+  --sidebar-accent-foreground: #0f172a;
+
+  /* Charts — categorical slots (validated: CVD-adjacent ΔE ≥ 10, normal ≥ 25), fixed order */
+  --chart-1: #0e9384; /* teal */
+  --chart-2: #eb6834; /* orange */
+  --chart-3: #2a78d6; /* blue */
+  --chart-4: #eda100; /* yellow — < 3:1 on light: pair with labels */
+  --chart-5: #7a5af8; /* violet */
+  --chart-6: #e87ba4; /* magenta — < 3:1 on light: pair with labels */
+  --chart-grid: #e8edf2;
+  --chart-axis: #8593a3;
+
+  /* Status (reserved — never for series identity; always with icon + label) */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  --shadow-color: 220 40% 15%;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Design tokens — dark                                                       */
+/* -------------------------------------------------------------------------- */
+.dark {
+  color-scheme: dark;
+
+  --background: #0a0e13;
+  --foreground: #e6edf3;
+  --surface: #0d1218;
+  --surface-raised: #121820;
+  --card: #10161d;
+  --card-foreground: #e6edf3;
+  --popover: #121920;
+  --popover-foreground: #e6edf3;
+
+  --brand: #2ed3b7;
+  --brand-soft: #0d2a27;
+  --primary: #15b79e;
+  --primary-hover: #2ed3b7;
+  --primary-foreground: #03201b;
+
+  --nova: #f97066;
+  --orbit: #2ed3b7;
+  --forge: #9b8afb;
+
+  --secondary: #18212b;
+  --secondary-foreground: #d7e0ea;
+  --muted: #151d26;
+  --muted-foreground: #93a3b5;
+  --subtle-foreground: #6b7c8f;
+  --accent: #1a2430;
+  --accent-foreground: #e6edf3;
+  --border: #1e2934;
+  --border-strong: #2b3846;
+  --input: #2a3643;
+  --ring: #2ed3b7;
+
+  --destructive: #f04438;
+  --destructive-hover: #f97066;
+  --destructive-foreground: #ffffff;
+  --success: #47cd89;
+  --warning: #fdb022;
+  --info: #53b1fd;
+
+  --sidebar: #0c1117;
+  --sidebar-foreground: #c4d0dc;
+  --sidebar-muted: #7d8da0;
+  --sidebar-border: #19222c;
+  --sidebar-accent: #17202a;
+  --sidebar-accent-foreground: #f1f5f9;
+
+  --chart-1: #12a594;
+  --chart-2: #d95926;
+  --chart-3: #3987e5;
+  --chart-4: #c98500;
+  --chart-5: #9085e9;
+  --chart-6: #d55181;
+  --chart-grid: #1c2631;
+  --chart-axis: #6b7c8f;
+
+  --shadow-color: 220 60% 2%;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tailwind theme bridge                                                      */
+/* -------------------------------------------------------------------------- */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-nova: var(--nova);
+  --color-orbit: var(--orbit);
+  --color-forge: var(--forge);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-hover: var(--destructive-hover);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-axis: var(--chart-axis);
+  --color-status-good: var(--status-good);
+  --color-status-warning: var(--status-warning);
+  --color-status-serious: var(--status-serious);
+  --color-status-critical: var(--status-critical);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --radius-sm: 0.3rem;
+  --radius-md: 0.45rem;
+  --radius-lg: 0.6rem;
+  --radius-xl: 0.8rem;
+  --radius-2xl: 1rem;
+
+  --shadow-xs: 0 1px 2px 0 hsl(var(--shadow-color) / 0.05);
+  --shadow-sm: 0 1px 2px 0 hsl(var(--shadow-color) / 0.06), 0 1px 3px 0 hsl(var(--shadow-color) / 0.08);
+  --shadow-md: 0 4px 8px -2px hsl(var(--shadow-color) / 0.08), 0 2px 4px -2px hsl(var(--shadow-color) / 0.05);
+  --shadow-lg: 0 12px 16px -4px hsl(var(--shadow-color) / 0.1), 0 4px 6px -2px hsl(var(--shadow-color) / 0.04);
+  --shadow-xl: 0 20px 24px -4px hsl(var(--shadow-color) / 0.12), 0 8px 8px -4px hsl(var(--shadow-color) / 0.04);
+
+  --animate-fade-in: fade-in 160ms ease-out;
+  --animate-fade-out: fade-out 120ms ease-in;
+  --animate-scale-in: scale-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-scale-out: scale-out 110ms ease-in;
+  --animate-slide-in-right: slide-in-right 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-out-right: slide-out-right 180ms ease-in;
+  --animate-slide-in-left: slide-in-left 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-out-left: slide-out-left 180ms ease-in;
+  --animate-slide-in-bottom: slide-in-bottom 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-out-bottom: slide-out-bottom 180ms ease-in;
+  --animate-pop-in: pop-in 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-indeterminate: indeterminate 1.3s ease-in-out infinite;
+  --animate-orbit: orbit 18s linear infinite;
+  --animate-orbit-slow: orbit 32s linear infinite;
+  --animate-orbit-reverse: orbit-reverse 24s linear infinite;
+  --animate-float: float 6s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+/* Transform-only keyframes: Tailwind v4 positions with the separate `translate` property. */
+@keyframes scale-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes scale-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(6px) scale(0.97); }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-2px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes slide-out-right {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+@keyframes slide-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@keyframes slide-out-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+@keyframes slide-in-bottom {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes slide-out-bottom {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+@keyframes orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes orbit-reverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Base                                                                       */
+/* -------------------------------------------------------------------------- */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--brand) 28%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+  }
+
+  /* Thin, theme-aware scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .skeleton-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      var(--color-muted) 0%,
+      color-mix(in oklab, var(--color-muted) 55%, var(--color-background)) 50%,
+      var(--color-muted) 100%
+    );
+    background-size: 200% 100%;
+  }
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, color-mix(in oklab, var(--color-border) 70%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--color-border) 70%, transparent) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+}
+
+/* Disable transitions for one frame while the theme class flips. */
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
