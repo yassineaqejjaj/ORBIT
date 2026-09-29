@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, History, RefreshCw, ShieldCheck, Sparkles, Telescope, Timer, Waypoints } from "lucide-react";
 import { toast } from "sonner";
 
@@ -13,8 +14,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCurrentProject } from "@/hooks/use-current-project";
 import { useHotkey } from "@/hooks/use-hotkey";
 import { errorMessage } from "@/lib/api/client";
-import { useAgents, useAssembleContext, useContextRequest, useMe, useMembers } from "@/lib/api/hooks";
-import type { ContextPackage, ContextRequestSummary } from "@/lib/api/types";
+import { queryKeys, useAgents, useAssembleContext, useContextRequest, useMe, useMembers } from "@/lib/api/hooks";
+import type { ContextPackage, ContextRequestSummary, Page } from "@/lib/api/types";
 import { CONTEXT_STAGES, CONTEXT_STAGE_META } from "@/lib/enums";
 import {
   DEMO_TASK,
@@ -36,6 +37,15 @@ import type { ResultActor } from "./result-summary";
 import { TaskComposer } from "./task-composer";
 
 const NO_ERRORS: ExplorerFormErrors = {};
+
+/** Who asked for a stored request, as listed by `GET /context/requests`. */
+function actorFromSummary(r: ContextRequestSummary): ResultActor {
+  return {
+    label: r.agent?.name ?? r.user?.full_name ?? "Humain",
+    isAgent: Boolean(r.agent),
+    onBehalfOf: r.agent ? (r.user?.full_name ?? null) : null,
+  };
+}
 
 function ResultSkeleton() {
   return (
@@ -111,6 +121,7 @@ export function ExplorerView() {
   const { project, slug, isOwner } = useCurrentProject();
   const { data: me } = useMe();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const requestParam = searchParams.get("request");
@@ -243,14 +254,7 @@ export function ExplorerView() {
   };
 
   const selectFromHistory = (r: ContextRequestSummary) => {
-    setActors((prev) => ({
-      ...prev,
-      [r.id]: {
-        label: r.agent?.name ?? r.user?.full_name ?? "Humain",
-        isAgent: Boolean(r.agent),
-        onBehalfOf: r.agent ? (r.user?.full_name ?? null) : null,
-      },
-    }));
+    setActors((prev) => ({ ...prev, [r.id]: actorFromSummary(r) }));
     setActiveRequestId(r.id);
     updateUrl({ request: r.id });
     setHistoryOpen(false);
@@ -260,6 +264,23 @@ export function ExplorerView() {
   const closeActiveRequest = () => {
     setActiveRequestId(null);
     updateUrl({ request: null });
+  };
+
+  /**
+   * The stored package does not carry its requester: reuse the one captured at submit/history time, or the row
+   * already cached by the request lists (history drawer, observability log) when opened through `?request=`.
+   */
+  const actorFor = (requestId: string): ResultActor | null => {
+    const known = actors[requestId];
+    if (known) return known;
+    const pages = queryClient.getQueriesData<Page<ContextRequestSummary>>({
+      queryKey: queryKeys.project.context.requests(slug),
+    });
+    for (const [, page] of pages) {
+      const hit = page?.items.find((r) => r.id === requestId);
+      if (hit) return actorFromSummary(hit);
+    }
+    return null;
   };
 
   let result: React.ReactNode;
@@ -272,7 +293,7 @@ export function ExplorerView() {
           pkg={detail.data}
           slug={slug}
           feedback={detail.data.feedback}
-          actor={actors[detail.data.request_id] ?? null}
+          actor={actorFor(detail.data.request_id)}
           minRelevance={project.settings?.min_relevance}
           onReuse={() => detail.data && reuse(detail.data)}
         />

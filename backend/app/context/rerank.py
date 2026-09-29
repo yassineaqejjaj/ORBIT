@@ -25,10 +25,10 @@ from datetime import datetime
 from typing import Any
 
 from app.config import settings
+from app.context.textutils import cosine, term_overlap
 from app.enums import CandidateType, MemoryKind, MemoryStatus
 from app.governance import freshness
 from app.governance.policy import Candidate
-from app.context.textutils import cosine, term_overlap
 
 logger = logging.getLogger("orbit.context.rerank")
 

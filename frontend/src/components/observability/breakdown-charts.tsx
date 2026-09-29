@@ -122,7 +122,7 @@ export function InclusionsChart({ slices, loading }: { slices: InclusionSlice[];
             </PieChart>
           </ChartContainer>
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-xl font-semibold tabular-nums text-foreground">{formatNumber(total, 0)}</span>
+            <span className="text-xl font-semibold text-foreground">{formatNumber(total, 0)}</span>
             <span className="text-[11px] text-muted-foreground">éléments</span>
           </div>
         </div>

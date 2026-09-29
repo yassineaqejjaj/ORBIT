@@ -156,6 +156,10 @@ class Candidate:
     forgotten: ForgetInfo | None = None
     status_changed_at: datetime | None = None
     embedding: list[float] | None = None
+    #: Source kinds of the documents a memory item was derived from (freshness policy).
+    provenance_kinds: tuple[SourceKind, ...] = ()
+    #: Chunk ids a memory item was extracted from (conflict propagation to source extracts).
+    provenance_chunk_ids: frozenset[str] = frozenset()
     tokens: int = 0
     scores: ScoreBreakdown = field(default_factory=ScoreBreakdown)
     retrieved_by: set[str] = field(default_factory=set)
@@ -233,7 +237,7 @@ def memory_status_label(kind: MemoryKind | None, status: str) -> str:
 def candidate_type_label(candidate: Candidate) -> str:
     """« décision validée », « extrait (ticket) », « tour de session »."""
     if candidate.candidate_type == CandidateType.memory:
-        kind_label = MEMORY_KIND_LABELS.get(candidate.memory_kind, "mémoire") if candidate.memory_kind else "mémoire"
+        kind_label = MEMORY_KIND_LABELS[candidate.memory_kind] if candidate.memory_kind else "mémoire"
         label = f"{kind_label.lower()} {memory_status_label(candidate.memory_kind, candidate.status)}"
         if candidate.is_org_memory:
             label += " · organisation"
@@ -245,12 +249,9 @@ def candidate_type_label(candidate: Candidate) -> str:
 
 
 def acl_label(entries: list[str]) -> str:
-    labels = []
+    labels: list[str] = []
     for entry in entries:
-        if entry.startswith("user:"):
-            label = "utilisateur désigné"
-        else:
-            label = _ACL_ENTRY_LABELS.get(entry, entry)
+        label = "utilisateur désigné" if entry.startswith("user:") else _ACL_ENTRY_LABELS.get(entry, entry)
         if label not in labels:
             labels.append(label)
     return ", ".join(labels) if labels else "aucun principal"
@@ -356,10 +357,29 @@ def _rule_expired(c: Candidate, ctx: GovernanceContext) -> Verdict | None:
 
 
 def _memory_is_durable(c: Candidate) -> bool:
-    """Memory that stays in force until superseded (never excluded for age)."""
+    """Memory never excluded for its age.
+
+    Validated decisions stay in force until they are superseded; long-term, personal and
+    short-term memories have their own lifecycle (consolidation, forgetting, expiry).
+    """
     if c.memory_scope in (MemoryScope.long_term, MemoryScope.user, MemoryScope.short_term):
         return True
-    return c.is_validated and c.memory_kind in (MemoryKind.decision, MemoryKind.constraint)
+    return c.is_validated and c.memory_kind == MemoryKind.decision
+
+
+def _memory_policy(c: Candidate, ctx: GovernanceContext) -> tuple[int, str] | None:
+    """Freshness limit of a derived memory item: the request override, else the most lenient
+    project policy among the source kinds of its provenance (``None``: no applicable policy)."""
+    if ctx.freshness_override_days is not None:
+        return int(ctx.freshness_override_days), "demandé"
+    best: tuple[int, str] | None = None
+    for kind in c.provenance_kinds:
+        days = freshness.policy_days(kind, ctx.freshness_days)
+        if days is None:
+            return None  # one source kind without policy: the item cannot be considered stale
+        if best is None or days > best[0]:
+            best = (days, freshness.kind_plural_label(kind))
+    return best
 
 
 def _rule_stale(c: Candidate, ctx: GovernanceContext) -> Verdict | None:
@@ -368,12 +388,15 @@ def _rule_stale(c: Candidate, ctx: GovernanceContext) -> Verdict | None:
     if c.candidate_type == CandidateType.memory:
         if c.valid_to is not None and freshness.as_aware(c.valid_to) <= freshness.as_aware(ctx.now):
             return Verdict(ReasonCode.EXCLUDED_STALE, f"validité échue le {format_date_iso(c.valid_to)}")
-        if _memory_is_durable(c) or ctx.freshness_override_days is None:
+        if _memory_is_durable(c):
             return None
-        limit = int(ctx.freshness_override_days)
+        policy = _memory_policy(c, ctx)
+        if policy is None:
+            return None
+        limit, label = policy
         age = freshness.whole_days(c.date, ctx.now)
         if age is not None and age > limit:
-            return Verdict(ReasonCode.EXCLUDED_STALE, f"{age} j > {limit} j (demandé)")
+            return Verdict(ReasonCode.EXCLUDED_STALE, f"{age} j > {limit} j ({label})")
         return None
     limit_days = freshness.policy_days(c.source_kind, ctx.freshness_days, ctx.freshness_override_days)
     if limit_days is None:
@@ -381,7 +404,10 @@ def _rule_stale(c: Candidate, ctx: GovernanceContext) -> Verdict | None:
     age = freshness.whole_days(c.date, ctx.now)
     if age is None or age <= limit_days:
         return None
-    label = "demandé" if ctx.freshness_override_days is not None else freshness.kind_plural_label(c.source_kind)
+    if ctx.freshness_override_days is not None:
+        label = "demandé"
+    else:
+        label = freshness.kind_plural_label(c.source_kind)
     return Verdict(ReasonCode.EXCLUDED_STALE, f"{age} j > {limit_days} j ({label})")
 
 

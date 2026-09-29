@@ -23,7 +23,7 @@ export interface MemoryActorProps {
 export function MemoryActor({ type, id, label, members, size = "sm", showName = true, className }: MemoryActorProps) {
   const member = type === "user" && id ? members?.find((m) => m.user.id === id) : undefined;
   const typeLabel = getMeta(ACTOR_TYPE_META, type).label;
-  const name = member?.user.full_name || label || (type === "system" ? "ORBIT (système)" : typeLabel);
+  const name = member?.user.full_name || label || (type === "system" ? "ORBIT" : typeLabel);
   const box = size === "xs" ? "size-5 [&_svg]:size-3" : "size-6 [&_svg]:size-3.5";
 
   let avatar: React.ReactNode;
@@ -62,7 +62,9 @@ export function MemoryActor({ type, id, label, members, size = "sm", showName = 
     <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>
       {avatar}
       <span className="truncate text-[13px] font-medium text-foreground">{name}</span>
-      {type !== "user" ? <span className="shrink-0 text-xs text-muted-foreground">· {typeLabel}</span> : null}
+      {type !== "user" && name.toLocaleLowerCase("fr") !== typeLabel.toLocaleLowerCase("fr") ? (
+        <span className="shrink-0 text-xs text-muted-foreground">· {typeLabel}</span>
+      ) : null}
     </span>
   );
 }

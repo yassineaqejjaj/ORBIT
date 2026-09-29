@@ -531,13 +531,72 @@ async def _latest_decisions(
 
 async def _recent_activity(session: AsyncSession, access: ProjectAccess) -> list[AuditEvent]:
     rows, _total = await audit_service.list_events(session, access.project_id, limit=RECENT_ACTIVITY_LIMIT)
-    return [audit_event_view(row, can_see_restricted=access.can_see_restricted_details) for row in rows]
+    return await audit_event_views(session, access, rows)
 
 
 def audit_event_view(row: AuditLog, *, can_see_restricted: bool) -> AuditEvent:
     return AuditEvent.model_validate(row).model_copy(
         update={"details": audit_service.visible_details(row.details, can_see_restricted=can_see_restricted)}
     )
+
+
+REDACTED_AUDIT_SUMMARY = "Action sur un contenu hors de vos droits d'accès (détail caviardé)"
+#: Audit target types whose summary may quote a content title (documents, memory items, chunks).
+CONTENT_TARGET_TYPES: frozenset[str] = frozenset({"document", "memory", "chunk"})
+
+
+def _target_uuid(value: str | None) -> uuid.UUID | None:
+    if not value:
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return None
+
+
+async def hidden_audit_targets(
+    session: AsyncSession, visibility: Visibility, rows: Sequence[AuditLog]
+) -> set[str]:
+    """Target ids (as stored) of audit rows about content the caller cannot read (ACL / clearance)."""
+    wanted: dict[str, set[uuid.UUID]] = defaultdict(set)
+    for row in rows:
+        target = _target_uuid(row.target_id)
+        if target is not None and row.target_type in CONTENT_TARGET_TYPES:
+            wanted[row.target_type].add(target)
+    if not wanted:
+        return set()
+    readable: dict[uuid.UUID, bool] = {}
+    models: dict[str, Any] = {"document": Document, "memory": MemoryItem, "chunk": Chunk}
+    for target_type, ids in wanted.items():
+        model = models[target_type]
+        result = await session.execute(
+            select(model.id, model.acl_principals, model.classification).where(model.id.in_(ids))
+        )
+        for target_id, acl, level in result.tuples():
+            readable[target_id] = visibility.allows(acl, level)
+    # Unknown targets (deleted rows) are hidden too: nothing proves the caller could read them.
+    return {str(target) for ids in wanted.values() for target in ids if not readable.get(target, False)}
+
+
+async def audit_event_views(
+    session: AsyncSession, access: ProjectAccess, rows: Sequence[AuditLog]
+) -> list[AuditEvent]:
+    """Audit rows as seen by the caller (non-leak principle, §3).
+
+    Owners and admins see everything. Other members get ``details["restricted"]`` stripped and,
+    for events about a document / memory item / chunk they cannot read, a generic summary without
+    target id nor details (audit summaries quote content titles).
+    """
+    can_see = access.can_see_restricted_details
+    hidden = set() if can_see else await hidden_audit_targets(session, Visibility.for_access(access), rows)
+    views: list[AuditEvent] = []
+    for row in rows:
+        view = audit_event_view(row, can_see_restricted=can_see)
+        if row.target_id is not None and row.target_id in hidden:
+            redacted = {"summary": REDACTED_AUDIT_SUMMARY, "target_id": None, "details": {}}
+            view = view.model_copy(update=redacted)
+        views.append(view)
+    return views
 
 
 # --- Metrics ----------------------------------------------------------------------------------------

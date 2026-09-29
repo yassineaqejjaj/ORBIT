@@ -1,17 +1,26 @@
 import type { Metadata } from "next";
-import { Camera } from "lucide-react";
+import { Suspense } from "react";
 
-import { UnderConstruction } from "@/components/layout/under-construction";
+import { SnapshotDetailSkeleton, SnapshotDetailView } from "@/components/snapshots/snapshot-detail-view";
 
-export const metadata: Metadata = { title: "Snapshot" };
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ name: string }> }): Promise<Metadata> {
+  const { name } = await params;
+  return { title: `Snapshot ${safeDecode(name)}` };
+}
 
 export default function SnapshotDetailPage() {
+  // `useSearchParams` (?v=, ?mode=compare&from=&to=, ?tab=) requires a Suspense boundary.
   return (
-    <UnderConstruction
-      icon={<Camera />}
-      title="Snapshot"
-      description="Versions d'un snapshot de contexte, contenu et éléments épinglés."
-      upcoming={["Contenu Markdown et citations de chaque version", "Diff entre deux versions"]}
-    />
+    <Suspense fallback={<SnapshotDetailSkeleton />}>
+      <SnapshotDetailView />
+    </Suspense>
   );
 }

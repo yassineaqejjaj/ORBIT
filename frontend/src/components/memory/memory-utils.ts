@@ -7,11 +7,13 @@ import {
   CLASSIFICATION_META,
   getMeta,
   MEMORY_KIND_META,
+  MEMORY_SCOPE_META,
+  MEMORY_STATUS_META,
   toClassification,
   type MemoryScope,
   type MemoryStatus,
 } from "@/lib/enums";
-import { formatDate, formatDateLong } from "@/lib/format";
+import { formatDate, formatDateLong, formatScore } from "@/lib/format";
 
 /** Statuses rendered dimmed (no longer served to agents as-is). */
 export const INACTIVE_STATUSES: ReadonlySet<MemoryStatus> = new Set(["superseded", "obsolete", "forgotten"]);
@@ -106,15 +108,18 @@ const FIELD_LABELS: Record<string, string> = {
   valid_from: "Début de validité",
   tags: "Étiquettes",
   status: "Statut",
+  scope: "Portée",
   confidence: "Confiance",
 };
 
 function displayValue(field: string, value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   if (field === "kind") return getMeta(MEMORY_KIND_META, String(value)).label;
+  if (field === "scope") return getMeta(MEMORY_SCOPE_META, String(value)).label;
+  if (field === "status") return getMeta(MEMORY_STATUS_META, String(value)).label;
   if (field === "classification") return classificationLabel(Number(value));
   if (field === "valid_to" || field === "valid_from") return formatDateLong(String(value));
-  if (field === "confidence" && typeof value === "number") return value.toFixed(2).replace(".", ",");
+  if (field === "confidence" && typeof value === "number") return formatScore(value);
   if (Array.isArray(value)) return value.length ? value.map(String).join(", ") : "—";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
@@ -149,12 +154,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Changes recorded by the backend in `event.data` (tolerant to several shapes):
- * `{changes: {field: {from, to}}}`, `{changes: {field: [from, to]}}`, `{before: {...}, after: {...}}`.
+ * `{diff: {field: {from, to}}}` (ORBIT backend), `{changes: {field: {from, to} | [from, to]}}`,
+ * `{before: {...}, after: {...}}`.
  */
 export function changesFromEventData(data: MemoryEvent["data"]): FieldChange[] {
   if (!isRecord(data)) return [];
   const out: FieldChange[] = [];
-  const changes = data.changes;
+  const changes = isRecord(data.diff) ? data.diff : data.changes;
   if (isRecord(changes)) {
     for (const [field, value] of Object.entries(changes)) {
       if (Array.isArray(value) && value.length === 2) out.push(change(field, value[0], value[1]));

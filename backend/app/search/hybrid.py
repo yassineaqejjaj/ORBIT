@@ -10,6 +10,11 @@ governance is applied by the caller so that every exclusion can be explained.
 
 If one of the two retrievers fails (e.g. the embedding model is unavailable), the other one's
 results are still returned (degraded mode, logged); if both fail the first error is raised.
+
+``FusedHit.source`` holds the indexed fields; with ``include_embedding=True`` (default) it also
+carries the stored vector under ``"embedding"`` so that the context engine can compute dense
+similarities for BM25-only hits, near-duplicates (cosine > 0.92) and MMR diversity without another
+round trip.
 """
 
 from __future__ import annotations
@@ -17,12 +22,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.search import opensearch
-from app.search.opensearch import IndexKind, OSHit
+from app.search.opensearch import FilterSpec, IndexKind, OSHit
 
 logger = logging.getLogger("orbit.hybrid")
 
@@ -81,13 +86,15 @@ async def hybrid_search(
     *,
     project_id: str | uuid.UUID,
     size_each: int = 40,
-    filters: Sequence[Mapping[str, Any]] | Mapping[str, Any] | None = None,
+    filters: FilterSpec = None,
     include_org_memory: bool = True,
     k: int = RRF_K,
+    include_embedding: bool = True,
 ) -> list[FusedHit]:
     """Run BM25 and k-NN concurrently on ``kind`` and fuse them with RRF.
 
     ``query_vector`` may be ``None``: the query is then embedded with the configured embedder.
+    Results are ordered by fused score (best first).
     """
     pid = str(project_id)
 
@@ -99,6 +106,7 @@ async def hybrid_search(
             size=size_each,
             filters=filters,
             include_org_memory=include_org_memory,
+            include_embedding=include_embedding,
         )
 
     async def _dense() -> list[OSHit]:
@@ -117,6 +125,7 @@ async def hybrid_search(
             size=size_each,
             filters=filters,
             include_org_memory=include_org_memory,
+            include_embedding=include_embedding,
         )
 
     bm25_result, dense_result = await asyncio.gather(_bm25(), _dense(), return_exceptions=True)

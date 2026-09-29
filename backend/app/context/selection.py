@@ -2,6 +2,8 @@
 
 1. **Conflicts** — ``contradicts`` relations between candidates: the most reliable side wins
    (validated > proposed, then more recent, then confidence); the other ⇒ ``EXCLUDED_CONFLICT``.
+   The source extracts a defeated memory item was extracted from (its provenance chunks) are
+   excluded with it, unless they also back the winner: the contradicted statement is not re-served.
 2. **Duplicates** — cosine > 0.92 between embeddings when both are known, otherwise Jaccard of word
    shingles > 0.8 ⇒ ``EXCLUDED_DUPLICATE`` (``related_citation`` points to the kept item).
 3. **MMR** (λ = 0.7) orders the remaining candidates to balance relevance and diversity.
@@ -184,6 +186,27 @@ def resolve_conflicts(
     return losers
 
 
+def propagate_to_sources(
+    candidates: Sequence[Candidate], losers: dict[str, tuple[Candidate, str]]
+) -> dict[str, tuple[Candidate, str]]:
+    """Provenance chunks of defeated memory items (``key -> (winner, detail)``), see module docstring."""
+    by_key = {c.key: c for c in candidates}
+    chunks = {c.id: c for c in candidates if c.candidate_type == CandidateType.chunk}
+    extra: dict[str, tuple[Candidate, str]] = {}
+    for key, (winner, detail) in losers.items():
+        loser = by_key.get(key)
+        if loser is None or loser.candidate_type != CandidateType.memory:
+            continue
+        for chunk_id in sorted(loser.provenance_chunk_ids):
+            chunk = chunks.get(chunk_id)
+            if chunk is None or chunk.key in losers or chunk.key in extra or chunk.key == winner.key:
+                continue
+            if chunk_id in winner.provenance_chunk_ids:
+                continue
+            extra[chunk.key] = (winner, detail)
+    return extra
+
+
 # --- Similarity ---------------------------------------------------------------------------------------
 
 
@@ -321,6 +344,7 @@ def select_candidates(
     cache = SimilarityCache()
 
     losers = resolve_conflicts(eligible, contradictions)
+    losers.update(propagate_to_sources(eligible, losers))
     survivors: list[Candidate] = []
     for c in eligible:
         if c.key in losers:

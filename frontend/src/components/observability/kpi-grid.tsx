@@ -38,7 +38,10 @@ export interface KpiGridProps {
 export function KpiGrid({ totals, series, days, loading }: KpiGridProps) {
   const requests = totals?.requests ?? 0;
   const perDay = days > 0 ? requests / days : 0;
-  const p95 = totals?.p95_latency_ms ?? null;
+  // The API reports 0 ms latencies on an empty period: show a placeholder instead.
+  const p50 = requests > 0 ? (totals?.p50_latency_ms ?? null) : null;
+  const avgLatency = requests > 0 ? (totals?.avg_latency_ms ?? null) : null;
+  const p95 = requests > 0 ? (totals?.p95_latency_ms ?? null) : null;
   const p95Ok = typeof p95 === "number" && p95 > 0 ? p95 <= P95_TARGET_MS : null;
   const avgTokens = requests > 0 ? (totals?.tokens ?? 0) / requests : null;
   const costPerRequest = requests > 0 ? (totals?.cost_estimate ?? 0) / requests : null;
@@ -58,10 +61,10 @@ export function KpiGrid({ totals, series, days, loading }: KpiGridProps) {
       </StatCard>
       <StatCard
         label="Latence p50"
-        value={formatMs(totals?.p50_latency_ms)}
+        value={formatMs(p50)}
         icon={<Timer />}
         tone="blue"
-        hint={`moyenne ${formatMs(totals?.avg_latency_ms)}`}
+        hint={avgLatency !== null ? `moyenne ${formatMs(avgLatency)}` : "aucune requête"}
         loading={loading}
       />
       <StatCard

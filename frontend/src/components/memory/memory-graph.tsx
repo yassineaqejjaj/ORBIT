@@ -57,6 +57,8 @@ const NODE_WIDTH = 224;
 const MEMORY_HEIGHT = 36;
 const SOURCE_HEIGHT = 50;
 const DIMMED_STATUSES = new Set(["superseded", "obsolete", "forgotten"]);
+/** Up to this many edges, every edge shows its relation label. */
+const FULL_LABEL_MAX_EDGES = 40;
 
 /** Hex colors (SVG attributes cannot always resolve CSS variables, e.g. markers, minimap). */
 const TONE_HEX: Record<Tone, string> = {
@@ -365,7 +367,8 @@ function GraphCanvas({
         const sc = built.columns.get(e.source) ?? 0;
         const tc = built.columns.get(e.target) ?? 0;
         const [sourceHandle, targetHandle] = sc === tc ? ["r-s", "r-t"] : sc < tc ? ["r-s", "l-t"] : ["l-s", "r-t"];
-        const showLabel = spec.alwaysLabel || connected;
+        // Small graphs label every edge; larger ones keep the key relations labelled (others on focus).
+        const showLabel = spec.alwaysLabel || connected || built.edges.length <= FULL_LABEL_MAX_EDGES;
         return {
           id: `${e.source}:${e.rel_type}:${e.target}:${index}`,
           source: e.source,
@@ -501,7 +504,8 @@ export function MemoryGraphView({ slug, limit, selectedId, onSelect, className }
           />
         </div>
       ) : (
-        <GraphCanvas slug={slug} graph={query.data} selectedId={selectedId} onSelect={onSelect} />
+        // Re-mount on limit change so the viewport fits the new graph.
+        <GraphCanvas key={limit} slug={slug} graph={query.data} selectedId={selectedId} onSelect={onSelect} />
       )}
     </div>
   );

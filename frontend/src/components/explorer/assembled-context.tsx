@@ -10,7 +10,7 @@ import { CodeBlock, CopyButton } from "@/components/ui/code-block";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { saveBlob } from "@/lib/api/client";
-import { citationFromHref, linkifyCitations } from "@/lib/explorer-utils";
+import { citationFromHref, renderableContextMarkdown } from "@/lib/explorer-utils";
 import { formatTokens } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { CitationBadge } from "./citation-badge";
@@ -104,7 +104,7 @@ export function AssembledContext({
   onCitationClick,
 }: AssembledContextProps) {
   const [mode, setMode] = React.useState<ViewMode>("rendered");
-  const linked = React.useMemo(() => linkifyCitations(markdown), [markdown]);
+  const linked = React.useMemo(() => renderableContextMarkdown(markdown), [markdown]);
   const components = React.useMemo(
     () => buildComponents(citationTitles, activeCitation, onCitationClick),
     [citationTitles, activeCitation, onCitationClick],

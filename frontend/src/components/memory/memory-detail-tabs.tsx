@@ -28,8 +28,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { Member, MemoryEvent, MemoryItem, Provenance, Relation } from "@/lib/api/types";
-import { getMeta, MEMORY_EVENT_META } from "@/lib/enums";
-import { formatDateTime, formatScore, shortId } from "@/lib/format";
+import { getMeta, MEMORY_EVENT_META, MEMORY_STATUS_META } from "@/lib/enums";
+import { formatDateTime, formatScore, plural, shortId, truncate } from "@/lib/format";
 import { toneClasses } from "@/lib/tones";
 import { cn } from "@/lib/utils";
 
@@ -193,45 +193,153 @@ function ChangeList({ changes }: { changes: readonly FieldChange[] }) {
   );
 }
 
-/** Human details stored in `event.data` for non-edit events (similarity, related title, version). */
+function dataString(data: Record<string, unknown>, key: string): string | null {
+  const value = data[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function dataNumber(data: Record<string, unknown>, key: string): number | null {
+  const value = data[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function statusLabel(value: string | null): string | null {
+  return value ? getMeta(MEMORY_STATUS_META, value).label : null;
+}
+
+interface EventReference {
+  prefix: string;
+  id: string | null;
+  /** Null when only the id is known. */
+  title: string | null;
+}
+
+/** Related item recorded in `event.data` (supersession / conflict / cleared replacement). */
+function eventReference(event: MemoryEvent): EventReference | null {
+  const data = event.data ?? {};
+  if (event.event === "superseded") {
+    const byTitle = dataString(data, "by_title");
+    if (byTitle) return { prefix: "Remplacé par", id: dataString(data, "by_id"), title: byTitle };
+    const oldTitle = dataString(data, "old_title");
+    if (oldTitle) return { prefix: "Remplace", id: dataString(data, "old_id"), title: oldTitle };
+  }
+  if (event.event === "conflict_detected") {
+    const withTitle = dataString(data, "with_title");
+    if (withTitle) return { prefix: "Élément en conflit :", id: dataString(data, "with_id"), title: withTitle };
+  }
+  if (event.event === "restored" && dataString(data, "role") === "replacement_cleared") {
+    const itemId = dataString(data, "item_id");
+    if (itemId) return { prefix: "Remplacement annulé pour", id: itemId, title: null };
+  }
+  return null;
+}
+
+/** Secondary facts stored in `event.data` (status transitions, similarity, propagation…). */
 function eventFacts(event: MemoryEvent): string[] {
   const data = event.data ?? {};
   const facts: string[] = [];
-  const title = data.other_title ?? data.by_title ?? data.superseded_by_title ?? data.supersedes_title;
-  if (typeof title === "string" && title) {
-    const prefix =
-      event.event === "conflict_detected" ? "En contradiction avec" : event.event === "superseded" ? "Remplacé par" : "Lié à";
-    facts.push(`${prefix} « ${title} »`);
+  const fromVersion = dataNumber(data, "from_version");
+  const version = dataNumber(data, "version");
+  if (fromVersion !== null && version !== null) facts.push(`v${fromVersion} → v${version}`);
+  else if (version !== null) facts.push(`version ${version}`);
+
+  if (event.event === "created") {
+    const status = statusLabel(dataString(data, "status"));
+    if (status) facts.push(`statut initial : ${status}`);
+    const provenance = dataNumber(data, "provenance");
+    if (provenance !== null) facts.push(plural(provenance, "source rattachée", "sources rattachées"));
   }
-  const similarity = data.similarity ?? data.score;
-  if (typeof similarity === "number") facts.push(`similarité ${formatScore(similarity)}`);
-  if (typeof data.version === "number") facts.push(`version ${data.version}`);
-  if (typeof data.propagated === "number" && data.propagated > 0) facts.push(`${data.propagated} élément(s) dérivé(s) impacté(s)`);
+  if (event.event === "restored") {
+    const from = statusLabel(dataString(data, "from_status"));
+    const to = statusLabel(dataString(data, "status"));
+    if (from && to) facts.push(`${from} → ${to}`);
+  } else {
+    const previous = statusLabel(dataString(data, "previous_status"));
+    if (previous) facts.push(`statut précédent : ${previous}`);
+  }
+  if (data.valid_to_set === true) facts.push("fin de validité fixée");
+  if (data.auto === true) facts.push("détection automatique");
+
+  const similarity = dataNumber(data, "similarity") ?? dataNumber(data, "score");
+  if (similarity !== null) facts.push(`similarité ${formatScore(similarity)}`);
+  const confidence = dataNumber(data, "confidence");
+  if (confidence !== null && event.event === "superseded") facts.push(`confiance ${formatScore(confidence)}`);
+
+  if (event.event === "forgotten") {
+    const versions = dataNumber(data, "versions");
+    if (versions !== null && versions > 0) facts.push(`${plural(versions, "version effacée", "versions effacées")}`);
+    const purged = dataNumber(data, "purged_turns");
+    if (purged !== null && purged > 0) facts.push(`${plural(purged, "tour de session purgé", "tours de session purgés")}`);
+  }
+  const propagated = dataNumber(data, "propagated");
+  if (propagated !== null && propagated > 0) {
+    facts.push(plural(propagated, "élément dérivé impacté", "éléments dérivés impactés"));
+  }
   return facts;
+}
+
+function eventMarkers(event: MemoryEvent): string[] {
+  const markers = event.data?.markers;
+  return Array.isArray(markers) ? markers.filter((m): m is string => typeof m === "string" && m.trim() !== "") : [];
+}
+
+function EventReferenceLine({
+  reference,
+  onOpenItem,
+}: {
+  reference: EventReference;
+  onOpenItem?: (id: string) => void;
+}) {
+  const label = reference.title ? `« ${truncate(reference.title, 80)} »` : "l'élément concerné";
+  return (
+    <p className="flex min-w-0 flex-wrap items-center gap-1 text-xs text-muted-foreground">
+      <span>{reference.prefix}</span>
+      {reference.id && onOpenItem ? (
+        <button
+          type="button"
+          onClick={() => onOpenItem(reference.id as string)}
+          className="min-w-0 truncate font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {label}
+        </button>
+      ) : (
+        <span className="min-w-0 truncate font-medium text-foreground">{label}</span>
+      )}
+    </p>
+  );
 }
 
 export function HistoryTimeline({
   history,
   versions,
   members,
+  onOpenItem,
 }: {
   history: readonly MemoryEvent[];
   versions: readonly MemoryItem[];
   members?: readonly Member[];
+  /** Opens a related memory item (supersession, conflict). */
+  onOpenItem?: (id: string) => void;
 }) {
   const events = React.useMemo(
     () => [...history].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
     [history],
   );
+  const versionOf = React.useMemo(() => new Map(versions.map((v) => [v.id, v.version])), [versions]);
+  const multiVersion = versions.length > 1;
+
   if (events.length === 0) {
     return <EmptyState size="sm" icon={<History />} title="Aucun événement" description="L'historique de cet élément est vide." />;
   }
   return (
-    <ol className="relative grid gap-0">
+    <ol className="relative grid gap-0" aria-label="Historique des événements">
       {events.map((event, index) => {
         const meta = getMeta(MEMORY_EVENT_META, event.event);
         const changes = event.event === "edited" ? changesForEvent(event, versions) : [];
         const facts = eventFacts(event);
+        const reference = eventReference(event);
+        const markers = eventMarkers(event);
+        const version = versionOf.get(event.memory_item_id);
         const last = index === events.length - 1;
         return (
           <li key={event.id} className="relative grid grid-cols-[1.5rem_minmax(0,1fr)] gap-3 pb-5 last:pb-0">
@@ -248,6 +356,11 @@ export function HistoryTimeline({
             <div className="grid min-w-0 gap-1.5">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <MemoryEventBadge value={event.event} />
+                {multiVersion && version ? (
+                  <Badge variant="outline" mono title="Version concernée">
+                    v{version}
+                  </Badge>
+                ) : null}
                 <MemoryActor
                   type={event.actor_type}
                   id={event.actor_id}
@@ -255,15 +368,25 @@ export function HistoryTimeline({
                   members={members}
                   size="xs"
                 />
-                <span className="ml-auto text-xs text-muted-foreground" title={formatDateTime(event.created_at)}>
+                <span className="ml-auto text-xs text-muted-foreground">
                   <RelativeTime date={event.created_at} />
                 </span>
               </div>
               {event.reason ? (
                 <p className="flex items-start gap-1.5 text-[12.5px] leading-relaxed text-foreground/90">
                   <Quote className="mt-0.5 size-3.5 shrink-0 text-subtle-foreground" aria-hidden />
-                  <span className="italic">{event.reason}</span>
+                  <span className="min-w-0 break-words italic">{event.reason}</span>
                 </p>
+              ) : null}
+              {reference ? <EventReferenceLine reference={reference} onOpenItem={onOpenItem} /> : null}
+              {markers.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {markers.map((marker) => (
+                    <Badge key={marker} tone="orange" variant="outline">
+                      {marker}
+                    </Badge>
+                  ))}
+                </div>
               ) : null}
               {facts.length > 0 ? <p className="text-xs text-muted-foreground">{facts.join(" · ")}</p> : null}
               {changes.length > 0 ? <ChangeList changes={changes} /> : null}

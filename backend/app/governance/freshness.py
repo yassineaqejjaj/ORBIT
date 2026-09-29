@@ -46,7 +46,7 @@ def age_days(date: datetime | None, now: datetime) -> float | None:
 
 def whole_days(date: datetime | None, now: datetime) -> int | None:
     age = age_days(date, now)
-    return None if age is None else int(math.floor(age))
+    return None if age is None else math.floor(age)
 
 
 def decay_score(date: datetime | None, now: datetime, half_life_days: float = HALF_LIFE_DAYS) -> float:
@@ -86,7 +86,7 @@ def kind_plural_label(source_kind: SourceKind | str | None) -> str:
 
 def format_days(days: float | int) -> str:
     """``214 -> "214 j"``."""
-    return f"{int(math.floor(days))} j"
+    return f"{math.floor(days)} j"
 
 
 def format_age(date: datetime | None, now: datetime) -> str | None:

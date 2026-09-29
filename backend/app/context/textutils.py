@@ -31,7 +31,7 @@ FRENCH_STOPWORDS: frozenset[str] = frozenset(
     qui quoi sa sans se selon ses si sien son sont sous soyez sur ta tandis te tes toi ton tous tout
     toute toutes tres tu un une unes uns vers voici voila vont vos votre vous vu y the of and to in for
     on with is are be this that from by an or as at it its doit doivent sera seront etc afin ainsi
-    """.split()
+    """.split()  # noqa: SIM905 - readable word list
 )
 
 

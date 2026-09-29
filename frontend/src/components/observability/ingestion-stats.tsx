@@ -20,7 +20,7 @@ function Distribution({ title, total, segments, unit }: { title: string; total: 
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-[13px] font-medium text-foreground">{title}</p>
         <p className="text-xs text-muted-foreground">
-          <span className="text-base font-semibold tabular-nums text-foreground">{formatNumber(total, 0)}</span> {unit}
+          <span className="text-base font-semibold text-foreground">{formatNumber(total, 0)}</span> {unit}
         </p>
       </div>
       {total > 0 ? (
@@ -83,7 +83,7 @@ export function IngestionStats({ ingestion, loading }: { ingestion: MetricsInges
             <Gauge className="size-3.5" aria-hidden />
             Temps moyen d&apos;ingestion
           </p>
-          <p className="text-2xl font-semibold tracking-tight tabular-nums text-foreground">{formatMs(ingestion?.avg_ingest_ms)}</p>
+          <p className="text-2xl font-semibold tracking-tight text-foreground">{formatMs(ingestion?.avg_ingest_ms)}</p>
           <p className="text-[11.5px] text-subtle-foreground">par document, de l&apos;extraction à l&apos;indexation</p>
         </div>
       </div>

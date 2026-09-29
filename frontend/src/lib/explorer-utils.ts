@@ -324,6 +324,19 @@ export function linkifyCitations(markdown: string): string {
     .join("");
 }
 
+const SOURCE_LINE = /^\[(S\d+)\][ \t]+/gm;
+
+/**
+ * Prepares the served Markdown for display: the `## Sources` list is emitted as one `[S1] Titre — …` line per
+ * citation (a single paragraph in CommonMark), so those lines become list items; citations become links.
+ * The raw Markdown (copy / download) is left untouched.
+ */
+export function renderableContextMarkdown(markdown: string): string {
+  const parts = markdown.split(/(```[\s\S]*?```)/g);
+  const listed = parts.map((part, i) => (i % 2 === 1 ? part : part.replace(SOURCE_LINE, "- [$1] "))).join("");
+  return linkifyCitations(listed);
+}
+
 /** Extracts the citation from a generated href, or null. */
 export function citationFromHref(href: string | null | undefined): string | null {
   if (!href || !href.startsWith(CITATION_HREF_PREFIX)) return null;

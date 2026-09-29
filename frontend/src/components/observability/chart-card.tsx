@@ -71,7 +71,7 @@ export function ChartCard({
 export function ChartHeadline({ value, label }: { value: React.ReactNode; label: string }) {
   return (
     <div className="grid gap-0.5">
-      <span className="text-lg font-semibold leading-none tracking-tight tabular-nums text-foreground">{value}</span>
+      <span className="text-lg font-semibold leading-none tracking-tight text-foreground">{value}</span>
       <span className="text-[11px] text-muted-foreground">{label}</span>
     </div>
   );

@@ -47,7 +47,7 @@ function Metric({
   return (
     <div className={cn("grid content-start gap-1 bg-card px-4 py-3", className)}>
       <dt className="text-[11.5px] font-medium text-muted-foreground">{label}</dt>
-      <dd className={cn("text-xl font-semibold tracking-tight tabular-nums text-foreground", valueClassName)}>{value}</dd>
+      <dd className={cn("text-xl font-semibold tracking-tight text-foreground", valueClassName)}>{value}</dd>
       {hint ? <dd className="text-[11.5px] text-subtle-foreground">{hint}</dd> : null}
     </div>
   );

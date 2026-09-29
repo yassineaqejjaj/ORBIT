@@ -91,7 +91,9 @@ export function MemoryExplorer() {
   const { slug, canEdit, isOwner, project } = useCurrentProject();
   const { data: me } = useMe();
   const [state, update] = useMemoryUrlState();
+  // Two queries (both false on the server) so a deep link never flashes the sheet open on desktop.
   const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const isMobile = useMediaQuery("(max-width: 1023.98px)");
   const mounted = useMounted();
   const members = useMembers(slug);
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -148,7 +150,7 @@ export function MemoryExplorer() {
 
   const hasFilters =
     state.scope !== "all" || state.status !== "all" || state.kinds.length > 0 || state.q.trim() !== "" || state.history;
-  const detailInSheet = state.view === "graph" || !isDesktop;
+  const detailInSheet = state.view === "graph" || isMobile;
   const sheetOpen = mounted && Boolean(state.item) && detailInSheet;
 
   const detail = state.item ? (

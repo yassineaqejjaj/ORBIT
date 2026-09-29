@@ -27,8 +27,9 @@ from app.search.tokens import estimate_tokens, truncate_to_tokens
 logger = logging.getLogger("orbit.context.compression")
 
 GAP = " … "
-SENTENCE_EMBED_TIMEOUT_SECONDS = 0.4
-MAX_SENTENCES_TO_EMBED = 160
+SENTENCE_EMBED_TIMEOUT_SECONDS = 0.5
+#: Bounded batch: the embedder serialises inference, a large batch would delay the next requests.
+MAX_SENTENCES_TO_EMBED = 64
 #: LLM summaries only for items compressed below this ratio of their original size.
 LLM_RATIO_THRESHOLD = 0.5
 LLM_MAX_ITEMS = 4
@@ -86,7 +87,11 @@ def compress_text(
     sentences = split_sentences(text)
     if len(sentences) <= 1:
         return truncate_to_tokens(full, allowance)
-    sims = list(sentence_similarities) if sentence_similarities and len(sentence_similarities) == len(sentences) else None
+    sims = (
+        list(sentence_similarities)
+        if sentence_similarities and len(sentence_similarities) == len(sentences)
+        else None
+    )
     ranked = sorted(
         range(len(sentences)),
         key=lambda i: _sentence_score(i, sentences[i], query_terms, sims[i] if sims else None),
@@ -118,7 +123,7 @@ async def _sentence_similarities(
         if len(sentences) <= 1:
             continue
         if total + len(sentences) > MAX_SENTENCES_TO_EMBED:
-            break
+            continue
         batches.append((id(d), sentences))
         total += len(sentences)
     if not batches:
@@ -128,7 +133,9 @@ async def _sentence_similarities(
 
         embedder = get_embedder()
         flat = [s for _, sentences in batches for s in sentences]
-        vectors = await asyncio.wait_for(embedder.embed_documents(flat), timeout=SENTENCE_EMBED_TIMEOUT_SECONDS)
+        vectors = await asyncio.wait_for(
+            embedder.embed_documents(flat), timeout=SENTENCE_EMBED_TIMEOUT_SECONDS
+        )
     except Exception as exc:  # NotImplementedError, timeout, model errors: extractive scoring only
         logger.debug("Sentence embeddings skipped: %s", exc)
         return {}
@@ -167,7 +174,9 @@ async def _llm_summaries(decisions: Sequence[Decision]) -> dict[int, str]:
         return id(d), answer
 
     try:
-        answers = await asyncio.wait_for(asyncio.gather(*(_one(d) for d in targets)), timeout=LLM_TIMEOUT_SECONDS + 1)
+        answers = await asyncio.wait_for(
+            asyncio.gather(*(_one(d) for d in targets)), timeout=LLM_TIMEOUT_SECONDS + 1
+        )
     except Exception as exc:
         logger.warning("LLM summaries skipped: %s", exc)
         return {}

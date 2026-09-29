@@ -15,15 +15,14 @@ Authentication — an agent API key is mandatory (``Authorization: Bearer orb_�
   exactly like the REST endpoints marked *(agent)*.
 
 Tools reuse the same services as REST: ``app.context.assembler.assemble_context``,
-``app.context.snapshots.get_snapshot``, ``app.memory.lifecycle.create_item``,
-``app.memory.short_term.append_turn``; search queries the chunk index (BM25 + k-NN, RRF fusion) with
-the agent's ACL/clearance pre-filters and re-checks every hit against Postgres. Agents only ever
-receive ``text_redacted`` (PII masked) and exclusion **counters** (non-leak principle, §3).
+``app.context.snapshots.get_snapshot``, ``app.search.hybrid.hybrid_search`` (with the agent's ACL /
+clearance pre-filters, every hit re-checked against Postgres), ``app.memory.lifecycle.create_item``,
+``app.memory.short_term.append_turn`` and ``app.context.persistence.record_feedback``. Agents only
+ever receive ``text_redacted`` (PII masked) and exclusion **counters** (non-leak principle, §3).
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 import uuid
@@ -65,7 +64,6 @@ from app.errors import ApiError, format_validation_errors
 from app.governance.acl import PROJECT_ALL, acl_terms_filter
 from app.models import (
     Chunk,
-    ContextFeedback,
     ContextRequest,
     ContextSnapshot,
     Document,
@@ -78,6 +76,7 @@ from app.schemas import (
     BaseSnapshotRef,
     ContextPackage,
     ContextRequestIn,
+    FeedbackIn,
     MemoryIn,
     ProvenanceIn,
     SaveSnapshotRef,
@@ -134,7 +133,6 @@ SNAPSHOT_REF_PATTERN = re.compile(
 )
 #: Memory scopes an agent may propose through MCP (short-term memory goes through ``record_turn``).
 PROPOSABLE_SCOPES: frozenset[MemoryScope] = frozenset({MemoryScope.project, MemoryScope.long_term})
-RRF_K = 60
 FORGOTTEN_EXCERPT = "[oublié]"
 
 
@@ -338,26 +336,6 @@ def context_result(package: ContextPackage) -> dict[str, Any]:
     }
 
 
-def rrf_fuse(rankings: Mapping[str, Sequence[Any]], k: int = RRF_K) -> list[tuple[str, dict[str, float]]]:
-    """Reciprocal Rank Fusion of ranked hit lists (``{"bm25": [...], "dense": [...]}``).
-
-    Returns ``(id, scores)`` sorted by fused score; ``scores`` holds ``rrf`` (normalised 0..1) and the
-    raw score of each list the hit appeared in.
-    """
-    fused: dict[str, dict[str, float]] = {}
-    for name, hits in rankings.items():
-        for rank, hit in enumerate(hits, start=1):
-            entry = fused.setdefault(str(hit.id), {"rrf": 0.0})
-            entry["rrf"] += 1.0 / (k + rank)
-            entry[name] = float(hit.score)
-    if not fused:
-        return []
-    best = max(entry["rrf"] for entry in fused.values())
-    for entry in fused.values():
-        entry["rrf"] = round(entry["rrf"] / best, 4) if best else 0.0
-    return sorted(fused.items(), key=lambda kv: (-kv[1]["rrf"], kv[0]))
-
-
 # --- Tools --------------------------------------------------------------------------------------------
 
 TaskArg = Annotated[
@@ -523,22 +501,22 @@ async def send_feedback(
     ctx: Context,
     comment: Annotated[str | None, Field(max_length=4000, description="Commentaire libre")] = None,
 ) -> dict[str, Any]:
-    """Rate a context previously served in this project."""
+    """Rate a context previously served in this project (same persistence as the REST endpoint)."""
+    from app.context.persistence import record_feedback
+
     target = _uuid(request_id, "request_id")
     async with agent_scope(ctx) as scope:
         request = await scope.session.get(ContextRequest, target)
         if request is None or request.project_id != scope.project.id:
             raise ToolError("Requête de contexte introuvable")
-        feedback = ContextFeedback(
-            request_id=request.id,
-            actor_type=PrincipalKind.agent,
-            actor_id=scope.principal.id,
-            rating=rating,
-            comment=comment.strip() if comment and comment.strip() else None,
-            item_flags=[],
+        cleaned = comment.strip() if comment and comment.strip() else None
+        feedback = await record_feedback(
+            scope.session,
+            request,
+            FeedbackIn(rating=rating, comment=cleaned),
+            actor=scope.principal,
+            actor_kind=PrincipalKind.agent,
         )
-        scope.session.add(feedback)
-        await scope.session.flush()
         await audit.record(
             scope.session,
             scope.project.id,
@@ -574,61 +552,51 @@ async def _provenance_documents(scope: AgentScope, ids: Sequence[str]) -> list[D
 
 
 async def hybrid_chunk_search(scope: AgentScope, query: str, limit: int) -> list[SearchHit]:
-    from app.search import opensearch
-    from app.search.embeddings import get_embedder
+    """BM25 + k-NN over the project's chunks (``app.search.hybrid``), restricted to the agent's rights.
+
+    The index pre-filter already applies ACL, clearance and ``active`` status; Postgres (the source
+    of truth) is then re-checked for every hit so that a stale index entry can never leak content.
+    """
+    from app.search.hybrid import hybrid_search
 
     visibility = scope.visibility
-    project_id = str(scope.project.id)
     filters: list[Mapping[str, Any]] = [
         acl_terms_filter(visibility.principals),
         {"range": {"classification": {"lte": visibility.clearance}}},
         {"term": {"status": ChunkStatus.active.value}},
     ]
-    size = min(max(limit * 4, 20), 100)
-
-    async def dense_hits() -> list[Any]:
-        try:
-            vector = await get_embedder().embed_query(query)
-            return await opensearch.knn_search(
-                "chunks", vector, project_id=project_id, size=size, filters=filters, include_org_memory=False
-            )
-        except Exception as exc:  # degrade to lexical search, never fail the call on the dense leg
-            logger.warning("MCP search: dense retrieval unavailable (%s)", exc)
-            return []
-
     try:
-        bm25, dense = await asyncio.gather(
-            opensearch.bm25_search(
-                "chunks", query, project_id=project_id, size=size, filters=filters, include_org_memory=False
-            ),
-            dense_hits(),
+        fused = await hybrid_search(
+            "chunks",
+            query,
+            None,
+            project_id=scope.project.id,
+            size_each=min(max(limit * 4, 20), 100),
+            filters=filters,
+            include_org_memory=False,
         )
     except NotImplementedError as exc:
         raise ToolError("Recherche indisponible : l'index des sources n'est pas encore opérationnel") from exc
+    except Exception as exc:
+        logger.warning("MCP search failed: %s", exc)
+        raise ToolError("Recherche indisponible : le moteur d'indexation ne répond pas, réessayez") from exc
 
-    fused = rrf_fuse({"bm25": bm25, "dense": dense})
-    ids: list[uuid.UUID] = []
-    for hit_id, _scores in fused:
-        try:
-            ids.append(uuid.UUID(hit_id))
-        except ValueError:
-            continue
-    if not ids:
+    ranked = [(uuid.UUID(hit.id), hit) for hit in fused if _is_uuid(hit.id)]
+    if not ranked:
         return []
     rows = await scope.session.execute(
         select(Chunk, Document, Source.kind)
         .join(Document, Document.id == Chunk.document_id)
         .join(Source, Source.id == Document.source_id)
-        .where(Chunk.id.in_(ids), Chunk.project_id == scope.project.id)
+        .where(Chunk.id.in_([chunk_id for chunk_id, _ in ranked]), Chunk.project_id == scope.project.id)
     )
     by_id = {chunk.id: (chunk, document, kind) for chunk, document, kind in rows.tuples()}
     results: list[SearchHit] = []
-    for hit_id, scores in fused:
-        entry = by_id.get(uuid.UUID(hit_id)) if _is_uuid(hit_id) else None
+    for chunk_id, hit in ranked:
+        entry = by_id.get(chunk_id)
         if entry is None:
             continue
         chunk, document, kind = entry
-        # Postgres is the source of truth: re-check status, ACL and clearance of every hit.
         if (
             chunk.status != ChunkStatus.active
             or document.status == DocumentStatus.forgotten
@@ -642,9 +610,9 @@ async def hybrid_chunk_search(scope: AgentScope, query: str, limit: int) -> list
                 document_title=document.title,
                 source_kind=kind,
                 text=chunk.text_redacted,
-                score=scores["rrf"],
-                bm25=scores.get("bm25"),
-                dense=scores.get("dense"),
+                score=round(hit.rrf_norm, 4),
+                bm25=hit.bm25_score,
+                dense=hit.dense_score,
                 section=chunk.section,
                 source_updated_at=document.source_updated_at,
             )

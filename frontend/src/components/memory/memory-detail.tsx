@@ -32,7 +32,7 @@ import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMemory } from "@/lib/api/hooks";
 import type { Member, MemoryDetail as MemoryDetailData, MemoryItem } from "@/lib/api/types";
-import { getMeta, MEMORY_STATUS_META } from "@/lib/enums";
+import { getMeta, MEMORY_SCOPE_META, MEMORY_STATUS_META } from "@/lib/enums";
 import { formatDate, formatDateTime, formatPercent, shortId, truncate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -253,6 +253,13 @@ export function MemoryDetail({ slug, itemId, permissions, members, labels, onOpe
       </section>
 
       <dl className="grid grid-cols-1 gap-x-6 gap-y-4 rounded-xl border border-border bg-muted/20 p-4 sm:grid-cols-2">
+        <MetaRow label="Portée">
+          <ScopeBadge scope={item.scope} />
+          <span className="text-xs text-muted-foreground">{getMeta(MEMORY_SCOPE_META, item.scope).description}</span>
+        </MetaRow>
+        <MetaRow label="Nature">
+          <MemoryKindBadge kind={item.kind} />
+        </MetaRow>
         <MetaRow label="Statut">
           <StatusBadge kind="memory" status={item.status} />
           <span className="text-xs text-muted-foreground">{getMeta(MEMORY_STATUS_META, item.status).description}</span>
@@ -344,7 +351,7 @@ export function MemoryDetail({ slug, itemId, permissions, members, labels, onOpe
           <ProvenanceList slug={slug} provenance={data.provenance} />
         </TabsContent>
         <TabsContent value="history">
-          <HistoryTimeline history={data.history} versions={data.versions} members={members} />
+          <HistoryTimeline history={data.history} versions={data.versions} members={members} onOpenItem={onOpenItem} />
         </TabsContent>
         <TabsContent value="versions">
           <VersionsList versions={data.versions} viewedId={item.id} members={members} onOpen={onOpenItem} />

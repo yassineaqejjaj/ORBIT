@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { EyeOff, Layers } from "lucide-react";
+import { EyeOff, Layers, Lock } from "lucide-react";
 
 import { CandidateTypeBadge } from "@/components/domain/enum-badge";
 import { MemoryKindBadge } from "@/components/domain/memory-kind-badge";
@@ -36,13 +36,31 @@ export function SnapshotItemNature({ item }: { item: SnapshotItem }) {
   return <span className="text-muted-foreground">—</span>;
 }
 
-/** Title cell: forgotten items are redacted, memory items link to the memory explorer. */
+/** True when the API redacted the item for the caller (no id: access or classification not granted). */
+export function isRestrictedItem(item: SnapshotItem): boolean {
+  return !item.forgotten && !item.id;
+}
+
+/** Title cell: forgotten and restricted items are redacted, memory items link to the memory explorer. */
 export function SnapshotItemTitle({ slug, item }: { slug: string; item: SnapshotItem }) {
   if (item.forgotten) {
     return (
       <span className="grid gap-0.5">
-        <span className="font-medium text-muted-foreground line-through">{item.title || "Élément oublié"}</span>
+        <span className="font-medium text-muted-foreground line-through">Élément oublié</span>
         <span className="text-xs italic text-muted-foreground">Contenu oublié — masqué à l&apos;affichage.</span>
+      </span>
+    );
+  }
+  if (isRestrictedItem(item)) {
+    return (
+      <span className="grid gap-0.5">
+        <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground">
+          <Lock className="size-3.5 shrink-0" aria-hidden />
+          {item.title || "Contenu restreint"}
+        </span>
+        <span className="text-xs italic text-muted-foreground">
+          Vos droits d&apos;accès ou votre habilitation ne permettent pas d&apos;afficher cet élément.
+        </span>
       </span>
     );
   }
@@ -134,6 +152,10 @@ export function SnapshotItemsTable({ slug, items, highlight }: SnapshotItemsTabl
                 {item.forgotten ? (
                   <Badge tone="red" icon={<EyeOff aria-hidden />}>
                     Oublié
+                  </Badge>
+                ) : isRestrictedItem(item) ? (
+                  <Badge tone="violet" icon={<Lock aria-hidden />}>
+                    Restreint
                   </Badge>
                 ) : (
                   <Badge tone="green" dot>

@@ -4,12 +4,13 @@ import * as React from "react";
 import { ArrowUpRight, ChevronDown, Lock, ShieldCheck } from "lucide-react";
 
 import { ClassificationBadge } from "@/components/domain/classification-badge";
+import { ClassificationBanner } from "@/components/domain/classification-banner";
 import { ReasonCodeBadge } from "@/components/domain/reason-code-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import type { ExcludedItem } from "@/lib/api/types";
 import { REASON_CODE_META, REASON_GROUP_META, type ReasonCode } from "@/lib/enums";
-import { exclusionGroupDomId, type ExclusionGroup } from "@/lib/explorer-utils";
+import { exclusionGroupDomId, maxItemClassification, type ExclusionGroup } from "@/lib/explorer-utils";
 import { formatNumber, formatScore, truncate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { CitationBadge } from "./citation-badge";
@@ -201,8 +202,18 @@ export function ExcludedList({ groups, citationTitles, onRelatedCitation, focuse
       />
     );
   }
+  // Owners/admins see excluded restricted content in clear for audit purposes: warn when it is C2/C3.
+  const displayedLevel = maxItemClassification(
+    groups.flatMap((g) => g.items.filter((i) => !i.redacted && (i.title || i.excerpt))),
+  );
   return (
     <div className="grid gap-2">
+      <ClassificationBanner
+        level={displayedLevel}
+        context="display"
+        compact
+        message="Ces éléments exclus sont affichés pour l'audit et n'ont pas été servis à l'agent."
+      />
       {groups.map((group) => (
         <Group
           key={group.code}

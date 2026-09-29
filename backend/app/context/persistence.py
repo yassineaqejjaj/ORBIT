@@ -45,12 +45,20 @@ from app.enums import (
     SourceKind,
 )
 from app.errors import not_found, validation_error
-from app.models import Agent, ContextDecision, ContextFeedback, ContextRequest, ContextSnapshot, MemoryEvent, MemoryItem, User
+from app.models import (
+    Agent,
+    ContextDecision,
+    ContextFeedback,
+    ContextRequest,
+    ContextSnapshot,
+    MemoryEvent,
+    MemoryItem,
+    User,
+)
 from app.schemas.agents import AgentRef
 from app.schemas.common import Page, PageParams, make_page
 from app.schemas.context import (
     ContextConfig,
-    ContextFeedback as ContextFeedbackOut,
     ContextItem,
     ContextRequestDetail,
     ContextRequestSummary,
@@ -61,6 +69,9 @@ from app.schemas.context import (
     ItemFlagView,
     Scores,
     SnapshotRef,
+)
+from app.schemas.context import (
+    ContextFeedback as ContextFeedbackOut,
 )
 from app.schemas.users import UserRef
 from app.services.audit import ActorLike, resolve_actor
@@ -270,6 +281,50 @@ def item_from_decision(decision: Decision) -> ContextItem:
     )
 
 
+def restrict_item(item: ContextItem, visibility: Visibility) -> tuple[ContextItem, str | None]:
+    """Apply the non-leak rules to an included item shown to a viewer.
+
+    Returns the item as the viewer may see it and the text replacing its Markdown bullet / source
+    line (``None`` when fully visible).
+    """
+    if visibility == Visibility.full:
+        return item, None
+    if visibility == Visibility.partial:
+        return item.model_copy(update={"excerpt": ""}), f"{item.title} — {RESTRICTED_TITLE.lower()}"
+    hidden = item.model_copy(
+        update={
+            "id": "",
+            "title": RESTRICTED_TITLE,
+            "excerpt": "",
+            "document_id": None,
+            "memory_item_id": None,
+            "uri": None,
+        }
+    )
+    return hidden, RESTRICTED_TITLE
+
+
+def present_included(
+    viewer: Viewer, decisions: Sequence[Decision], markdown: str
+) -> tuple[list[ContextItem], str]:
+    """Included items and Markdown of a live package as ``viewer`` may see them."""
+    items: list[ContextItem] = []
+    replacements: dict[str, str] = {}
+    for d in decisions:
+        c = d.candidate
+        visibility = viewer.visibility(
+            classification=int(c.classification),
+            acls=c.all_acls,
+            memory_scope=c.memory_scope,
+            subject_user_id=c.subject_user_id,
+        )
+        item, replacement = restrict_item(item_from_decision(d), visibility)
+        items.append(item)
+        if replacement is not None and d.citation:
+            replacements[d.citation] = replacement
+    return items, redact_markdown(markdown, replacements)
+
+
 def exclusion_summary(excluded: Sequence[Decision]) -> dict[ReasonCode, int]:
     summary: dict[ReasonCode, int] = {}
     for d in excluded:
@@ -286,7 +341,9 @@ async def list_requests(
     conditions = [ContextRequest.project_id == project_id]
     if agent_id is not None:
         conditions.append(ContextRequest.agent_id == agent_id)
-    total = int(await session.scalar(select(func.count()).select_from(ContextRequest).where(*conditions)) or 0)
+    total = int(
+        await session.scalar(select(func.count()).select_from(ContextRequest).where(*conditions)) or 0
+    )
     ratings = (
         select(ContextFeedback.request_id, func.avg(ContextFeedback.rating).label("rating"))
         .group_by(ContextFeedback.request_id)
@@ -385,38 +442,31 @@ async def reconstitute(
             visibility = viewer.visibility(
                 classification=row.classification, acls=acls, memory_scope=scope, subject_user_id=subject
             )
-            title, excerpt, item_id = row.title, row.excerpt, row.candidate_id
-            if visibility != Visibility.full:
-                excerpt = ""
-                if visibility == Visibility.redacted:
-                    title, item_id = RESTRICTED_TITLE, ""
-                    replacements[row.citation or ""] = RESTRICTED_TITLE
-                else:
-                    replacements[row.citation or ""] = f"{row.title} — {RESTRICTED_TITLE.lower()}"
-            redacted_ids = visibility == Visibility.redacted
-            items.append(
-                ContextItem(
-                    citation=row.citation or "",
-                    candidate_type=row.candidate_type,
-                    id=item_id,
-                    document_id=None if redacted_ids else row.document_id,
-                    memory_item_id=None if redacted_ids else row.memory_item_id,
-                    title=title,
-                    source_kind=source_kind,
-                    memory_kind=memory_kind,
-                    memory_scope=_enum_or_none(MemoryScope, scope),
-                    uri=None if redacted_ids else meta.get("uri"),
-                    version=meta.get("version"),
-                    excerpt=excerpt,
-                    tokens=row.tokens,
-                    scores=scores,
-                    classification=row.classification,
-                    date=_parse_date(meta.get("date")),
-                    pii_redacted=bool(meta.get("pii_redacted")),
-                    reason_code=row.reason_code,
-                    reason_detail=row.reason_detail,
-                )
+            stored = ContextItem(
+                citation=row.citation or "",
+                candidate_type=row.candidate_type,
+                id=row.candidate_id,
+                document_id=row.document_id,
+                memory_item_id=row.memory_item_id,
+                title=row.title,
+                source_kind=source_kind,
+                memory_kind=memory_kind,
+                memory_scope=_enum_or_none(MemoryScope, scope),
+                uri=meta.get("uri"),
+                version=meta.get("version"),
+                excerpt=row.excerpt,
+                tokens=row.tokens,
+                scores=scores,
+                classification=row.classification,
+                date=_parse_date(meta.get("date")),
+                pii_redacted=bool(meta.get("pii_redacted")),
+                reason_code=row.reason_code,
+                reason_detail=row.reason_detail,
             )
+            item, replacement = restrict_item(stored, visibility)
+            items.append(item)
+            if replacement is not None and row.citation:
+                replacements[row.citation] = replacement
         else:
             excluded.append(
                 excluded_view(
@@ -487,7 +537,9 @@ async def reconstitute(
                 actor_id=f.actor_id,
                 rating=f.rating,
                 comment=f.comment,
-                item_flags=[ItemFlagView.model_validate(flag) for flag in (f.item_flags or []) if _valid_flag(flag)],
+                item_flags=[
+                    ItemFlagView.model_validate(flag) for flag in (f.item_flags or []) if _valid_flag(flag)
+                ],
                 created_at=f.created_at,
             )
             for f in feedback_rows
@@ -496,7 +548,11 @@ async def reconstitute(
 
 
 def _valid_flag(flag: Any) -> bool:
-    return isinstance(flag, Mapping) and bool(flag.get("citation")) and flag.get("flag") in FeedbackFlag.__members__
+    return (
+        isinstance(flag, Mapping)
+        and bool(flag.get("citation"))
+        and flag.get("flag") in FeedbackFlag.__members__
+    )
 
 
 # --- Feedback -----------------------------------------------------------------------------------------
@@ -557,7 +613,9 @@ async def _propose_obsolescence(
         return
     if not item.is_current:
         current = await session.scalar(
-            select(MemoryItem).where(MemoryItem.lineage_id == item.lineage_id, MemoryItem.is_current.is_(True))
+            select(MemoryItem).where(
+                MemoryItem.lineage_id == item.lineage_id, MemoryItem.is_current.is_(True)
+            )
         )
         item = current or item
     reason = f"Signalé comme obsolète dans le feedback de la requête de contexte ({decision.citation})"

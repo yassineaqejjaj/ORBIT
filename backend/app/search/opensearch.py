@@ -37,9 +37,12 @@ from app.config import settings
 logger = logging.getLogger("orbit.opensearch")
 
 IndexKind = Literal["chunks", "memory"]
+#: Extra filters: ready-made clauses or a ``{field: value}`` mapping (see :func:`normalize_filters`).
+FilterSpec = Sequence[Mapping[str, Any]] | Mapping[str, Any] | None
 INDEX_KINDS: tuple[IndexKind, ...] = ("chunks", "memory")
 
 BULK_BATCH_SIZE = 500
+EMBEDDING_DECIMALS = 6
 _SOURCE_EXCLUDES = ["embedding"]
 
 _client: AsyncOpenSearch | None = None
@@ -366,10 +369,14 @@ def _prepare_doc(doc: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
     if not doc_id:
         raise ValueError("Chaque document indexé doit avoir un champ « id »")
     embedding = body.get("embedding")
-    if embedding is not None and len(embedding) != settings.embedding_dim:
-        raise IndexingError(
-            f"Vecteur de dimension {len(embedding)} pour « {doc_id} » (attendu : {settings.embedding_dim})"
-        )
+    if embedding is not None:
+        if len(embedding) != settings.embedding_dim:
+            raise IndexingError(
+                f"Vecteur de dimension {len(embedding)} pour « {doc_id} » (attendu : {settings.embedding_dim})"
+            )
+        # float32 precision is ~7 significant digits: 6 decimals keep the vector exact enough for
+        # cosine similarity while halving the size of ``_source`` (returned to the context engine).
+        body["embedding"] = [round(float(v), EMBEDDING_DECIMALS) for v in embedding]
     return str(doc_id), body
 
 
@@ -476,7 +483,7 @@ async def count(
     kind: IndexKind,
     *,
     project_id: str | uuid.UUID | None = None,
-    filters: Sequence[Mapping[str, Any]] | Mapping[str, Any] | None = None,
+    filters: FilterSpec = None,
 ) -> int:
     """Count indexed documents (optionally for one project and extra filters)."""
     clauses: list[dict[str, Any]] = []
@@ -516,7 +523,7 @@ async def count_by_project(kind: IndexKind, project_ids: Iterable[str | uuid.UUI
 # --- Queries ---------------------------------------------------------------------------------------------
 
 
-def normalize_filters(filters: Sequence[Mapping[str, Any]] | Mapping[str, Any] | None) -> list[dict[str, Any]]:
+def normalize_filters(filters: FilterSpec) -> list[dict[str, Any]]:
     """Turn ``filters`` into OpenSearch filter clauses.
 
     * a sequence is taken as ready-made clauses (``[{"term": {...}}, {"range": {...}}]``);
@@ -557,19 +564,29 @@ def scope_filter(kind: IndexKind, project_id: str | uuid.UUID, include_org_memor
 def build_filter(
     kind: IndexKind,
     project_id: str | uuid.UUID,
-    filters: Sequence[Mapping[str, Any]] | Mapping[str, Any] | None,
+    filters: FilterSpec,
     include_org_memory: bool,
 ) -> dict[str, Any]:
-    return {"bool": {"filter": [scope_filter(kind, project_id, include_org_memory), *normalize_filters(filters)]}}
+    """``bool.filter`` clause: project scope + caller filters (shared by BM25 and k-NN)."""
+    clauses = [scope_filter(kind, project_id, include_org_memory), *normalize_filters(filters)]
+    return {"bool": {"filter": clauses}}
 
 
-def _hits(response: Mapping[str, Any], *, cosine: bool = False) -> list[OSHit]:
+def _source_spec(include_embedding: bool) -> dict[str, Any] | bool:
+    return True if include_embedding else {"excludes": _SOURCE_EXCLUDES}
+
+
+def _hits(
+    response: Mapping[str, Any], *, cosine: bool = False, include_embedding: bool = False
+) -> list[OSHit]:
     results: list[OSHit] = []
     for hit in response.get("hits", {}).get("hits", []):
         raw = float(hit.get("_score") or 0.0)
+        # lucene ``cosinesimil`` scores are ``(1 + cos) / 2``: convert back to the cosine.
         score = max(0.0, min(1.0, 2.0 * raw - 1.0)) if cosine else raw
         source = dict(hit.get("_source") or {})
-        source.pop("embedding", None)
+        if not include_embedding:
+            source.pop("embedding", None)
         results.append(OSHit(id=str(hit["_id"]), score=score, source=source))
     return results
 
@@ -580,16 +597,20 @@ async def bm25_search(
     *,
     project_id: str | uuid.UUID,
     size: int = 40,
-    filters: Sequence[Mapping[str, Any]] | Mapping[str, Any] | None = None,
+    filters: FilterSpec = None,
     include_org_memory: bool = True,
+    include_embedding: bool = False,
 ) -> list[OSHit]:
-    """BM25 ``multi_match`` on ``title^2`` + ``text`` (french analyzer), filtered by project."""
+    """BM25 ``multi_match`` on ``title^2`` + ``text`` (french analyzer), filtered by project.
+
+    ``include_embedding=True`` keeps the stored vector in ``OSHit.source["embedding"]``.
+    """
     text = (query or "").strip()
     if not text or size <= 0:
         return []
     body = {
         "size": size,
-        "_source": {"excludes": _SOURCE_EXCLUDES},
+        "_source": _source_spec(include_embedding),
         "query": {
             "bool": {
                 "must": {
@@ -610,7 +631,7 @@ async def bm25_search(
     except NotFoundError:
         logger.warning("OpenSearch index %s missing: BM25 search returns no result", index_name(kind))
         return []
-    return _hits(response)
+    return _hits(response, include_embedding=include_embedding)
 
 
 async def knn_search(
@@ -619,8 +640,9 @@ async def knn_search(
     *,
     project_id: str | uuid.UUID,
     size: int = 40,
-    filters: Sequence[Mapping[str, Any]] | Mapping[str, Any] | None = None,
+    filters: FilterSpec = None,
     include_org_memory: bool = True,
+    include_embedding: bool = False,
 ) -> list[OSHit]:
     """k-NN (lucene hnsw, cosine) on ``embedding`` with an efficient project pre-filter.
 
@@ -629,10 +651,12 @@ async def knn_search(
     if not vector or size <= 0:
         return []
     if len(vector) != settings.embedding_dim:
-        raise ValueError(f"Vecteur de requête de dimension {len(vector)} (attendu : {settings.embedding_dim})")
+        raise ValueError(
+            f"Vecteur de requête de dimension {len(vector)} (attendu : {settings.embedding_dim})"
+        )
     body = {
         "size": size,
-        "_source": {"excludes": _SOURCE_EXCLUDES},
+        "_source": _source_spec(include_embedding),
         "query": {
             "knn": {
                 "embedding": {
@@ -648,4 +672,4 @@ async def knn_search(
     except NotFoundError:
         logger.warning("OpenSearch index %s missing: k-NN search returns no result", index_name(kind))
         return []
-    return _hits(response, cosine=True)
+    return _hits(response, cosine=True, include_embedding=include_embedding)

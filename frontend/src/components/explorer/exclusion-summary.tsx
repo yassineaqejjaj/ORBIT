@@ -40,7 +40,7 @@ export function ExclusionSummary({ entries, includedCount, onSelect, className }
     <div className={cn("grid gap-3", className)}>
       <div className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
         <span>
-          <span className="text-lg font-semibold tabular-nums text-foreground">{formatNumber(totalExcluded, 0)}</span> exclus
+          <span className="text-lg font-semibold text-foreground">{formatNumber(totalExcluded, 0)}</span> exclus
           {candidates > 0 ? <> sur {formatNumber(candidates, 0)} candidats</> : null}
         </span>
         {candidates > 0 ? <span className="tabular-nums">{formatPercent(totalExcluded / candidates)} d&apos;exclusion</span> : null}

@@ -241,7 +241,8 @@ export function TaskComposer({
   }
 
   const saveTarget = form.snapshotName.trim();
-  const existingTarget = snapshotList.find((s) => s.name === saveTarget);
+  // Snapshot names are stored lower-cased by the API.
+  const existingTarget = snapshotList.find((s) => s.name.toLowerCase() === saveTarget.toLowerCase());
 
   const ceilingOptions: SimpleSelectOption[] = [
     { value: NO_CEILING, label: "Selon les habilitations", description: "min(utilisateur, agent)" },
@@ -584,8 +585,8 @@ export function TaskComposer({
               {errors.snapshotName ??
                 (form.saveSnapshot && saveTarget
                   ? existingTarget
-                    ? `Créera la version v${existingTarget.latest_version + 1} de « ${saveTarget} » (immuable).`
-                    : `Créera le snapshot « ${saveTarget} » v1 (immuable).`
+                    ? `Créera la version v${existingTarget.latest_version + 1} de « ${existingTarget.name} » (immuable).`
+                    : `Créera le snapshot « ${saveTarget.toLowerCase()} » v1 (immuable).`
                   : "Contexte versionné et immuable, partageable avec les autres agents.")}
             </p>
           </div>

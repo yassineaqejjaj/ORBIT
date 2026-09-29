@@ -191,6 +191,31 @@ function DetailSkeleton() {
   );
 }
 
+/** Page-level placeholder (route Suspense fallback): header, version timeline and content. */
+export function SnapshotDetailSkeleton() {
+  return (
+    <div className="grid grid-cols-1 gap-5" aria-busy="true" aria-label="Chargement du snapshot">
+      <div className="grid gap-3">
+        <Skeleton className="h-7 w-40" />
+        <div className="flex items-start gap-3">
+          <Skeleton className="size-9 rounded-lg" />
+          <div className="grid flex-1 gap-2">
+            <Skeleton className="h-3 w-32" />
+            <Skeleton className="h-6 w-56" />
+            <Skeleton className="h-4 w-full max-w-2xl" />
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[20rem_minmax(0,1fr)]">
+        <div className="hidden lg:block">
+          <SnapshotVersionTimelineSkeleton />
+        </div>
+        <DetailSkeleton />
+      </div>
+    </div>
+  );
+}
+
 /** /snapshots/[name]: version timeline, content with citations, items table, compare mode. */
 export function SnapshotDetailView() {
   const { slug } = useCurrentProject();

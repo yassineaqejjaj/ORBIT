@@ -79,7 +79,9 @@ def test_zero_fill_series_keeps_order_and_fills_gaps() -> None:
 
 
 def test_order_stages_follows_pipeline_order() -> None:
-    ordered = order_stages({"total": 900.0, "select": 3.0, "understand": 10.0, "custom": 1.0, "retrieve": 50.0})
+    ordered = order_stages(
+        {"total": 900.0, "select": 3.0, "understand": 10.0, "custom": 1.0, "retrieve": 50.0}
+    )
     assert list(ordered) == ["understand", "retrieve", "select", "custom", "total"]
 
 
@@ -111,7 +113,9 @@ def test_build_alerts_messages_and_severity_order() -> None:
     assert any(m.startswith("1 document classifié C3 (Secret)") for m in messages)
     assert any(m.startswith("5 documents classifiés C2 (Confidentiel)") for m in messages)
     assert "4 propositions de mémoire en attente de validation." in messages
-    assert any(m.startswith("Ingestion en cours : 3 jobs en file d'attente, 1 en traitement") for m in messages)
+    assert any(
+        m.startswith("Ingestion en cours : 3 jobs en file d'attente, 1 en traitement") for m in messages
+    )
 
 
 def test_build_alerts_quiet_project_and_backlog_threshold() -> None:
@@ -392,7 +396,9 @@ async def _seed_rows(
     )
     session.add_all(
         [
-            ContextFeedback(request_id=today_a.id, actor_type=PrincipalKind.agent, actor_id=agent_id, rating=4),
+            ContextFeedback(
+                request_id=today_a.id, actor_type=PrincipalKind.agent, actor_id=agent_id, rating=4
+            ),
             ContextFeedback(
                 request_id=yesterday.id,
                 actor_type=PrincipalKind.user,
@@ -419,6 +425,16 @@ async def _seed_rows(
                 action="context.request",
                 summary="Requête de contexte",
                 details={"included": 3, "restricted": {"excluded_titles": ["Budget"]}},
+            ),
+            AuditLog(
+                project_id=project_id,
+                actor_type=ActorType.system,
+                actor_label="Système ORBIT",
+                action="document.indexed",
+                target_type="document",
+                target_id=str(doc_secret.id),
+                summary="« Budget et négociation contrat Atlas » indexé (v1, 2 fragment(s), C3)",
+                details={"version": 1},
             ),
         ]
     )
@@ -495,6 +511,8 @@ async def test_overview_aggregates_and_alerts(admin_client: httpx.AsyncClient, d
 
     restricted = [e for e in body["recent_activity"] if e["action"] == "context.request"]
     assert restricted and "restricted" in restricted[0]["details"]
+    indexed = next(e for e in body["recent_activity"] if e["action"] == "document.indexed")
+    assert "Budget" in indexed["summary"]  # owners/admins see the full audit trail
 
 
 async def test_overview_hides_restricted_content_from_viewer(
@@ -508,11 +526,17 @@ async def test_overview_hides_restricted_content_from_viewer(
     assert [d["title"] for d in body["latest_decisions"]] == ["Décision : PWA"]
     event = next(e for e in body["recent_activity"] if e["action"] == "context.request")
     assert "restricted" not in event["details"] and event["details"]["included"] == 3
+    # Audit summaries quoting a content the viewer cannot read are redacted (no title, no id).
+    indexed = next(e for e in body["recent_activity"] if e["action"] == "document.indexed")
+    assert indexed["target_id"] is None and indexed["details"] == {}
+    assert "caviardé" in indexed["summary"] and "Budget" not in json.dumps(body)
     # Counters stay global (no titles involved).
     assert body["stats"]["restricted_documents"] == 2
 
 
-async def test_metrics_series_totals_and_breakdowns(admin_client: httpx.AsyncClient, dataset: Dataset) -> None:
+async def test_metrics_series_totals_and_breakdowns(
+    admin_client: httpx.AsyncClient, dataset: Dataset
+) -> None:
     response = await admin_client.get(f"/api/v1/projects/{dataset.slug}/metrics", params={"days": 14})
     assert response.status_code == 200, response.text
     body = response.json()

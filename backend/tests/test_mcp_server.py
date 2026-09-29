@@ -43,7 +43,6 @@ from app.mcp_server import (
     build_mcp_server,
     extract_agent_key,
     parse_snapshot_ref,
-    rrf_fuse,
 )
 from app.models import (
     AuditLog,
@@ -125,18 +124,6 @@ def test_parse_snapshot_ref() -> None:
 
     with pytest.raises(ToolError, match="Référence de snapshot invalide"):
         parse_snapshot_ref("spec atlas@@")
-
-
-def test_rrf_fuse_rewards_agreement() -> None:
-    bm25 = [OSHit("a", 12.0), OSHit("b", 9.0), OSHit("c", 3.0)]
-    dense = [OSHit("b", 0.91), OSHit("d", 0.80)]
-    fused = rrf_fuse({"bm25": bm25, "dense": dense})
-    assert [hit_id for hit_id, _ in fused][:2] == ["b", "a"]
-    scores = dict(fused)
-    assert scores["b"]["rrf"] == 1.0
-    assert scores["b"]["bm25"] == 9.0 and scores["b"]["dense"] == 0.91
-    assert "dense" not in scores["a"]
-    assert rrf_fuse({"bm25": [], "dense": []}) == []
 
 
 def test_server_instructions_describe_orbit() -> None:
@@ -562,9 +549,12 @@ async def test_search_sources_filters_rights_and_redacts(
         async def embed_query(self, text: str) -> list[float]:
             return [0.5, 0.5, 0.5, 0.5]
 
+    async def fake_aget_embedder() -> FakeEmbedder:
+        return FakeEmbedder()
+
     monkeypatch.setattr("app.search.opensearch.bm25_search", fake_bm25)
     monkeypatch.setattr("app.search.opensearch.knn_search", fake_knn)
-    monkeypatch.setattr("app.search.embeddings.get_embedder", lambda: FakeEmbedder())
+    monkeypatch.setattr("app.search.embeddings.aget_embedder", fake_aget_embedder)
 
     async with mcp_client(app, {"Authorization": f"Bearer {agent_setup.api_key}"}) as mcp:
         result = await mcp.call_tool("search_sources", {"query": "nombre de postes du pilote", "limit": 5})
@@ -602,7 +592,7 @@ async def test_propose_memory_forces_proposed_status(
 
     async def fake_create_item(
         session: AsyncSession, *, project_id: Any, data: Any, actor: Any, force_status: Any = None
-    ) -> MemoryItem:  # noqa: E501
+    ) -> MemoryItem:
         calls.append({"project_id": project_id, "data": data, "actor": actor, "force_status": force_status})
         item = MemoryItem(
             project_id=project_id,

@@ -46,7 +46,7 @@ from app.governance.policy import (
     ForgetInfo,
     SupersessionInfo,
 )
-from app.models import Agent, Chunk, Document, MemoryEvent, MemoryItem, Source, User
+from app.models import Agent, Chunk, Document, MemoryEvent, MemoryItem, MemoryProvenance, Source, User
 from app.search.tokens import estimate_tokens
 
 logger = logging.getLogger("orbit.context.retrieval")
@@ -57,12 +57,16 @@ SESSION_TURNS_LIMIT = 20
 RRF_K = 60
 INDEX_TIMEOUT_SECONDS = 10.0
 SESSION_TIMEOUT_SECONDS = 3.0
+#: Stored embeddings (near-duplicate detection, MMR diversity) are best effort and time-boxed.
+EMBEDDINGS_TIMEOUT_SECONDS = 1.5
 MAX_FALLBACK_TERMS = 16
 
 DEGRADED_SEARCH_WARNING = (
     "Recherche dégradée : index de recherche indisponible, recherche plein texte PostgreSQL utilisée."
 )
-SESSION_UNAVAILABLE_WARNING = "Mémoire de session indisponible : les tours de session n'ont pas été pris en compte."
+SESSION_UNAVAILABLE_WARNING = (
+    "Mémoire de session indisponible : les tours de session n'ont pas été pris en compte."
+)
 
 _WORD = re.compile(r"[^\W\d_]+|\d+", re.UNICODE)
 
@@ -175,7 +179,11 @@ def _rank_hits(rows: Sequence[tuple[Any, float]], via: str) -> list[IndexHit]:
     hits: list[IndexHit] = []
     for position, (item_id, rank) in enumerate(rows, start=1):
         rrf = 1.0 / (RRF_K + position)
-        hits.append(IndexHit(id=str(item_id), rrf=rrf, rrf_norm=0.0, bm25=float(rank or 0.0), bm25_rank=position, via=via))
+        hits.append(
+            IndexHit(
+                id=str(item_id), rrf=rrf, rrf_norm=0.0, bm25=float(rank or 0.0), bm25_rank=position, via=via
+            )
+        )
     top = max((h.rrf for h in hits), default=0.0)
     for h in hits:
         h.rrf_norm = h.rrf / top if top > 0 else 0.0
@@ -247,6 +255,8 @@ class MemoryRow:
     superseded_by: SupersessionInfo | None = None
     forgotten: ForgetInfo | None = None
     status_changed_at: datetime | None = None
+    provenance_kinds: tuple[SourceKind, ...] = ()
+    provenance_chunk_ids: frozenset[str] = frozenset()
 
 
 @dataclass(slots=True)
@@ -308,7 +318,9 @@ async def _session_turns(project_id: uuid.UUID, session_id: str) -> list[Session
     return rows
 
 
-async def _labels(session: AsyncSession, user_ids: set[uuid.UUID], agent_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+async def _labels(
+    session: AsyncSession, user_ids: set[uuid.UUID], agent_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, str]:
     labels: dict[uuid.UUID, str] = {}
     if user_ids:
         for uid, name, email in (
@@ -316,7 +328,9 @@ async def _labels(session: AsyncSession, user_ids: set[uuid.UUID], agent_ids: se
         ).tuples():
             labels[uid] = name or email
     if agent_ids:
-        for aid, name in (await session.execute(select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids)))).tuples():
+        for aid, name in (
+            await session.execute(select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids)))
+        ).tuples():
             labels[aid] = name
     return labels
 
@@ -331,7 +345,9 @@ def _uuid_list(values: Iterable[str]) -> list[uuid.UUID]:
     return result
 
 
-async def hydrate_chunks(session: AsyncSession, project_id: uuid.UUID, ids: Iterable[str]) -> dict[str, ChunkRow]:
+async def hydrate_chunks(
+    session: AsyncSession, project_id: uuid.UUID, ids: Iterable[str]
+) -> dict[str, ChunkRow]:
     chunk_ids = _uuid_list(ids)
     if not chunk_ids:
         return {}
@@ -412,8 +428,36 @@ async def hydrate_memory(
     return requested, {str(lid): row for lid, row in rows_by_lineage.items()}
 
 
+async def _enrich_provenance(session: AsyncSession, rows: list[MemoryRow]) -> None:
+    """Source kinds and chunk ids of the provenance of every lineage (one batched query)."""
+    by_lineage = {r.item.lineage_id: r for r in rows}
+    if not by_lineage:
+        return
+    result = await session.execute(
+        select(MemoryItem.lineage_id, MemoryProvenance.chunk_id, Source.kind)
+        .join(MemoryItem, MemoryItem.id == MemoryProvenance.memory_item_id)
+        .outerjoin(Document, Document.id == MemoryProvenance.document_id)
+        .outerjoin(Source, Source.id == Document.source_id)
+        .where(MemoryItem.lineage_id.in_(list(by_lineage)))
+    )
+    kinds: dict[uuid.UUID, list[SourceKind]] = {}
+    chunk_ids: dict[uuid.UUID, set[str]] = {}
+    for lineage_id, chunk_id, kind in result.tuples():
+        if kind is not None:
+            source_kind = SourceKind(kind)
+            known = kinds.setdefault(lineage_id, [])
+            if source_kind not in known:
+                known.append(source_kind)
+        if chunk_id is not None:
+            chunk_ids.setdefault(lineage_id, set()).add(str(chunk_id))
+    for lineage_id, row in by_lineage.items():
+        row.provenance_kinds = tuple(kinds.get(lineage_id, ()))
+        row.provenance_chunk_ids = frozenset(chunk_ids.get(lineage_id, ()))
+
+
 async def _enrich_memory(session: AsyncSession, rows: list[MemoryRow]) -> None:
-    """Supersession target, forgetting actor/date and obsolescence date (batched)."""
+    """Provenance, supersession target, forgetting actor/date and obsolescence date (batched)."""
+    await _enrich_provenance(session, rows)
     superseding_ids = {r.item.superseded_by_id for r in rows if r.item.superseded_by_id is not None}
     if superseding_ids:
         targets = {
@@ -428,14 +472,18 @@ async def _enrich_memory(session: AsyncSession, rows: list[MemoryRow]) -> None:
                 )
 
     flagged = {
-        r.item.lineage_id: r
-        for r in rows
-        if r.item.status in (MemoryStatus.forgotten, MemoryStatus.obsolete)
+        r.item.lineage_id: r for r in rows if r.item.status in (MemoryStatus.forgotten, MemoryStatus.obsolete)
     }
     if not flagged:
         return
     events = await session.execute(
-        select(MemoryEvent.lineage_id, MemoryEvent.event, MemoryEvent.actor_type, MemoryEvent.actor_id, MemoryEvent.created_at)
+        select(
+            MemoryEvent.lineage_id,
+            MemoryEvent.event,
+            MemoryEvent.actor_type,
+            MemoryEvent.actor_id,
+            MemoryEvent.created_at,
+        )
         .where(
             MemoryEvent.lineage_id.in_(list(flagged)),
             MemoryEvent.event.in_([MemoryEventType.forgotten, MemoryEventType.obsoleted]),
@@ -455,7 +503,11 @@ async def _enrich_memory(session: AsyncSession, rows: list[MemoryRow]) -> None:
             info = latest.get((lineage_id, MemoryEventType.forgotten.value))
             if info is not None:
                 actor_type, actor_id, at = info
-                by = labels.get(actor_id) if actor_id else ("Système ORBIT" if actor_type == "system" else None)
+                by = (
+                    labels.get(actor_id)
+                    if actor_id
+                    else ("Système ORBIT" if actor_type == "system" else None)
+                )
                 r.forgotten = ForgetInfo(at=at, by=by)
             else:
                 r.forgotten = ForgetInfo(at=r.item.updated_at, by=None)
@@ -488,7 +540,12 @@ async def retrieve(
 
     chunk_task = (
         search_index(
-            "chunks", task, query_vector, project_id=project_id, size_each=CHUNK_TOP_K, include_org_memory=False
+            "chunks",
+            task,
+            query_vector,
+            project_id=project_id,
+            size_each=CHUNK_TOP_K,
+            include_org_memory=False,
         )
         if include_chunks
         else _nothing()
@@ -542,11 +599,58 @@ async def retrieve(
 
     pinned_chunk_ids = [p.id for p in raw.pinned if p.candidate_type == CandidateType.chunk]
     pinned_lineages = [p.id for p in raw.pinned if p.candidate_type == CandidateType.memory]
-    raw.chunks = await hydrate_chunks(session, project_id, [h.id for h in raw.chunk_hits] + pinned_chunk_ids)
-    raw.memory_resolution, raw.memory_by_lineage = await hydrate_memory(
-        session, project_id, [h.id for h in raw.memory_hits], pinned_lineages
-    )
+
+    async def _hydrate() -> None:
+        raw.chunks = await hydrate_chunks(
+            session, project_id, [h.id for h in raw.chunk_hits] + pinned_chunk_ids
+        )
+        raw.memory_resolution, raw.memory_by_lineage = await hydrate_memory(
+            session, project_id, [h.id for h in raw.memory_hits], pinned_lineages
+        )
+
+    # Postgres hydration (source of truth) and the stored embeddings (index) run concurrently.
+    await asyncio.gather(_hydrate(), attach_embeddings(raw))
     return raw
+
+
+async def fetch_embeddings(kind: str, ids: Sequence[str]) -> dict[str, list[float]]:
+    """Stored embeddings of indexed items (``{id: vector}``). Raises on index errors."""
+    if not ids:
+        return {}
+    from app.search.opensearch import get_documents
+
+    sources = await get_documents(kind, list(ids), include_embedding=True)  # type: ignore[arg-type]
+    vectors: dict[str, list[float]] = {}
+    for item_id, source in sources.items():
+        embedding = source.get("embedding") if isinstance(source, Mapping) else None
+        if isinstance(embedding, list) and embedding:
+            vectors[str(item_id)] = [float(x) for x in embedding]
+    return vectors
+
+
+async def attach_embeddings(raw: RawRetrieval) -> None:
+    """Attach stored embeddings to index hits (best effort: missing vectors ⇒ lexical similarity)."""
+    jobs: list[tuple[list[IndexHit], Any]] = []
+    for kind, hits in (("chunks", raw.chunk_hits), ("memory", raw.memory_hits)):
+        wanted = [h for h in hits if h.via == "hybrid" and h.embedding is None]
+        if wanted:
+            jobs.append((wanted, fetch_embeddings(kind, [h.id for h in wanted])))
+    if not jobs:
+        return
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*(job for _, job in jobs), return_exceptions=True),
+            timeout=EMBEDDINGS_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        logger.info("Stored embeddings not fetched in time: lexical near-duplicate detection used")
+        return
+    for (hits, _), result in zip(jobs, results, strict=True):
+        if isinstance(result, BaseException):
+            logger.info("Stored embeddings unavailable (%s): lexical near-duplicate detection used", result)
+            continue
+        for hit in hits:
+            hit.embedding = result.get(hit.id)
 
 
 # --- Fuse: hydrated rows -> candidates -------------------------------------------------------------------
@@ -560,7 +664,9 @@ def chunk_candidate(row: ChunkRow) -> Candidate:
         or document.forgotten_at is not None
     )
     superseded = chunk.status == ChunkStatus.superseded or chunk.version < document.current_version
-    status = FORGOTTEN_STATUS if forgotten else (SUPERSEDED_STATUS if superseded else ChunkStatus.active.value)
+    status = (
+        FORGOTTEN_STATUS if forgotten else (SUPERSEDED_STATUS if superseded else ChunkStatus.active.value)
+    )
     text_served = chunk.text_redacted or ""
     return Candidate(
         candidate_type=CandidateType.chunk,
@@ -614,6 +720,8 @@ def memory_candidate(row: MemoryRow) -> Candidate:
         superseded_by=row.superseded_by,
         forgotten=row.forgotten,
         status_changed_at=row.status_changed_at,
+        provenance_kinds=row.provenance_kinds,
+        provenance_chunk_ids=row.provenance_chunk_ids,
         tokens=estimate_tokens(item.content or ""),
     )
 
@@ -725,7 +833,9 @@ def pinned_refs(items: Sequence[Mapping[str, Any]]) -> list[PinnedRef]:
             continue
         seen.add(key)
         refs.append(
-            PinnedRef(key=key, candidate_type=CandidateType(kind), id=ident, title=str(item.get("title") or ""))
+            PinnedRef(
+                key=key, candidate_type=CandidateType(kind), id=ident, title=str(item.get("title") or "")
+            )
         )
     return refs
 

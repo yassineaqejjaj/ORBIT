@@ -114,7 +114,8 @@ export function RequestLog({ slug }: { slug: string }) {
             Journal des requêtes
           </CardTitle>
           <CardDescription className="text-xs">
-            Chaque ligne s&apos;ouvre dans l&apos;explorateur avec ses éléments retenus, exclus et sa cascade des temps.
+            Toutes périodes, de la plus récente à la plus ancienne : chaque ligne s&apos;ouvre dans l&apos;explorateur avec ses
+            éléments retenus, exclus et sa cascade des temps.
           </CardDescription>
         </div>
         <SimpleSelect
