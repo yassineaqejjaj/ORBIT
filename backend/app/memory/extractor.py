@@ -28,7 +28,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.enums import (
@@ -717,6 +717,14 @@ async def extract_from_document(session: AsyncSession, job: IngestionJob) -> dic
     """
     result = ExtractionResult()
     async with track_step(session, job, "extract_memory") as step:
+        # Serialize extractions per project: concurrent workers would otherwise not see each other's
+        # uncommitted items and create duplicates (e.g. a document and its forwarded copy).
+        # Transaction-scoped lock, released when the worker commits the job.
+        await session.execute(
+            select(
+                func.pg_advisory_xact_lock(func.hashtextextended(f"orbit:extract-memory:{job.project_id}", 0))
+            )
+        )
         loaded = await _load(session, job)
         if loaded is None:
             step.skip("Document oublié : extraction ignorée")

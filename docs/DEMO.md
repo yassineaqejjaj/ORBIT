@@ -67,7 +67,7 @@ Snapshots : `spec-atlas` v1 (Agent Produit, J-3) et v2 (J-1, après la sprint re
 
 ## 6. Scénario de présentation (≈ 8 min)
 
-1. **Vue projet** (Camille) : 15 sources, mémoire (décisions validées, propositions à revoir), alertes (1 conflit, 1 document C3), activité récente.
+1. **Vue projet** (Camille) : 11 sources et 39 documents, mémoire (décisions validées, propositions à revoir), alertes (1 conflit, 1 document C3), activité récente.
 2. **Sources** : ouvrir la *Spécification fonctionnelle* → 2 versions, étapes de traitement chronométrées, chunks v1 remplacés ;
    ouvrir une fiche CRM → PII détectées et caviardées, bandeau C2.
 3. **Mémoire** : la décision « application native » → statut *remplacée*, lien vers la décision PWA, historique, provenance jusqu'au paragraphe du CR.
