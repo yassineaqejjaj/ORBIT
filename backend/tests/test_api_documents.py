@@ -116,7 +116,8 @@ async def test_text_ingest_visibility_and_search(admin_client: httpx.AsyncClient
     detail = (await editor.get(f"{API}/{slug}/documents/{public['id']}")).json()
     assert detail["status"] == "indexed", detail
     assert detail["chunk_count"] >= 1 and detail["chunks"]
-    assert [s["name"] for s in detail["jobs"][0]["steps"]][:6] == [
+    ingest_job = next(j for j in detail["jobs"] if j["kind"] == "ingest")  # extract_memory is chained
+    assert [s["name"] for s in ingest_job["steps"]][:6] == [
         "extract",
         "pii",
         "classify",
@@ -371,7 +372,7 @@ async def test_sources_crud_and_agent_push(
     assert in_source["classification"] == 2  # source default
 
     agent = await admin_client.post(
-        f"{API}/{slug}/agents", json={"name": "Agent support", "kind": "support", "clearance": 1}
+        f"{API}/{slug}/agents", json={"name": "Agent support", "kind": "custom", "clearance": 1}
     )
     assert agent.status_code == 201, agent.text
     bot = agent_client(agent.json()["api_key"])

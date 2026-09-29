@@ -67,7 +67,7 @@ async def test_memory_lifecycle_endpoints(admin_client: httpx.AsyncClient, proje
     assert {i["version"] for i in history["items"] if i["lineage_id"] == item["lineage_id"]} == {1, 2}
 
     detail = (await admin_client.get(f"{base}/{item['id']}")).json()
-    assert detail["item"]["id"] == v2["id"]  # an old version id resolves to its detail
+    assert detail["item"]["id"] == item["id"] and detail["item"]["is_current"] is False  # old version detail
     assert [v["version"] for v in detail["versions"]] == [2, 1]
     events = {e["event"] for e in detail["history"]}
     assert {"created", "edited"} <= events

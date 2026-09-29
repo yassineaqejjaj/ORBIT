@@ -559,7 +559,7 @@ async def test_search_sources_filters_rights_and_redacts(
     async with mcp_client(app, {"Authorization": f"Bearer {agent_setup.api_key}"}) as mcp:
         result = await mcp.call_tool("search_sources", {"query": "nombre de postes du pilote", "limit": 5})
         assert not result.is_error, result
-        hits = payload(result)
+        hits = [json.loads(block.text) for block in result.content]  # one content block per SearchHit
 
     assert [hit["chunk_id"] for hit in hits] == [str(rows["visible"].id)]
     hit = hits[0]

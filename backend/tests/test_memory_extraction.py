@@ -120,3 +120,22 @@ def test_extractive_session_summary() -> None:
     assert any("check-in par QR code" in line for line in lines)
     assert all(len(line) < 400 for line in lines)
     assert summarize_turns([]) == []
+
+
+def test_hard_wrapped_paragraphs_tables_and_traces() -> None:
+    from app.enums import SourceKind
+    from app.memory.extractor import extract_statements
+
+    text = (
+        "Nous avons mené 12 entretiens de 45 minutes avec des collaborateurs : 5 personnes des\n"
+        "équipes commerciales et 3 développeurs.\n\n"
+        "| Coût sur 3 ans (700 postes) | faible | 100 à 200 k€ |\n"
+        "Il confirme 650 postes après réaménagement.\n"
+    )
+    contents = [s.content for s in extract_statements(text, source_kind=SourceKind.document)]
+    assert contents == [
+        "Nous avons mené 12 entretiens de 45 minutes avec des collaborateurs : 5 personnes des "
+        "équipes commerciales et 3 développeurs."
+    ]
+    trace = "Contexte reçu : 6 éléments (compte rendu du comité). Risque : QR code illisible le soir."
+    assert [s.kind.value for s in extract_statements(trace, source_kind=SourceKind.agent_trace)] == ["risk"]

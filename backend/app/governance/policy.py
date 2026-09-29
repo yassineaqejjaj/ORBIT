@@ -386,6 +386,8 @@ def _rule_stale(c: Candidate, ctx: GovernanceContext) -> Verdict | None:
     if c.pinned or c.candidate_type == CandidateType.session:
         return None
     if c.candidate_type == CandidateType.memory:
+        if c.status in (SUPERSEDED_STATUS, OBSOLETE_STATUS):
+            return None  # supersession / obsolescence closes ``valid_to``: SUPERSEDED is the precise reason
         if c.valid_to is not None and freshness.as_aware(c.valid_to) <= freshness.as_aware(ctx.now):
             return Verdict(ReasonCode.EXCLUDED_STALE, f"validité échue le {format_date_iso(c.valid_to)}")
         if _memory_is_durable(c):

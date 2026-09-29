@@ -53,6 +53,12 @@ logger = logging.getLogger("orbit.context.retrieval")
 
 CHUNK_TOP_K = 40
 MEMORY_TOP_K = 30
+#: Anchors always join the memory candidates, whatever the task wording: current project decisions
+#: (validated or superseded — §9 "Décisions en vigueur", explainable EXCLUDED_SUPERSEDED) and validated user
+#: preferences (the caller's are served, other members' are explained as EXCLUDED_SCOPE by governance).
+#: Those the index did not return rank at the tail of the memory hits.
+ANCHOR_DECISIONS_LIMIT = 20
+ANCHOR_PREFERENCES_LIMIT = 10
 SESSION_TURNS_LIMIT = 20
 RRF_K = 60
 INDEX_TIMEOUT_SECONDS = 10.0
@@ -588,6 +594,8 @@ async def retrieve(
             raw.memory_hits = hits
     if degraded:
         raw.warnings.append(DEGRADED_SEARCH_WARNING)
+    if include_memory:
+        raw.memory_hits.extend(await anchor_decision_hits(session, project_id, raw.memory_hits))
 
     if isinstance(session_res, BaseException):
         if not isinstance(session_res, NotImplementedError):
@@ -613,6 +621,43 @@ async def retrieve(
     return raw
 
 
+async def anchor_decision_hits(
+    session: AsyncSession, project_id: uuid.UUID, hits: Sequence[IndexHit]
+) -> list[IndexHit]:
+    """Anchor memory items (see ``ANCHOR_DECISIONS_LIMIT``) the index did not return, at the tail."""
+    known = {h.id for h in hits}
+    decisions = await session.scalars(
+        select(MemoryItem.id)
+        .where(
+            MemoryItem.project_id == project_id,
+            MemoryItem.kind == MemoryKind.decision,
+            MemoryItem.is_current.is_(True),
+            MemoryItem.status.in_((MemoryStatus.validated, MemoryStatus.superseded)),
+        )
+        .order_by(MemoryItem.updated_at.desc())
+        .limit(ANCHOR_DECISIONS_LIMIT)
+    )
+    preferences = await session.scalars(
+        select(MemoryItem.id)
+        .where(
+            MemoryItem.project_id == project_id,
+            MemoryItem.kind == MemoryKind.preference,
+            MemoryItem.is_current.is_(True),
+            MemoryItem.status == MemoryStatus.validated,
+        )
+        .order_by(MemoryItem.updated_at.desc())
+        .limit(ANCHOR_PREFERENCES_LIMIT)
+    )
+    ids = [*decisions, *preferences]
+    tail_rrf = min((h.rrf for h in hits), default=0.0)
+    tail_norm = min((h.rrf_norm for h in hits), default=0.0)
+    return [
+        IndexHit(id=str(item_id), rrf=tail_rrf, rrf_norm=tail_norm, via="anchor")
+        for item_id in ids
+        if str(item_id) not in known
+    ]
+
+
 async def fetch_embeddings(kind: str, ids: Sequence[str]) -> dict[str, list[float]]:
     """Stored embeddings of indexed items (``{id: vector}``). Raises on index errors."""
     if not ids:
@@ -632,7 +677,7 @@ async def attach_embeddings(raw: RawRetrieval) -> None:
     """Attach stored embeddings to index hits (best effort: missing vectors ⇒ lexical similarity)."""
     jobs: list[tuple[list[IndexHit], Any]] = []
     for kind, hits in (("chunks", raw.chunk_hits), ("memory", raw.memory_hits)):
-        wanted = [h for h in hits if h.via == "hybrid" and h.embedding is None]
+        wanted = [h for h in hits if h.via in ("hybrid", "anchor") and h.embedding is None]
         if wanted:
             jobs.append((wanted, fetch_embeddings(kind, [h.id for h in wanted])))
     if not jobs:

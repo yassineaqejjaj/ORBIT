@@ -394,7 +394,7 @@ async def summaries(session: AsyncSession, versions: Sequence[ContextSnapshot]) 
         rows = await session.execute(
             select(ContextSnapshot.id, ContextSnapshot.version).where(ContextSnapshot.id.in_(missing))
         )
-        known.update(dict(rows.tuples()))
+        known.update(dict(rows.tuples().all()))
     return [
         to_summary(
             s,

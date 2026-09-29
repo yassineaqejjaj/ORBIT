@@ -113,8 +113,8 @@ export function OverviewView() {
           {data.stats.restricted_documents > 0 ? (
             <ClassificationBanner
               level={2}
-              context="display"
-              message={`Ce projet contient ${plural(data.stats.restricted_documents, "document classifié", "documents classifiés")} C2 ou C3 : ils ne sont servis qu'aux personnes et agents dont l'habilitation le permet.`}
+              context="project"
+              message={`${plural(data.stats.restricted_documents, "document classifié", "documents classifiés")} C2 ou C3 : servis uniquement aux personnes et agents dont l'habilitation le permet.`}
             />
           ) : null}
 

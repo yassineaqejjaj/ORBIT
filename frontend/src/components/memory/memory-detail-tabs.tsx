@@ -67,6 +67,17 @@ function Excerpt({ text }: { text: string }) {
   );
 }
 
+/** Backend labels read "<title> · §n (<section, cut at 60 chars>)": drop the repeated title, mark the cut. */
+const SECTION_LABEL_MAX = 60;
+function provenanceDetail(p: Provenance): string {
+  const label = p.source_label ?? "";
+  const title = p.document_title ?? "";
+  let detail = title && label.startsWith(title) ? label.slice(title.length).replace(/^\s*·\s*/, "") : label;
+  const section = /\(([^()]*)\)$/.exec(detail);
+  if ((section?.[1]?.length ?? 0) >= SECTION_LABEL_MAX) detail = `${detail.slice(0, -1).trimEnd()}…)`;
+  return detail;
+}
+
 export function ProvenanceList({ slug, provenance }: { slug: string; provenance: readonly Provenance[] }) {
   if (provenance.length === 0) {
     return (
@@ -102,7 +113,11 @@ export function ProvenanceList({ slug, provenance }: { slug: string; provenance:
                   </span>
                 )}
                 <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                  {p.document_id && p.source_label ? <span className="truncate">{p.source_label}</span> : null}
+                  {p.document_id && p.source_label && provenanceDetail(p) ? (
+                    <span className="truncate" title={p.source_label}>
+                      {provenanceDetail(p)}
+                    </span>
+                  ) : null}
                   {p.chunk_id ? (
                     <span className="inline-flex items-center gap-1 font-mono text-[11px]" title={p.chunk_id}>
                       <Layers className="size-3" aria-hidden />

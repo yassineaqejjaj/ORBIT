@@ -302,7 +302,7 @@ async def actor_labels(
         labels.update({uid: name or email for uid, name, email in rows.tuples()})
     if agent_ids:
         rows = await session.execute(select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids)))
-        labels.update(dict(rows.tuples()))
+        labels.update(dict(rows.tuples().all()))
     return labels
 
 

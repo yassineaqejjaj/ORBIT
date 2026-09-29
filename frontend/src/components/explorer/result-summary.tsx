@@ -63,6 +63,7 @@ const RETRIEVAL_LABELS: Record<string, string> = {
 export function ResultSummary({ pkg, slug, actor, onReuse }: ResultSummaryProps) {
   const maxLevel = maxItemClassification(pkg.items);
   const excludedCount = Object.values(pkg.exclusion_summary).reduce((acc, n) => acc + (typeof n === "number" ? n : 0), 0) || pkg.excluded.length;
+  const pinnedCount = pkg.items.filter((i) => i.reason_code === "INCLUDED_PINNED").length;
   const otherWarnings = pkg.warnings.filter((w) => !(maxLevel >= 2 && CLASSIFICATION_WARNING.test(w)));
   const snapshotHref = pkg.snapshot
     ? `/projects/${encodeURIComponent(slug)}/snapshots/${encodeURIComponent(pkg.snapshot.name)}`
@@ -112,7 +113,7 @@ export function ResultSummary({ pkg, slug, actor, onReuse }: ResultSummaryProps)
             label="Retenus"
             value={formatNumber(pkg.items.length, 0)}
             valueClassName="text-primary"
-            hint={pkg.items.some((i) => i.reason_code === "INCLUDED_PINNED") ? "dont hérités du snapshot" : "cités [S1]…"}
+            hint={pinnedCount > 0 ? `dont ${formatNumber(pinnedCount, 0)} hérités du snapshot` : "cités [S1]…"}
           />
           <Metric label="Exclus" value={formatNumber(excludedCount, 0)} hint="avec motif explicite" />
           <Metric

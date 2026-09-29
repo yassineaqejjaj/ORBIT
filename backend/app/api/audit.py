@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from app.deps import SessionDep, ViewerAccess
 from app.schemas import AuditEvent, Page, PageParams, make_page, page_params
 from app.services import audit as audit_service
+from app.services.metrics import audit_event_views
 
 router = APIRouter(prefix="/projects/{slug}/audit", tags=["audit"])
 
@@ -25,14 +26,6 @@ async def list_audit(
     rows, total = await audit_service.list_events(
         session, access.project_id, action=action, offset=params.offset, limit=params.limit
     )
-    items = [
-        AuditEvent.model_validate(row).model_copy(
-            update={
-                "details": audit_service.visible_details(
-                    row.details, can_see_restricted=access.can_see_restricted_details
-                )
-            }
-        )
-        for row in rows
-    ]
+    # Non-leak (§3): events about content the caller cannot read are redacted (titles in summaries).
+    items = await audit_event_views(session, access, rows)
     return make_page(items, total, params)

@@ -104,7 +104,8 @@ _DECISION = re.compile(
 )
 _DECISION_PREFIX = re.compile(
     r"^(?:nous avons décidé|avons décidé|il (?:est|a été) décidé|(?:le|la) (?:comité|direction|équipe|copil)"
-    r"\s+(?:a\s+)?(?:décidé|validé|acté|arbitré|retenu)|il (?:est|a été) acté)\s*(?:de\s+|d['’]|que\s+|qu['’]|:\s*)?",
+    r"\s+(?:a\s+)?(?:décidé|validé|acté|arbitré|retenu)|il (?:est|a été) acté)"
+    r"\s*(?:de\s+|d['’]|que\s+|qu['’]|:\s*)?",
     re.IGNORECASE,
 )
 _USER_STORY = re.compile(
@@ -129,8 +130,10 @@ _FEEDBACK_COMPLAINT = re.compile(
     r"difficile de|trop (?:long|lent|compliquee?)|lent|ne trouve pas|pas pratique|galere)\b"
 )
 _NUMBER = re.compile(r"\d")
+_DANGLING_PRONOUN = re.compile(r"^(?:il|elle|ils|elles)\s")
 _FACT = re.compile(
-    r"\b(?:compte|comptent|dispose de|disposent de|est de|sont de|s'eleve a|s'elevent a|totalise|represente|"
+    r"\b(?:compte(?! rendu)|comptent|dispose de|disposent de|est de|sont de|s'eleve a|s'elevent a|"
+    r"totalise|represente|"
     r"atteint|contient|comporte|recense|il y a|soit)\b"
     r"|\d[\d  .,]*\s*(?:postes?|salles?|bureaux|sites?|etages?|collaborateurs?|utilisateurs?|salaries|"
     r"personnes|m2|m²|%|reservations?|badges?|places?|licences?|jours?|semaines?|mois|euros?|€|k€)\b"
@@ -248,10 +251,37 @@ def _story_title(body: str) -> str | None:
     return make_title(f"{want} ({role})")
 
 
+def _logical_lines(text: str) -> Iterator[str]:
+    """Raw lines with hard-wrapped paragraphs re-joined: a line starting in lower case (or with a digit)
+    continues the previous one when that one does not end a sentence. Table rows are skipped."""
+    pending: str | None = None
+    for raw_line in (text or "").splitlines():
+        stripped = raw_line.strip()
+        if stripped.startswith("|"):
+            stripped = ""  # Markdown table row: cells are not statements
+        continuation = (
+            pending is not None
+            and stripped
+            and (stripped[0].islower() or stripped[0].isdigit())
+            and not _BULLET.match(stripped)
+            and not pending.rstrip().endswith((".", "!", "?", ":", ";"))
+        )
+        if continuation:
+            pending = f"{pending.rstrip()} {stripped}"
+            continue
+        if pending is not None:
+            yield pending
+        pending = raw_line if stripped else None
+        if not stripped:
+            yield ""
+    if pending is not None:
+        yield pending
+
+
 def iter_sentences(text: str, initial_section: str | None = None) -> Iterator[tuple[str, MemoryKind | None]]:
     """Yield ``(sentence, section_kind)`` for each sentence of ``text`` (Markdown aware)."""
     section_kind = _section_kind(initial_section) if initial_section else None
-    for raw_line in (text or "").splitlines():
+    for raw_line in _logical_lines(text):
         heading = _HEADING.match(raw_line)
         if heading:
             section_kind = _section_kind(heading.group("title"))
@@ -313,12 +343,16 @@ def classify_sentence(
             rule=f"label:{kind.value}",
         )
 
+    if source_kind == SourceKind.agent_trace:
+        return None  # agent traces are activity logs: only explicitly labelled statements are memory
     story_title = _story_title(text)
     if story_title:
         return Statement(MemoryKind.requirement, story_title, text, 0.72, False, "user_story")
     if _DECISION.search(folded):
         body = _DECISION_PREFIX.sub("", text).strip() or text
         return Statement(MemoryKind.decision, make_title(body), text, 0.75, False, "decision_phrase")
+    if _DANGLING_PRONOUN.match(folded):
+        return None  # « Il confirme… », « Elle valide… »: meaningless out of their paragraph
     if section_kind is not None:
         return Statement(section_kind, make_title(text), text, 0.7, False, f"section:{section_kind.value}")
     if _USERS_WANT.search(folded):
@@ -366,7 +400,8 @@ _LLM_SYSTEM = (
     "Tu es un assistant qui extrait la mémoire d'un projet à partir d'un extrait de document en français. "
     "Identifie uniquement les décisions, besoins utilisateurs, contraintes, risques et faits chiffrés "
     "explicitement présents dans le texte. Réponds uniquement en JSON : "
-    '{"items": [{"kind": "decision|requirement|constraint|risk|fact", "title": "titre court (≤ 90 caractères)", '
+    '{"items": [{"kind": "decision|requirement|constraint|risk|fact", '
+    '"title": "titre court (≤ 90 caractères)", '
     '"content": "phrase exacte du texte", "explicit_decision": true|false}]}. '
     "explicit_decision vaut true seulement si la ligne commence par « Décision : ». "
     'N\'invente rien ; renvoie {"items": []} si le texte ne contient rien de pertinent.'

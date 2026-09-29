@@ -49,7 +49,8 @@ def test_expired_and_tampered_tokens_are_rejected() -> None:
     with pytest.raises(TokenError, match="expirée"):
         decode_access_token(expired)
     forged = jwt.encode(
-        {"sub": str(uuid.uuid4()), "typ": "session", "iss": "orbit", "iat": 0, "exp": 9999999999}, "another-secret-of-sufficient-length-0123456789"
+        {"sub": str(uuid.uuid4()), "typ": "session", "iss": "orbit", "iat": 0, "exp": 9999999999},
+        "another-secret-of-sufficient-length-0123456789",
     )
     with pytest.raises(TokenError):
         decode_access_token(forged)

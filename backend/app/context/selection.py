@@ -32,6 +32,8 @@ from app.models import MemoryItem, Relation
 
 DUPLICATE_COSINE = 0.92
 DUPLICATE_JACCARD = 0.8
+#: Above this shingle Jaccard two near-duplicates are copies of one text: the earliest one is kept.
+IDENTICAL_JACCARD = 0.98
 MMR_LAMBDA = 0.7
 #: An item is only worth including with at least this many tokens of excerpt (or its full text).
 MIN_ITEM_TOKENS = 30
@@ -228,9 +230,11 @@ class SimilarityCache:
         return self._terms[c.key]
 
     def is_duplicate(self, a: Candidate, b: Candidate) -> bool:
+        """cosine > 0.92 **or** shingle Jaccard > 0.8 (§9.6): embeddings include the title, so the same
+        passage forwarded under another title (e.g. an e-mail "TR:") can fall below the cosine threshold."""
         sim = cosine(a.embedding, b.embedding)
-        if sim is not None:
-            return sim > DUPLICATE_COSINE
+        if sim is not None and sim > DUPLICATE_COSINE:
+            return True
         return jaccard(self.shingles(a), self.shingles(b)) > DUPLICATE_JACCARD
 
     def diversity_similarity(self, a: Candidate, b: Candidate) -> float:
@@ -249,11 +253,27 @@ def find_duplicates(
     duplicates: dict[str, Candidate] = {}
     for c in ordered:
         original = next((k for k in kept if cache.is_duplicate(c, k)), None)
-        if original is not None:
-            duplicates[c.key] = original
-        else:
+        if original is None:
             kept.append(c)
+        elif _is_earlier_copy(c, original, cache):
+            # Same text published earlier (e.g. the document an e-mail "TR:" forwards): keep the original.
+            kept[kept.index(original)] = c
+            for key, target in list(duplicates.items()):
+                if target is original:
+                    duplicates[key] = c
+            duplicates[original.key] = c
+        else:
+            duplicates[c.key] = original
     return duplicates
+
+
+def _is_earlier_copy(c: Candidate, kept: Candidate, cache: SimilarityCache) -> bool:
+    """``c`` carries the same text as ``kept`` (not merely a similar one) and was published before it."""
+    if c.candidate_type != kept.candidate_type or c.date is None or kept.date is None:
+        return False
+    if _timestamp(c) >= _timestamp(kept):
+        return False
+    return jaccard(cache.shingles(c), cache.shingles(kept)) >= IDENTICAL_JACCARD
 
 
 def mmr_order(

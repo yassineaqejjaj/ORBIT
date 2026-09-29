@@ -250,6 +250,20 @@ def has_negation(text: str) -> bool:
     return bool(_NEGATION.search(fold(text or "")))
 
 
+_CLAUSE_SPLIT = re.compile(r"[;.!?]\s*")
+
+
+def _negated_on_shared_topic(text: str, other: str) -> bool:
+    """Negation in a clause of ``text`` that talks about ``other``'s subject: « …; les rappels pourraient ne
+    pas être reçus » does not contradict a statement that never mentions the reminders."""
+    other_terms = content_terms(other)
+    return any(
+        has_negation(clause) and content_terms(clause) & other_terms
+        for clause in _CLAUSE_SPLIT.split(text or "")
+        if clause.strip()
+    )
+
+
 def _prefixed(terms: set[str], prefix: str) -> bool:
     return any(term.startswith(prefix) for term in terms)
 
@@ -272,7 +286,7 @@ def divergences(a: str, b: str) -> list[str]:
     numeric = numeric_divergence(a, b)
     if numeric:
         markers.append(numeric)
-    if has_negation(a) != has_negation(b):
+    if _negated_on_shared_topic(a, b) != _negated_on_shared_topic(b, a):
         markers.append("négation divergente")
     antonym = antonym_divergence(a, b)
     if antonym:

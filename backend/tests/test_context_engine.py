@@ -404,3 +404,15 @@ def test_scores_round_trip() -> None:
     scores = persistence.scores_of(Decision(candidate=c, verdict=included_verdict(c, NOW)))
     assert isinstance(scores, Scores)
     assert scores.final == pytest.approx(0.8123, abs=1e-3)
+
+
+def test_duplicates_jaccard_despite_embeddings_and_original_kept() -> None:
+    # Same passage forwarded by e-mail: embeddings differ (title) but the text is identical.
+    original = cand(title="Synthèse des entretiens", embedding=[1.0, 0.0], date=NOW - timedelta(days=42))
+    forward = cand(title="TR: synthèse entretiens", embedding=[0.8, 0.6], date=NOW - timedelta(days=40))
+    # The forward ranks first, yet the earlier original is the one kept.
+    assert selection.find_duplicates([forward, original]) == {forward.key: original}
+    # Similar but not identical texts: the higher-ranked one stays, whatever the dates.
+    edited = cand(text=LOREM.replace("trente", "quarante"), embedding=[1.0, 0.0], date=NOW)
+    older = cand(embedding=[1.0, 0.0], date=NOW - timedelta(days=90))
+    assert selection.find_duplicates([edited, older]) == {older.key: edited}

@@ -11,7 +11,7 @@ DEV_ENV := ORBIT_DATABASE_URL=postgresql+asyncpg://orbit:orbit@localhost:5433/or
 	ORBIT_OBJECT_STORE_PATH=.data/objects
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs build migrate seed test lint dev-backend dev-worker dev-frontend infra reset ps
+.PHONY: help up down logs build migrate seed reseed test lint dev-backend dev-worker dev-frontend infra reset ps
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -34,8 +34,12 @@ ps: ## Show service status
 migrate: ## Apply database migrations (inside the api container)
 	$(COMPOSE) exec api alembic upgrade head
 
-seed: ## Load the demo project through the real ingestion pipeline
-	$(COMPOSE) exec api python -m app.seed
+seed: ## Load the demo project through the real ingestion pipeline (agent keys -> backend/.seed-agents.json)
+	$(COMPOSE) exec -T api python -m app.seed $(SEED_ARGS)
+	$(COMPOSE) cp api:/app/.seed-agents.json $(BACKEND_DIR)/.seed-agents.json
+
+reseed: ## Wipe the demo project and seed it again
+	$(MAKE) seed SEED_ARGS=--reset
 
 infra: ## Start only postgres, opensearch and valkey (for dev-backend / tests)
 	$(COMPOSE) up -d postgres opensearch valkey

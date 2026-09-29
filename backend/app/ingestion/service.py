@@ -19,8 +19,8 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy import ColumnElement, Text, and_, func, select, update
-from sqlalchemy.dialects.postgresql import array
+from sqlalchemy import ColumnElement, Text, and_, cast, func, select, update
+from sqlalchemy.dialects.postgresql import ARRAY, array
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import utcnow
@@ -115,7 +115,7 @@ class DocumentViewer:
         return and_(
             in_project,
             Document.classification <= self.clearance,
-            Document.acl_principals.overlap(array(principals, type_=Text)),
+            Document.acl_principals.overlap(cast(array(principals), ARRAY(Text))),
         )
 
     def search_filters(self) -> list[dict[str, Any]]:
@@ -154,7 +154,9 @@ async def serialize_summaries(session: AsyncSession, documents: Sequence[Documen
                 .where(Chunk.document_id.in_(doc_ids), Chunk.status == ChunkStatus.active)
                 .group_by(Chunk.document_id)
             )
-        ).tuples()
+        )
+        .tuples()
+        .all()
     )
     summaries: list[DocumentSummary] = []
     for document in documents:

@@ -151,8 +151,26 @@ async def app(database: str) -> AsyncIterator[FastAPI]:
 
     application = create_app()
     application.include_router(_test_router())
-    async with application.router.lifespan_context(application):
+    # The lifespan (MCP session manager task group) must be entered and exited in the same task:
+    # pytest-asyncio runs fixture setup and teardown in different tasks, so host it in its own task.
+    started, stop = asyncio.Event(), asyncio.Event()
+
+    async def _host() -> None:
+        async with application.router.lifespan_context(application):
+            started.set()
+            await stop.wait()
+
+    host = asyncio.create_task(_host())
+    waiter = asyncio.create_task(started.wait())
+    await asyncio.wait({host, waiter}, return_when=asyncio.FIRST_COMPLETED)
+    if host.done():
+        waiter.cancel()
+        host.result()  # re-raise the startup failure
+    try:
         yield application
+    finally:
+        stop.set()
+        await host
 
 
 def _client(app: FastAPI, **kwargs: object) -> httpx.AsyncClient:

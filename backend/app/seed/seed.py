@@ -625,6 +625,16 @@ class Seeder:
             label = ", ".join(rule["contains"])
             if matched:
                 say(f"  ✓ {len(matched)} {rule['kind']}(s) validé(e)s par Camille ({label})")
+                continue
+            # Explicit "Décision : …" lines are validated at extraction time: nothing left to validate.
+            validated = await owner.pages(f"{self.base}/memory", kind=rule["kind"], status="validated")
+            already = [
+                item
+                for item in validated
+                if any(n in normalize(f"{item.get('title', '')} {item.get('content', '')}") for n in needles)
+            ]
+            if already:
+                say(f"  ✓ {len(already)} {rule['kind']}(s) déjà validée(s) à l'extraction ({label})")
             else:
                 self.warn(f"Aucune proposition « {rule['kind']} » à valider pour : {label}")
 

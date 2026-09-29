@@ -18,8 +18,8 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ColumnElement, and_, or_
-from sqlalchemy.dialects.postgresql import array
+from sqlalchemy import ColumnElement, and_, cast, or_
+from sqlalchemy.dialects.postgresql import ARRAY, array
 from sqlalchemy.types import Text
 
 from app.enums import MemoryScope
@@ -60,7 +60,7 @@ def visibility_clause(viewer: MemoryViewer) -> ColumnElement[bool]:
     conditions: list[ColumnElement[bool]] = [
         in_scope,
         MemoryItem.classification <= viewer.clearance,
-        MemoryItem.acl_principals.overlap(array(principals, type_=Text)),
+        MemoryItem.acl_principals.overlap(cast(array(principals), ARRAY(Text))),
     ]
     if viewer.user_id is None:
         conditions.append(MemoryItem.scope != MemoryScope.user)

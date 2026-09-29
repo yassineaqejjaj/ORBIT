@@ -3,7 +3,7 @@ import { ShieldAlert } from "lucide-react";
 import { CLASSIFICATION_META, toClassification, type Classification } from "@/lib/enums";
 import { cn } from "@/lib/utils";
 
-export type ClassificationBannerContext = "display" | "ingest" | "serve";
+export type ClassificationBannerContext = "display" | "ingest" | "serve" | "project";
 
 export interface ClassificationBannerProps {
   /** Highest classification level of the content on screen (or pass `levels`). */
@@ -23,6 +23,7 @@ const CONTEXT_TEXT: Record<ClassificationBannerContext, string> = {
   display: "vous consultez des informations à diffusion restreinte",
   ingest: "ces informations seront ingérées avec une diffusion restreinte",
   serve: "ce contexte servi aux agents contient des informations à diffusion restreinte",
+  project: "ce projet contient des informations à diffusion restreinte",
 };
 
 const LEVEL_TEXT: Record<2 | 3, string> = {

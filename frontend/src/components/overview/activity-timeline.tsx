@@ -36,6 +36,13 @@ export function auditTargetHref(slug: string, event: Pick<AuditEvent, "target_ty
       return `${projectHref(slug, "settings")}?tab=members`;
     case "source":
       return `${projectHref(slug, "sources")}?tab=sources`;
+    case "snapshot": {
+      // Snapshot targets are "<name>@v<version>" (not UUIDs).
+      const match = /^(.+)@v(\d+)$/.exec(event.target_id);
+      const name = match?.[1] ?? event.target_id;
+      const version = match?.[2] ? `?v=${match[2]}` : "";
+      return `${projectHref(slug, "snapshots")}/${encodeURIComponent(name)}${version}`;
+    }
     default:
       return null;
   }

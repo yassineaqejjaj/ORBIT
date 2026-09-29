@@ -129,11 +129,11 @@ function AuditRow({ slug, event, members, expanded, onToggle }: AuditRowProps) {
                   className="font-mono text-[11px] text-primary underline-offset-4 hover:underline"
                   title={event.target_id}
                 >
-                  {shortId(event.target_id)}
+                  {displayTargetId(event.target_id)}
                 </Link>
               ) : (
                 <span className="font-mono text-[11px] text-subtle-foreground" title={event.target_id}>
-                  {shortId(event.target_id)}
+                  {displayTargetId(event.target_id)}
                 </span>
               )
             ) : null}
@@ -170,6 +170,13 @@ function AuditRow({ slug, event, members, expanded, onToggle }: AuditRowProps) {
 }
 
 /** "Audit" tab: paginated, filterable journal of every significant action on the project (read-only). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** UUIDs are shortened; readable identifiers (e.g. "spec-atlas@v2") are shown as-is. */
+function displayTargetId(id: string): string {
+  return UUID_RE.test(id) ? shortId(id) : id;
+}
+
 export function AuditPanel() {
   const { slug } = useCurrentProject();
   const { get, set } = useUrlParams();

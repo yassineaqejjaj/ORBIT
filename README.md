@@ -99,7 +99,7 @@ make seed                 # charge le projet de démonstration « Atlas » via l
 les sources, ingère 11 documents (dont une spécification en deux versions) et 28 enregistrements importés
 (Jira, CRM, bêta, traces d'agents), attend que le worker ait tout traité, crée la mémoire de démonstration, joue ~30 requêtes de contexte réelles avec leurs feedbacks et
 snapshots, puis répartit leurs horodatages sur 14 jours (données de démonstration). Il est **idempotent** ;
-`docker compose exec api python -m app.seed --reset` repart de zéro.
+`make reseed` (`python -m app.seed --reset`) repart de zéro.
 
 | URL | Description |
 |---|---|
