@@ -186,7 +186,9 @@ async def list_groups(session: AsyncSession, project_id: uuid.UUID) -> list[Snap
         .subquery()
     )
     rows = await session.execute(
-        select(stats.c.name, stats.c.latest_version, stats.c.versions, stats.c.updated_at, ContextSnapshot.task)
+        select(
+            stats.c.name, stats.c.latest_version, stats.c.versions, stats.c.updated_at, ContextSnapshot.task
+        )
         .join(
             ContextSnapshot,
             (ContextSnapshot.project_id == project_id)
@@ -258,13 +260,25 @@ async def inspect_items(
     states: dict[str, ItemState] = {}
     if chunk_ids:
         rows = await session.execute(
-            select(Chunk.id, Chunk.status, Chunk.classification, Chunk.acl_principals, Document.status,
-                   Document.forgotten_at, Document.classification, Document.acl_principals)
+            select(
+                Chunk.id,
+                Chunk.status,
+                Chunk.classification,
+                Chunk.acl_principals,
+                Document.status,
+                Document.forgotten_at,
+                Document.classification,
+                Document.acl_principals,
+            )
             .join(Document, Document.id == Chunk.document_id)
             .where(Chunk.id.in_(chunk_ids), Chunk.project_id == project_id)
         )
         for cid, c_status, c_cls, c_acl, d_status, d_forgotten, d_cls, d_acl in rows.tuples():
-            forgotten = c_status == ChunkStatus.forgotten or d_status == DocumentStatus.forgotten or d_forgotten is not None
+            forgotten = (
+                c_status == ChunkStatus.forgotten
+                or d_status == DocumentStatus.forgotten
+                or d_forgotten is not None
+            )
             states[f"chunk:{cid}"] = ItemState(
                 exists=True,
                 forgotten=forgotten,
@@ -304,8 +318,12 @@ def present_items(
         item = SnapshotItem.model_validate(raw)
         kind, _ident = _split_key(item.key)
         state = states.get(item.key)
-        if kind in (CandidateType.chunk.value, CandidateType.memory.value) and (state is None or state.forgotten):
-            item = item.model_copy(update={"forgotten": True, "title": FORGOTTEN_TEXT, "excerpt": FORGOTTEN_TEXT})
+        if kind in (CandidateType.chunk.value, CandidateType.memory.value) and (
+            state is None or state.forgotten
+        ):
+            item = item.model_copy(
+                update={"forgotten": True, "title": FORGOTTEN_TEXT, "excerpt": FORGOTTEN_TEXT}
+            )
             replacements[item.citation] = FORGOTTEN_TEXT
         elif state is not None and viewer is not None:
             visibility = viewer.visibility(
@@ -326,7 +344,9 @@ def present_items(
 
 async def creator_labels(session: AsyncSession, snapshots: Sequence[ContextSnapshot]) -> dict[uuid.UUID, str]:
     user_ids = {s.created_by_id for s in snapshots if s.created_by_type == ActorType.user and s.created_by_id}
-    agent_ids = {s.created_by_id for s in snapshots if s.created_by_type == ActorType.agent and s.created_by_id}
+    agent_ids = {
+        s.created_by_id for s in snapshots if s.created_by_type == ActorType.agent and s.created_by_id
+    }
     labels: dict[uuid.UUID, str] = {}
     if user_ids:
         for uid, name, email in (
@@ -334,7 +354,9 @@ async def creator_labels(session: AsyncSession, snapshots: Sequence[ContextSnaps
         ).tuples():
             labels[uid] = name or email
     if agent_ids:
-        for aid, name in (await session.execute(select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids)))).tuples():
+        for aid, name in (
+            await session.execute(select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids)))
+        ).tuples():
             labels[aid] = name
     return labels
 
@@ -345,7 +367,9 @@ def _creator(snapshot: ContextSnapshot, labels: Mapping[uuid.UUID, str]) -> str:
     return "Système ORBIT" if snapshot.created_by_type == ActorType.system else ""
 
 
-def to_summary(snapshot: ContextSnapshot, *, parent_version: int | None, created_by_label: str) -> SnapshotSummary:
+def to_summary(
+    snapshot: ContextSnapshot, *, parent_version: int | None, created_by_label: str
+) -> SnapshotSummary:
     return SnapshotSummary(
         id=snapshot.id,
         name=snapshot.name,
@@ -381,9 +405,7 @@ async def summaries(session: AsyncSession, versions: Sequence[ContextSnapshot]) 
     ]
 
 
-async def present(
-    session: AsyncSession, snapshot: ContextSnapshot, viewer: Viewer | None
-) -> Snapshot:
+async def present(session: AsyncSession, snapshot: ContextSnapshot, viewer: Viewer | None) -> Snapshot:
     """Full snapshot as shown to ``viewer`` (forgotten and restricted items redacted)."""
     items = list(snapshot.items or [])
     states = await inspect_items(session, snapshot.project_id, items)
@@ -409,8 +431,16 @@ def diff(
     ``old_items`` / ``new_items`` may carry the read-time presentation (forgotten/redacted flags);
     otherwise the stored items are used.
     """
-    before = list(old_items) if old_items is not None else [SnapshotItem.model_validate(i) for i in old.items or []]
-    after = list(new_items) if new_items is not None else [SnapshotItem.model_validate(i) for i in new.items or []]
+    before = (
+        list(old_items)
+        if old_items is not None
+        else [SnapshotItem.model_validate(i) for i in old.items or []]
+    )
+    after = (
+        list(new_items)
+        if new_items is not None
+        else [SnapshotItem.model_validate(i) for i in new.items or []]
+    )
     before_keys = {i.key for i in before}
     after_keys = {i.key for i in after}
     return SnapshotDiff(

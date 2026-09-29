@@ -30,7 +30,7 @@ def _heading_level(paragraph: Paragraph) -> int | None:
     if match:
         return max(1, min(6, int(match.group(1))))
     # Outline level set directly on the paragraph (documents without heading styles).
-    ppr = paragraph._p.pPr  # noqa: SLF001 - python-docx exposes no public accessor
+    ppr = paragraph._p.pPr
     if ppr is not None:
         outline = ppr.find("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}outlineLvl")
         if outline is not None:
@@ -45,7 +45,7 @@ def _is_list(paragraph: Paragraph) -> bool:
     name = (style.name if style is not None else "") or ""
     if _LIST_STYLE.search(name):
         return True
-    ppr = paragraph._p.pPr  # noqa: SLF001
+    ppr = paragraph._p.pPr
     return ppr is not None and ppr.numPr is not None
 
 
@@ -72,9 +72,9 @@ def _table_markdown(table: Table) -> str:
         previous = None
         for cell in row.cells:
             # Merged cells are repeated by python-docx: keep one copy.
-            if previous is not None and cell._tc is previous:  # noqa: SLF001
+            if previous is not None and cell._tc is previous:
                 continue
-            previous = cell._tc  # noqa: SLF001
+            previous = cell._tc
             cells.append(_cell_text(cell.text))
         if any(cells):
             rows.append(cells)

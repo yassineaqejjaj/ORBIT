@@ -54,7 +54,14 @@ FIELD_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 _LIST_CONTAINER_KEYS = ("items", "records", "data", "results", "rows", "entries", "issues", "tickets")
-_CLASSIFICATION_WORDS = {"public": 0, "interne": 1, "internal": 1, "confidentiel": 2, "confidential": 2, "secret": 3}
+_CLASSIFICATION_WORDS = {
+    "public": 0,
+    "interne": 1,
+    "internal": 1,
+    "confidentiel": 2,
+    "confidential": 2,
+    "secret": 3,
+}
 _DATE_FORMATS = (
     "%d/%m/%Y %H:%M:%S",
     "%d/%m/%Y %H:%M",
@@ -206,7 +213,9 @@ def _check_size(records: list[dict[str, Any]]) -> None:
         )
 
 
-def parse_records(data: bytes, filename: str | None = None, content_type: str | None = None) -> list[dict[str, Any]]:
+def parse_records(
+    data: bytes, filename: str | None = None, content_type: str | None = None
+) -> list[dict[str, Any]]:
     """Parse a JSON or CSV file (format from the extension, the content type, then the content)."""
     name = (filename or "").lower()
     ctype = (content_type or "").lower()

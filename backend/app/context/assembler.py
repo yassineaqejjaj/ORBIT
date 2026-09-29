@@ -155,7 +155,8 @@ async def resolve_request(
     if body.on_behalf_of is not None and not (principal.is_user and body.on_behalf_of == principal.user_id):
         if principal.is_user and not access.can_see_restricted_details:
             raise forbidden(
-                "Seuls les propriétaires du projet peuvent assembler un contexte pour le compte d'un autre membre"
+                "Seuls les propriétaires du projet peuvent assembler un contexte "
+                "pour le compte d'un autre membre"
             )
         on_behalf_of = await session.get(User, body.on_behalf_of)
         if on_behalf_of is not None:
@@ -173,7 +174,9 @@ async def resolve_request(
     if principal.is_user:
         clearance = min(clearance, int(principal.clearance))
     if on_behalf_of is None and agent is None:
-        clearance = min(int(principal.clearance), body.max_classification if body.max_classification is not None else 3)
+        clearance = min(
+            int(principal.clearance), body.max_classification if body.max_classification is not None else 3
+        )
 
     base_snapshot: ContextSnapshot | None = None
     if body.base_snapshot is not None:
@@ -310,7 +313,9 @@ async def _run(
     now = utcnow()
 
     with timer.stage("understand") as span:
-        understanding = await understand(body.task, body.intent, resolved.agent.kind if resolved.agent else None)
+        understanding = await understand(
+            body.task, body.intent, resolved.agent.kind if resolved.agent else None
+        )
         span.set_attribute("orbit.intent", understanding.intent.value)
         span.set_attribute("orbit.dense", understanding.query_vector is not None)
 
@@ -377,7 +382,9 @@ async def _run(
         )
 
     with timer.stage("package") as span:
-        packaged = _enforce_budget(understanding.task, understanding.intent, included, excluded, resolved.token_budget)
+        packaged = _enforce_budget(
+            understanding.task, understanding.intent, included, excluded, resolved.token_budget
+        )
         included = packaged.ordered
         _link_related(included, excluded)
         _assign_ranks([*included, *excluded])
@@ -459,7 +466,9 @@ async def _run(
                 actor=principal,
             )
             row.snapshot_id = snapshot.id
-            package.snapshot = ContextSnapshotInfo(id=snapshot.id, name=snapshot.name, version=snapshot.version)
+            package.snapshot = ContextSnapshotInfo(
+                id=snapshot.id, name=snapshot.name, version=snapshot.version
+            )
             await audit.record(
                 session,
                 resolved.project_id,
@@ -467,7 +476,10 @@ async def _run(
                 AuditAction.snapshot_create,
                 target_type="snapshot",
                 target_id=f"{snapshot.name}@v{snapshot.version}",
-                summary=f"Snapshot « {snapshot.name} » v{snapshot.version} enregistré ({len(package.items)} éléments)",
+                summary=(
+                    f"Snapshot « {snapshot.name} » v{snapshot.version} enregistré "
+                    f"({len(package.items)} éléments)"
+                ),
                 details={
                     "snapshot_id": snapshot.id,
                     "request_id": request_id,
@@ -479,7 +491,9 @@ async def _run(
         restricted_titles = [
             d.candidate.title for d in excluded if d.verdict.redact and not d.candidate.is_forgotten
         ]
-        task_preview = understanding.task if len(understanding.task) <= 120 else understanding.task[:119] + "…"
+        task_preview = (
+            understanding.task if len(understanding.task) <= 120 else understanding.task[:119] + "…"
+        )
         await audit.record(
             session,
             resolved.project_id,
@@ -510,7 +524,7 @@ async def _run(
     total = timer.elapsed_ms()
     timings = {stage: timer.timings.get(stage, 0.0) for stage in STAGES}
     timings["total"] = total
-    row.latency_ms = int(round(total))
+    row.latency_ms = round(total)
     row.timings = timings
     package.timings = ContextTimings(**timings)
     await session.commit()
@@ -518,7 +532,12 @@ async def _run(
 
 
 async def _record_failure(
-    session: AsyncSession, resolved: ResolvedRequest, request_id: uuid.UUID, trace_id: str, exc: Exception, elapsed: float
+    session: AsyncSession,
+    resolved: ResolvedRequest,
+    request_id: uuid.UUID,
+    trace_id: str,
+    exc: Exception,
+    elapsed: float,
 ) -> None:
     principal = resolved.access.principal
     try:
@@ -536,7 +555,7 @@ async def _record_failure(
             params={"request": resolved.body.model_dump(mode="json", exclude_none=True)},
             status=ContextRequestStatus.failed,
             error=f"{FAILURE_MESSAGE} ({type(exc).__name__})",
-            latency_ms=int(round(elapsed)),
+            latency_ms=round(elapsed),
             token_budget=resolved.token_budget,
         )
         session.add(row)
@@ -570,7 +589,9 @@ async def assemble_context(
             logger.exception("Context assembly failed for project %s", access.project.slug)
             span.record_exception(exc)
             await _record_failure(session, resolved, request_id, trace_id, exc, elapsed)
-            observe_context_request(latency_seconds=elapsed / 1000, tokens_used=0, status="failed", caller=caller)
+            observe_context_request(
+                latency_seconds=elapsed / 1000, tokens_used=0, status="failed", caller=caller
+            )
             raise
     observe_context_request(
         latency_seconds=package.timings.total / 1000,

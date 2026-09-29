@@ -1,0 +1,35 @@
+[
+  {
+    "id": "TRACE-PROD-001",
+    "title": "Trace Agent Produit — brouillon de la section réservation",
+    "author": "Agent Produit",
+    "status": "Terminé",
+    "tags": ["brouillon", "specification"],
+    "updated_at": "{{J-9}}",
+    "content": "Tâche : rédiger un brouillon de la section « Réservation de poste » de la spécification fonctionnelle. Contexte reçu : 8 éléments (décision PWA, synthèse des entretiens, ticket ATLAS-104). Étapes : 1) extraction des user stories liées à la proximité de l'équipe ; 2) rédaction de trois critères d'acceptation ; 3) vérification de la cohérence avec la politique de télétravail (2 jours sur site minimum). Résultat : brouillon de 420 mots remis à Camille Martin. Questions ouvertes relevées : faut-il limiter la réservation à quatre semaines ? que faire des postes PMR non réservés la veille ?",
+    "tool_calls": 4,
+    "duration_s": 38
+  },
+  {
+    "id": "TRACE-PROD-002",
+    "title": "Trace Agent Produit — questions ouvertes check-in",
+    "author": "Agent Produit",
+    "status": "Terminé",
+    "tags": ["questions-ouvertes", "check-in"],
+    "updated_at": "{{J-6}}",
+    "content": "Tâche : lister les questions ouvertes sur le check-in avant la sprint review 6. Contexte reçu : 6 éléments (spécification v2, retours bêta, compte rendu du comité de pilotage). Questions produites : 1) délai de libération d'une réservation non confirmée (30 minutes proposé) ; 2) mode secours si le QR code est illisible ; 3) prise en compte des réunions à l'arrivée ; 4) information du CSE sur l'absence de géolocalisation. Les questions ont été ajoutées à l'ordre du jour de la sprint review.",
+    "tool_calls": 3,
+    "duration_s": 24
+  },
+  {
+    "id": "TRACE-PROD-003",
+    "title": "Trace Agent Produit — critères d'acceptation QR code",
+    "author": "Agent Produit",
+    "status": "Terminé",
+    "tags": ["criteres-acceptation", "qr-code"],
+    "updated_at": "{{J-3}}",
+    "content": "Tâche : proposer les critères d'acceptation de la story ATLAS-107 (check-in par QR code) après la décision de la sprint review 6. Contexte reçu : décision QR code, risque d'adoption si la réservation dépasse 30 secondes, retour bêta sur la faible luminosité. Critères proposés : scan validé en moins de trois secondes ; code court à six caractères accepté en secours ; libération automatique 30 minutes après le début sans check-in ; notification de rappel dix minutes avant la libération. Proposition transmise pour validation au Product Owner.",
+    "tool_calls": 5,
+    "duration_s": 41
+  }
+]

@@ -51,7 +51,9 @@ def extract_json(data: bytes, filename: str | None = None) -> ExtractedDocument:
             text = json.dumps(json.loads(decode_text(data)), ensure_ascii=False, indent=2)
         except ValueError as exc:
             raise ExtractionError(f"JSON invalide : {exc}") from exc
-    return ExtractedDocument(text=text, format="json", mime_type=JSON, metadata={"record_count": len(records)})
+    return ExtractedDocument(
+        text=text, format="json", mime_type=JSON, metadata={"record_count": len(records)}
+    )
 
 
 def extract_csv(data: bytes, filename: str | None = None) -> ExtractedDocument:

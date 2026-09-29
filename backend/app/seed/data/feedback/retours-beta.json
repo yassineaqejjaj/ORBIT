@@ -1,0 +1,74 @@
+[
+  {
+    "id": "BETA-01",
+    "subject": "Impossible de trouver la salle 3B",
+    "body": "Impossible de trouver la salle 3B dans la recherche : je tape « 3B » et rien ne sort, alors qu'elle existe sur la signalétique. J'ai fini par réserver une autre salle par défaut.",
+    "author": "Collaborateur bêta — équipe finance",
+    "status": "Nouveau",
+    "tags": ["recherche", "salles"],
+    "date": "{{J-10}}"
+  },
+  {
+    "id": "BETA-02",
+    "subject": "Le QR code ne se lit pas en faible luminosité",
+    "body": "Le QR code ne se lit pas en faible luminosité, surtout au fond de la salle Rhône en fin de journée. J'ai dû essayer quatre fois avant que le check-in passe.",
+    "author": "Collaboratrice bêta — équipe marketing",
+    "status": "Pris en compte",
+    "tags": ["qr-code", "check-in"],
+    "date": "{{J-6}}"
+  },
+  {
+    "id": "BETA-03",
+    "subject": "Réserver près de mon équipe, génial",
+    "body": "La réservation près de mon équipe est vraiment pratique : en deux gestes j'étais assis à côté de mes collègues. C'est la fonction que je montre à tout le monde.",
+    "author": "Collaborateur bêta — équipe développement",
+    "status": "Clos",
+    "tags": ["reservation", "positif"],
+    "date": "{{J-9}}"
+  },
+  {
+    "id": "BETA-04",
+    "subject": "Il faut pouvoir réserver tous les mardis",
+    "body": "Il faut pouvoir réserver le même poste tous les mardis sans refaire la manipulation chaque semaine. Aujourd'hui c'est trop long de réserver semaine par semaine.",
+    "author": "Collaboratrice bêta — équipe RH",
+    "status": "Pris en compte",
+    "tags": ["reservation", "recurrence"],
+    "date": "{{J-8}}"
+  },
+  {
+    "id": "BETA-05",
+    "subject": "Onglet Teams lent au démarrage",
+    "body": "L'onglet Atlas dans Teams est lent au premier chargement le matin (plus de 10 secondes). Ensuite tout va bien, mais au démarrage ça donne envie d'abandonner.",
+    "author": "Collaborateur bêta — équipe commerciale",
+    "status": "Nouveau",
+    "tags": ["performance", "teams"],
+    "date": "{{J-5}}"
+  },
+  {
+    "id": "BETA-06",
+    "subject": "Lecteur d'écran et carte des étages",
+    "body": "Avec mon lecteur d'écran, la carte des étages n'est pas lisible ; heureusement la vue liste fonctionne. Il faudrait que la liste indique aussi si le poste est adapté PMR.",
+    "author": "Collaborateur bêta — mission handicap",
+    "status": "Pris en compte",
+    "tags": ["accessibilite", "rgaa"],
+    "date": "{{J-4}}"
+  },
+  {
+    "id": "BETA-07",
+    "subject": "Réservation libérée alors que j'étais là",
+    "body": "Ma réservation a été libérée alors que j'étais à mon poste : j'étais en réunion à l'arrivée et je n'ai pas fait le check-in à temps. Un rappel avant la libération serait utile.",
+    "author": "Manager bêta — équipe support",
+    "status": "Nouveau",
+    "tags": ["check-in", "notification"],
+    "date": "{{J-2}}"
+  },
+  {
+    "id": "BETA-08",
+    "subject": "Voir qui vient mardi",
+    "body": "En tant que manager, voir les jours de présence de mon équipe m'a permis d'organiser notre premier jour d'équipe sans échange de mails. Bravo, mais la vue n'est pas encore disponible sur mobile.",
+    "author": "Manager bêta — équipe produit",
+    "status": "Nouveau",
+    "tags": ["manager", "presence"],
+    "date": "{{J-1}}"
+  }
+]

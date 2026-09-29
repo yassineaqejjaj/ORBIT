@@ -210,7 +210,9 @@ def chunk_text(
         k = j
         if not units[j].is_heading and overlap_tokens > 0:
             overlap = 0
-            while k - 1 > i and not units[k - 1].is_heading and overlap + units[k - 1].tokens <= overlap_tokens:
+            while (
+                k - 1 > i and not units[k - 1].is_heading and overlap + units[k - 1].tokens <= overlap_tokens
+            ):
                 overlap += units[k - 1].tokens
                 k -= 1
         i = max(k, i + 1)

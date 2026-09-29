@@ -60,7 +60,16 @@ INTENT_KEYWORDS: dict[Intent, tuple[str, ...]] = {
         "performance",
     ),
     Intent.research: ("recherche", "benchmark", "veille", "entretien", "etude", "etat de l'art", "interview"),
-    Intent.analysis: ("analys", "synthese", "compar", "indicateur", "kpi", "tendance", "statistique", "bilan"),
+    Intent.analysis: (
+        "analys",
+        "synthese",
+        "compar",
+        "indicateur",
+        "kpi",
+        "tendance",
+        "statistique",
+        "bilan",
+    ),
     Intent.validation: (
         "valider",
         "validation",
@@ -101,7 +110,9 @@ def normalize_task(task: str) -> str:
 def infer_intent(task: str, agent_kind: AgentKind | str | None = None) -> Intent:
     """Keyword-based intent; ties broken by the agent kind, then by the declaration order."""
     folded = f" {fold(task)} "
-    scores = {intent: sum(1 for kw in keywords if kw in folded) for intent, keywords in INTENT_KEYWORDS.items()}
+    scores = {
+        intent: sum(1 for kw in keywords if kw in folded) for intent, keywords in INTENT_KEYWORDS.items()
+    }
     best = max(scores.values())
     if best == 0:
         if agent_kind is not None:

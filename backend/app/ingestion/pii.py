@@ -129,7 +129,9 @@ def card_is_valid(value: str) -> bool:
 def nir_is_valid(value: str) -> bool:
     """French NIR (15 characters without spaces): 13-character number + 2-digit key."""
     compact = re.sub(r"[\s.\-]", "", value).upper()
-    match = re.fullmatch(r"([1-478])(\d{2})(0[1-9]|1[0-2]|[2-9]\d)(\d{2}|2A|2B)(\d{3})(\d{3})(\d{2})", compact)
+    match = re.fullmatch(
+        r"([1-478])(\d{2})(0[1-9]|1[0-2]|[2-9]\d)(\d{2}|2A|2B)(\d{3})(\d{3})(\d{2})", compact
+    )
     if not match:
         return False
     number = compact[:13]
@@ -154,25 +156,33 @@ _IBAN_LENGTHS: dict[str, int] = {
 
 # --- Patterns ------------------------------------------------------------------------------------------
 
-_EMAIL = re.compile(r"(?<![\w.+-])[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,24}(?![\w-])")
+_EMAIL = re.compile(
+    r"(?<![\w.+-])[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,24}(?![\w-])"
+)
 _PHONE_FR = re.compile(
     r"(?<![\w+])(?:(?:\+|00)33[\s.\-]?(?:\(0\)[\s.\-]?)?[1-9]|0[1-9])(?:[\s.\-]?\d{2}){4}(?![\w])"
 )
 _PHONE_INTL = re.compile(r"(?<![\w+])\+(?!33)[1-9]\d{0,2}(?:[\s.\-]?\(?\d{1,4}\)?){2,5}(?![\w])")
-_IBAN = re.compile(r"(?<![A-Za-z0-9])[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,3})?(?![A-Za-z0-9])")
+_IBAN = re.compile(
+    r"(?<![A-Za-z0-9])[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,3})?(?![A-Za-z0-9])"
+)
 _CARD = re.compile(r"(?<![\d\-])(?:\d[ \-]?){12,18}\d(?![\d\-])")
 _NIR = re.compile(
     r"(?<![\dA-Za-z])[1-478][\s.]?\d{2}[\s.]?(?:0[1-9]|1[0-2]|[2-9]\d)[\s.]?(?:\d{2}|2[AB])[\s.]?\d{3}[\s.]?\d{3}[\s.]?\d{2}(?![\dA-Za-z])"
 )
-_IPV4 = re.compile(r"(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?![\d]|\.\d)")
+_IPV4 = re.compile(
+    r"(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?![\d]|\.\d)"
+)
 _UPPER = "A-ZÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸÆŒ"
 _LOWER = "a-zàâäçéèêëîïôöùûüÿæœ"
-_NAME_WORD = rf"(?:[{_UPPER}][{_LOWER}]+(?:['’\-][{_UPPER}]?[{_LOWER}]+)*|[{_UPPER}]{{2,}}(?:-[{_UPPER}]{{2,}})?)"
+_NAME_WORD = (
+    rf"(?:[{_UPPER}][{_LOWER}]+(?:['’\-][{_UPPER}]?[{_LOWER}]+)*|[{_UPPER}]{{2,}}(?:-[{_UPPER}]{{2,}})?)"
+)
 _PERSON = re.compile(
     rf"(?<![\w])(?:M\.|Mme\.?|Mlle\.?|Monsieur|Madame|Mademoiselle|Dr\.?|Docteur|Pr\.?)\s+"
     rf"(?P<name>{_NAME_WORD}(?:\s+(?:(?:de|du|des|d'|le|la|van|von)\s+)?{_NAME_WORD}){{0,2}})"
 )
-#: Capitalised words that follow a civility but are not names (« Madame la Directrice » is not matched anyway).
+#: Capitalised words following a civility that are not names (« Madame la Directrice » never matches).
 _NOT_NAMES = frozenset({"Le", "La", "Les", "Un", "Une", "Et", "Ou", "Vous", "Nous", "Merci", "Bonjour"})
 
 

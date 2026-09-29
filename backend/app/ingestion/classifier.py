@@ -50,9 +50,15 @@ _MARKINGS_C2 = re.compile(
     r"ne\s+pas\s+diffuser|diffusion\s+limit[ée]e)\W*$",
     re.IGNORECASE,
 )
-_INLINE_MARKINGS_C3 = re.compile(r"\b(strictement\s+confidentiel(?:le)?|tr[èe]s\s+secret|secret\s+d[ée]fense)\b", re.I)
-_INLINE_MARKINGS_C2 = re.compile(r"\b(document\s+confidentiel|diffusion\s+restreinte|ne\s+pas\s+diffuser)\b", re.I)
-_TITLE_C3 = re.compile(r"\b(tr[èe]s\s+secret|secret\s+d[ée]fense|strictement\s+confidentiel(?:le)?)\b", re.IGNORECASE)
+_INLINE_MARKINGS_C3 = re.compile(
+    r"\b(strictement\s+confidentiel(?:le)?|tr[èe]s\s+secret|secret\s+d[ée]fense)\b", re.I
+)
+_INLINE_MARKINGS_C2 = re.compile(
+    r"\b(document\s+confidentiel|diffusion\s+restreinte|ne\s+pas\s+diffuser)\b", re.I
+)
+_TITLE_C3 = re.compile(
+    r"\b(tr[èe]s\s+secret|secret\s+d[ée]fense|strictement\s+confidentiel(?:le)?)\b", re.IGNORECASE
+)
 _TITLE_C2 = re.compile(r"\b(confidentiel(?:le)?|restreint)\b", re.IGNORECASE)
 
 #: Sensitive topics: label → pattern. HR/pay topics weigh double.
@@ -63,12 +69,16 @@ _TOPICS: dict[str, re.Pattern[str]] = {
     "contrat": re.compile(r"\bcontrats?\b|\bcontractuel(?:le|s|les)?\b", re.I),
     "marge": re.compile(r"\bmarges?\b(?!\s+de\s+manœuvre)", re.I),
     "négociation": re.compile(r"\bn[ée]gociations?\b|\bn[ée]gocier\b", re.I),
-    "prix": re.compile(r"\bprix\s+(?:n[ée]goci[ée]s?|unitaires?|de\s+vente)\b|\btarifs?\s+n[ée]goci[ée]s?\b", re.I),
+    "prix": re.compile(
+        r"\bprix\s+(?:n[ée]goci[ée]s?|unitaires?|de\s+vente)\b|\btarifs?\s+n[ée]goci[ée]s?\b", re.I
+    ),
     "données bancaires": re.compile(r"\b(?:rib|iban|coordonn[ée]es\s+bancaires)\b", re.I),
     "licenciement": re.compile(r"\blicenciements?\b|\brupture\s+conventionnelle\b|\bplan\s+social\b", re.I),
     "évaluation individuelle": re.compile(r"\b[ée]valuations?\s+(?:annuelles?|individuelles?)\b", re.I),
     "mot de passe": re.compile(r"\bmots?\s+de\s+passe\b|\bidentifiants?\s+de\s+connexion\b", re.I),
-    "fusion-acquisition": re.compile(r"\bfusions?[\s-]acquisitions?\b|\brachat\s+de\s+la\s+soci[ée]t[ée]\b", re.I),
+    "fusion-acquisition": re.compile(
+        r"\bfusions?[\s-]acquisitions?\b|\brachat\s+de\s+la\s+soci[ée]t[ée]\b", re.I
+    ),
 }
 _HR_TOPICS = frozenset({"salaire", "rémunération", "licenciement", "évaluation individuelle"})
 TOPIC_THRESHOLD = 3

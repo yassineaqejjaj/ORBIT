@@ -149,7 +149,9 @@ def _load_encoder() -> Any:
                 logger.info("Cross-encoder reranker loaded: %s", settings.reranker_model)
             except Exception:
                 _encoder_failed = True
-                logger.exception("Cross-encoder %s unavailable — heuristic reranking used", settings.reranker_model)
+                logger.exception(
+                    "Cross-encoder %s unavailable — heuristic reranking used", settings.reranker_model
+                )
     return _encoder
 
 

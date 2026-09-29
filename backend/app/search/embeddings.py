@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import itertools
 import logging
 import os
 import re
@@ -109,11 +110,92 @@ def cosine(a: Sequence[float], b: Sequence[float]) -> float:
 _WORD = re.compile(r"[a-z0-9]+")
 #: Very frequent French/English function words: ignored as unigrams (still used inside bigrams).
 _STOPWORDS = frozenset(
-    """
-    a au aux avec ce ces cet cette dans de des du elle en et est il ils je la le les leur lui ma mais me
-    mes meme moi mon ne nos notre nous on ou par pas pour qu que qui sa se ses son sont sur ta te tes toi
-    ton tu un une vos votre vous y d l j m n s t c the of and to in is it for on be as at by an or
-    """.split()
+    (
+        "a",
+        "au",
+        "aux",
+        "avec",
+        "ce",
+        "ces",
+        "cet",
+        "cette",
+        "dans",
+        "de",
+        "des",
+        "du",
+        "elle",
+        "en",
+        "et",
+        "est",
+        "il",
+        "ils",
+        "je",
+        "la",
+        "le",
+        "les",
+        "leur",
+        "lui",
+        "ma",
+        "mais",
+        "me",
+        "mes",
+        "meme",
+        "moi",
+        "mon",
+        "ne",
+        "nos",
+        "notre",
+        "nous",
+        "on",
+        "ou",
+        "par",
+        "pas",
+        "pour",
+        "qu",
+        "que",
+        "qui",
+        "sa",
+        "se",
+        "ses",
+        "son",
+        "sont",
+        "sur",
+        "ta",
+        "te",
+        "tes",
+        "toi",
+        "ton",
+        "tu",
+        "un",
+        "une",
+        "vos",
+        "votre",
+        "vous",
+        "y",
+        "d",
+        "l",
+        "j",
+        "m",
+        "n",
+        "s",
+        "t",
+        "c",
+        "the",
+        "of",
+        "and",
+        "to",
+        "in",
+        "is",
+        "it",
+        "for",
+        "on",
+        "be",
+        "as",
+        "at",
+        "by",
+        "an",
+        "or",
+    )
 )
 
 
@@ -156,7 +238,7 @@ class HashEmbedder:
                 continue
             index, sign = self._bucket(f"u:{token}")
             vector[index] += sign
-        for left, right in zip(tokens, tokens[1:], strict=False):
+        for left, right in itertools.pairwise(tokens):
             index, sign = self._bucket(f"b:{left}_{right}")
             vector[index] += 0.5 * sign
         norm = float(np.linalg.norm(vector))
@@ -238,7 +320,7 @@ class FastEmbedEmbedder:
         return vectors[0]
 
 
-# --- OpenAI-compatible HTTP API (TEI, vLLM, LiteLLM, OpenAI) -------------------------------------------------
+# --- OpenAI-compatible HTTP API (TEI, vLLM, LiteLLM, OpenAI) ------------------------------------------------
 
 
 def _embeddings_url(base_url: str) -> str:
@@ -255,9 +337,7 @@ class OpenAIEmbedder:
 
     def __init__(self, base_url: str, model_name: str, dim: int, api_key: str = "") -> None:
         if not base_url:
-            raise EmbeddingError(
-                "ORBIT_EMBEDDING_BASE_URL est requis avec ORBIT_EMBEDDING_PROVIDER=openai"
-            )
+            raise EmbeddingError("ORBIT_EMBEDDING_BASE_URL est requis avec ORBIT_EMBEDDING_PROVIDER=openai")
         self.model_name = model_name
         self.dim = dim
         self.url = _embeddings_url(base_url)

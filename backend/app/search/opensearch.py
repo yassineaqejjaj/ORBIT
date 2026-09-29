@@ -125,7 +125,13 @@ def index_settings() -> dict[str, Any]:
                 "french": {
                     "type": "custom",
                     "tokenizer": "standard",
-                    "filter": ["french_elision", "lowercase", "asciifolding", "french_stop", "french_stemmer"],
+                    "filter": [
+                        "french_elision",
+                        "lowercase",
+                        "asciifolding",
+                        "french_stop",
+                        "french_stemmer",
+                    ],
                 }
             },
         },
@@ -229,7 +235,9 @@ async def ensure_indices() -> None:
         mapping = mapping_for(kind)
         if not await client.indices.exists(index=name):
             try:
-                await client.indices.create(index=name, body={"settings": index_settings(), "mappings": mapping})
+                await client.indices.create(
+                    index=name, body={"settings": index_settings(), "mappings": mapping}
+                )
                 logger.info("OpenSearch index %s created (dim=%d)", name, settings.embedding_dim)
                 continue
             except RequestError as exc:
@@ -358,7 +366,8 @@ async def _bulk(
                 failures.append(f"{op} {result.get('_id')}: {reason or status}")
     if failures:
         raise IndexingError(
-            f"{len(failures)} opération(s) OpenSearch en échec sur {index_name(kind)} : " + "; ".join(failures[:3])
+            f"{len(failures)} opération(s) OpenSearch en échec sur {index_name(kind)} : "
+            + "; ".join(failures[:3])
         )
     return succeeded
 
@@ -372,7 +381,8 @@ def _prepare_doc(doc: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
     if embedding is not None:
         if len(embedding) != settings.embedding_dim:
             raise IndexingError(
-                f"Vecteur de dimension {len(embedding)} pour « {doc_id} » (attendu : {settings.embedding_dim})"
+                f"Vecteur de dimension {len(embedding)} pour « {doc_id} » "
+                f"(attendu : {settings.embedding_dim})"
             )
         # float32 precision is ~7 significant digits: 6 decimals keep the vector exact enough for
         # cosine similarity while halving the size of ``_source`` (returned to the context engine).

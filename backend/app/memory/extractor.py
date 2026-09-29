@@ -369,12 +369,20 @@ _LLM_SYSTEM = (
     '{"items": [{"kind": "decision|requirement|constraint|risk|fact", "title": "titre court (≤ 90 caractères)", '
     '"content": "phrase exacte du texte", "explicit_decision": true|false}]}. '
     "explicit_decision vaut true seulement si la ligne commence par « Décision : ». "
-    "N'invente rien ; renvoie {\"items\": []} si le texte ne contient rien de pertinent."
+    'N\'invente rien ; renvoie {"items": []} si le texte ne contient rien de pertinent.'
 )
-_LLM_KINDS = {MemoryKind.decision, MemoryKind.requirement, MemoryKind.constraint, MemoryKind.risk, MemoryKind.fact}
+_LLM_KINDS = {
+    MemoryKind.decision,
+    MemoryKind.requirement,
+    MemoryKind.constraint,
+    MemoryKind.risk,
+    MemoryKind.fact,
+}
 
 
-async def _llm_statements(document: Document, chunk: Chunk, source_kind: SourceKind) -> list[Statement] | None:
+async def _llm_statements(
+    document: Document, chunk: Chunk, source_kind: SourceKind
+) -> list[Statement] | None:
     """Statements proposed by the optional LLM, grounded in the chunk text; ``None`` on any failure."""
     if not llm.is_enabled():
         return None
@@ -449,10 +457,14 @@ async def _collect_candidates(
         if statements:
             result.used_llm = True
         else:
-            statements = extract_statements(chunk.text_redacted, section=chunk.section, source_kind=source_kind)
+            statements = extract_statements(
+                chunk.text_redacted, section=chunk.section, source_kind=source_kind
+            )
         for statement in statements:
             validated = meeting and statement.explicit_decision
-            statement.confidence = round(max(0.3, min(0.95, statement.confidence + delta + (0.1 if validated else 0))), 2)
+            statement.confidence = round(
+                max(0.3, min(0.95, statement.confidence + delta + (0.1 if validated else 0))), 2
+            )
             key = f"{statement.kind.value}:{normalize_text(statement.content)}"
             existing = by_text.get(key)
             if existing is not None:
@@ -550,7 +562,11 @@ async def _find_existing(
         best: tuple[float, MemoryItem] | None = None
         for item in items:
             duplicate, score = lifecycle.is_duplicate(
-                candidate.text, lifecycle.embedding_text(item), candidate.vector, vectors.get(item.id), DUPLICATE_SIMILARITY
+                candidate.text,
+                lifecycle.embedding_text(item),
+                candidate.vector,
+                vectors.get(item.id),
+                DUPLICATE_SIMILARITY,
             )
             if duplicate and (best is None or score > best[0]):
                 best = (score, item)

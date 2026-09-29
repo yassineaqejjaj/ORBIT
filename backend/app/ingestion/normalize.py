@@ -24,9 +24,7 @@ _LIGATURES = {
     "\ufb06": "st",
 }
 _INVISIBLE = dict.fromkeys(map(ord, "\u00ad\u200b\u200c\u200d\u2060\ufeff"), None)
-_SPACES = dict.fromkeys(
-    map(ord, "\u00a0\u202f\u2007\u2009\u200a\u2002\u2003\u2004\u2005\u2006\u3000"), " "
-)
+_SPACES = dict.fromkeys(map(ord, "\u00a0\u202f\u2007\u2009\u200a\u2002\u2003\u2004\u2005\u2006\u3000"), " ")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _HYPHEN_BREAK = re.compile(r"(?<=[a-zà-öø-ÿ])-\n[ \t]*(?=[a-zà-öø-ÿ])")
 _MULTI_SPACE = re.compile(r"[ \t]{2,}")

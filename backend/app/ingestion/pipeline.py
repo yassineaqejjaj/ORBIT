@@ -292,7 +292,11 @@ async def _ingest(
         if extracted.title:
             extraction_meta["title"] = extracted.title
         version.extracted_text = text
-        version.metadata_ = {**(version.metadata_ or {}), "extraction": extraction_meta, "char_count": len(text)}
+        version.metadata_ = {
+            **(version.metadata_ or {}),
+            "extraction": extraction_meta,
+            "char_count": len(text),
+        }
         if extracted.author and not document.author:
             document.author = extracted.author[:300]
         detail = f"{FORMAT_LABELS.get(extracted.format, extracted.format)} · {len(text)} caractères"
@@ -343,7 +347,9 @@ async def _ingest(
                 f"{classification_code(declared)} : {'; '.join(reasons[1:]) or reasons[0]}"
             )
         else:
-            step.detail = f"{classification_code(level)} ({classification_label(level)}) — " + "; ".join(reasons)
+            step.detail = f"{classification_code(level)} ({classification_label(level)}) — " + "; ".join(
+                reasons
+            )
 
     # 4. chunk ------------------------------------------------------------------------------------------
     async with track_step(session, job, "chunk", commit=True) as step:
@@ -373,7 +379,9 @@ async def _ingest(
     # 5. embed ------------------------------------------------------------------------------------------
     async with track_step(session, job, "embed", commit=True) as step:
         try:
-            vectors = await embed_texts([embedding_input(document.title, c.section, c.text) for c in prepared])
+            vectors = await embed_texts(
+                [embedding_input(document.title, c.section, c.text) for c in prepared]
+            )
         except EmbeddingDimensionError as exc:
             raise PermanentJobError(str(exc)) from exc
         embedder = await aget_embedder()
@@ -485,7 +493,9 @@ async def _supersede_previous_versions(session: AsyncSession, document: Document
         await session.execute(
             update(Chunk).where(Chunk.id.in_(old_ids)).values(status=ChunkStatus.superseded)
         )
-        await opensearch.update_status("chunks", [str(i) for i in old_ids], ChunkStatus.superseded.value, refresh=True)
+        await opensearch.update_status(
+            "chunks", [str(i) for i in old_ids], ChunkStatus.superseded.value, refresh=True
+        )
     if version > 1:
         detail = f"Version {version} remplace la version {version - 1}"
         stmt = (
@@ -501,9 +511,7 @@ async def _supersede_previous_versions(session: AsyncSession, document: Document
                 confidence=1.0,
                 detail=detail,
             )
-            .on_conflict_do_update(
-                index_elements=["src_id", "rel_type", "dst_id"], set_={"detail": detail}
-            )
+            .on_conflict_do_update(index_elements=["src_id", "rel_type", "dst_id"], set_={"detail": detail})
         )
         await session.execute(stmt)
     return len(old_ids)
@@ -586,7 +594,9 @@ async def handle_reindex(session: AsyncSession, job: IngestionJob) -> None:
                 source = await session.get(Source, document.source_id)
                 chunk_rows = list(
                     await session.scalars(
-                        select(Chunk).where(Chunk.document_id == document.id, Chunk.status != ChunkStatus.forgotten)
+                        select(Chunk).where(
+                            Chunk.document_id == document.id, Chunk.status != ChunkStatus.forgotten
+                        )
                     )
                 )
                 fields = document_index_fields(document, source)
@@ -613,7 +623,9 @@ async def handle_reindex(session: AsyncSession, job: IngestionJob) -> None:
             if not chunk_rows:
                 continue
             try:
-                vectors = await embed_texts([embedding_input(document.title, c.section, c.text) for c in chunk_rows])
+                vectors = await embed_texts(
+                    [embedding_input(document.title, c.section, c.text) for c in chunk_rows]
+                )
             except EmbeddingDimensionError as exc:
                 raise PermanentJobError(str(exc)) from exc
             batches.append((document, source, chunk_rows, vectors))
@@ -661,7 +673,9 @@ async def handle_forget(session: AsyncSession, job: IngestionJob) -> None:
             document.forgotten_by = actor.id
 
     async with track_step(session, job, "index", commit=True) as step:
-        deleted = await opensearch.delete_by_query("chunks", {"term": {"document_id": str(document.id)}}, refresh=True)
+        deleted = await opensearch.delete_by_query(
+            "chunks", {"term": {"document_id": str(document.id)}}, refresh=True
+        )
         step.detail = f"{deleted} fragment(s) supprimé(s) de l'index"
 
     async with track_step(session, job, "purge", commit=True) as step:
@@ -672,7 +686,9 @@ async def handle_forget(session: AsyncSession, job: IngestionJob) -> None:
             .returning(Chunk.id)
         )
         chunk_count = len(result.all())
-        versions = list(await session.scalars(select(DocumentVersion).where(DocumentVersion.document_id == document.id)))
+        versions = list(
+            await session.scalars(select(DocumentVersion).where(DocumentVersion.document_id == document.id))
+        )
         purged_files = 0
         store = get_object_store()
         for version in versions:

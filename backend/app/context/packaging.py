@@ -174,9 +174,11 @@ def section_header_tokens(section: str) -> int:
 
 
 def base_overhead_tokens(task: str = "", intent: Intent = Intent.general) -> int:
-    return estimate_tokens(preamble(task or "x" * TASK_PREVIEW_CHARS, intent)) + estimate_tokens(
-        f"\n## {SOURCES_HEADING}\n\n"
-    ) + 2
+    return (
+        estimate_tokens(preamble(task or "x" * TASK_PREVIEW_CHARS, intent))
+        + estimate_tokens(f"\n## {SOURCES_HEADING}\n\n")
+        + 2
+    )
 
 
 # --- Rendering ----------------------------------------------------------------------------------------
@@ -203,7 +205,11 @@ def assign_citations(included: Sequence[Decision]) -> list[Decision]:
 
 def classification_warnings(included: Sequence[Decision]) -> list[str]:
     levels = sorted(
-        {int(d.candidate.classification) for d in included if int(d.candidate.classification) >= RESTRICTED_CLASSIFICATION_MIN},
+        {
+            int(d.candidate.classification)
+            for d in included
+            if int(d.candidate.classification) >= RESTRICTED_CLASSIFICATION_MIN
+        },
         reverse=True,
     )
     return [w for w in (classification_warning(level) for level in levels) if w]

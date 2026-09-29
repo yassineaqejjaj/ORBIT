@@ -38,8 +38,8 @@ async def actor_labels(session: AsyncSession, refs: Iterable[ActorRef]) -> dict[
         rows = await session.execute(select(User.id, User.full_name, User.email).where(User.id.in_(user_ids)))
         users = {uid: (name or email) for uid, name, email in rows.tuples()}
     if agent_ids:
-        rows = await session.execute(select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids)))
-        agents = {aid: name for aid, name in rows.tuples()}
+        agent_rows = await session.execute(select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids)))
+        agents = {aid: name for aid, name in agent_rows.tuples()}
     labels: dict[ActorRef, str] = {}
     for kind, actor_id in wanted:
         if kind == ActorType.user:

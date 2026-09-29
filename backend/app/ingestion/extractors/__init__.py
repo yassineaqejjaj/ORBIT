@@ -153,7 +153,8 @@ def extract(data: bytes, mime_type: str, filename: str | None = None) -> Extract
     extractor = _extractors().get(canonical)
     if extractor is None:
         raise UnsupportedFormatError(
-            f"Format non pris en charge ({mime_type or 'inconnu'}) — formats acceptés : {SUPPORTED_FORMATS_LABEL}"
+            f"Format non pris en charge ({mime_type or 'inconnu'}) — "
+            f"formats acceptés : {SUPPORTED_FORMATS_LABEL}"
         )
     if not data:
         raise ExtractionError("Le fichier est vide")

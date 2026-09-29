@@ -16,7 +16,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import redis.asyncio as redis
 
@@ -140,7 +140,7 @@ def _parse_turn(raw: str) -> Turn | None:
 async def get_turns(project_id: uuid.UUID, session_id: str, *, limit: int | None = None) -> list[Turn]:
     """Turns of a session in chronological order (the most recent ``limit`` when given)."""
     start = -limit if limit and limit > 0 else 0
-    raw_turns = await get_valkey().lrange(session_key(project_id, session_id), start, -1)
+    raw_turns = cast(list[str], await get_valkey().lrange(session_key(project_id, session_id), start, -1))
     turns = [_parse_turn(raw) for raw in raw_turns]
     return [turn for turn in turns if turn is not None]
 
@@ -160,7 +160,7 @@ async def list_sessions(project_id: uuid.UUID) -> list[SessionInfo]:
     """Live sessions of the project, most recently updated first (expired entries pruned)."""
     client = get_valkey()
     index = sessions_index_key(project_id)
-    entries: list[tuple[str, float]] = await client.zrevrange(index, 0, -1, withscores=True)
+    entries = cast(list[tuple[str, float]], await client.zrevrange(index, 0, -1, withscores=True))
     if not entries:
         return []
     async with client.pipeline(transaction=False) as pipe:
@@ -207,11 +207,11 @@ async def purge_matching(project_id: uuid.UUID, needle: str) -> int:
     if len(folded_needle) < MIN_PURGE_NEEDLE_LENGTH:
         return 0
     client = get_valkey()
-    session_ids: list[str] = await client.zrange(sessions_index_key(project_id), 0, -1)
+    session_ids = cast(list[str], await client.zrange(sessions_index_key(project_id), 0, -1))
     removed = 0
     for session_id in session_ids:
         key = session_key(project_id, session_id)
-        raw_turns: list[str] = await client.lrange(key, 0, -1)
+        raw_turns = cast(list[str], await client.lrange(key, 0, -1))
         matching: set[str] = set()
         for raw in raw_turns:
             turn = _parse_turn(raw)

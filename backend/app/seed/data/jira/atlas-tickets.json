@@ -1,0 +1,134 @@
+[
+  {
+    "id": "ATLAS-101",
+    "type": "Épic",
+    "title": "Étude d'opportunité flex office Lyon",
+    "description": "Évaluer l'intérêt d'un outil de réservation d'espaces de travail pour le site de Lyon : recensement des usages actuels (tableur partagé, messagerie), estimation des gains de surface et premiers contacts avec la direction immobilière. L'étude conclut à l'intérêt d'un pilote sur deux étages.",
+    "reporter": "Julien Roux",
+    "status": "Terminé",
+    "priority": "Haute",
+    "labels": ["etude", "flex-office"],
+    "updated_at": "{{J-120}}"
+  },
+  {
+    "id": "ATLAS-102",
+    "type": "Story",
+    "title": "Recenser les outils de réservation existants",
+    "description": "Lister les outils utilisés par les équipes pour réserver les salles (agenda de messagerie, tableur des services généraux) et identifier les irritants. Livrable : tableau comparatif partagé avec la cellule veille.",
+    "reporter": "Sarah Nguyen",
+    "status": "Terminé",
+    "priority": "Moyenne",
+    "labels": ["etude"],
+    "updated_at": "{{J-110}}"
+  },
+  {
+    "id": "ATLAS-103",
+    "type": "Story",
+    "title": "Maquette papier de l'application native",
+    "description": "Réaliser une première maquette papier des écrans de l'application mobile native (liste des postes, réservation, profil). Ticket créé pendant l'étude préalable, avant le choix de la PWA.",
+    "reporter": "Léo Bernard",
+    "status": "Abandonné",
+    "priority": "Basse",
+    "labels": ["design", "natif"],
+    "updated_at": "{{J-95}}"
+  },
+  {
+    "id": "ATLAS-104",
+    "type": "Épic",
+    "title": "Réservation de poste près de mon équipe",
+    "description": "Permettre au collaborateur de réserver en un geste le poste libre le plus proche des membres de son équipe déjà inscrits pour le jour choisi. Inclut l'affichage des présences de l'équipe et le calcul de proximité par zone.",
+    "reporter": "Camille Martin",
+    "status": "Terminé",
+    "priority": "Haute",
+    "labels": ["reservation", "pilote"],
+    "updated_at": "{{J-30}}"
+  },
+  {
+    "id": "ATLAS-105",
+    "type": "Story",
+    "title": "Carte interactive des étages 2 et 3",
+    "description": "Afficher la carte des étages pilotes avec l'état des postes (libre, réservé, occupé) rafraîchi toutes les 30 secondes. Les noms de salles doivent reprendre la signalétique physique. Accessibilité : alternative textuelle sous forme de liste.",
+    "reporter": "Léo Bernard",
+    "status": "Terminé",
+    "priority": "Haute",
+    "labels": ["carte", "rgaa"],
+    "updated_at": "{{J-21}}"
+  },
+  {
+    "id": "ATLAS-106",
+    "type": "Story",
+    "title": "Authentification SSO OIDC Keycloak",
+    "description": "Remplacer le login email / mot de passe par une authentification SSO OIDC sur le Keycloak de Nordalis. Récupération de l'équipe, du manager et des groupes atlas-users, atlas-managers, atlas-facilities et atlas-admins.",
+    "reporter": "Inès Moreau",
+    "status": "Terminé",
+    "priority": "Critique",
+    "labels": ["securite", "sso"],
+    "updated_at": "{{J-7}}"
+  },
+  {
+    "id": "ATLAS-107",
+    "type": "Story",
+    "title": "Check-in par QR code",
+    "description": "Le collaborateur scanne le QR code apposé sur le poste ou à l'entrée de la salle pour confirmer sa présence. Sans check-in 30 minutes après le début, la réservation est libérée. Prévoir un code court à six caractères en secours.",
+    "reporter": "Camille Martin",
+    "status": "En cours",
+    "priority": "Haute",
+    "labels": ["check-in", "qr-code", "pilote"],
+    "updated_at": "{{J-3}}"
+  },
+  {
+    "id": "ATLAS-108",
+    "type": "Story",
+    "title": "Réservation récurrente hebdomadaire",
+    "description": "Permettre de réserver le même poste chaque semaine sur huit semaines au maximum. Demande forte des collaborateurs de la bêta interne lors de la sprint review 6.",
+    "reporter": "Camille Martin",
+    "status": "À faire",
+    "priority": "Moyenne",
+    "labels": ["reservation"],
+    "updated_at": "{{J-4}}"
+  },
+  {
+    "id": "ATLAS-109",
+    "type": "Story",
+    "title": "Tableau de bord d'occupation pour les services généraux",
+    "description": "Tableau de bord du taux d'occupation par étage, par jour et par équipe, avec export CSV. Les données sont agrégées : aucune donnée nominative n'est affichée aux services généraux.",
+    "reporter": "Thomas Lefèvre",
+    "status": "À faire",
+    "priority": "Moyenne",
+    "labels": ["reporting", "services-generaux"],
+    "updated_at": "{{J-12}}"
+  },
+  {
+    "id": "ATLAS-110",
+    "type": "Bug",
+    "title": "Les salles du 3e étage n'apparaissent pas dans la recherche",
+    "description": "Bug bloquant remonté par la bêta : la recherche par nom ne trouve pas les salles du 3e étage, dont le nommage diffère de la signalétique (Saône 3B au lieu de 3B-Saône). Corriger le référentiel et la recherche.",
+    "reporter": "Inès Moreau",
+    "status": "En cours",
+    "priority": "Critique",
+    "labels": ["bug", "beta"],
+    "updated_at": "{{J-2}}"
+  },
+  {
+    "id": "ATLAS-111",
+    "type": "Bug",
+    "title": "Lecture du QR code difficile en faible luminosité",
+    "description": "Plusieurs testeurs signalent que le QR code ne se lit pas en fin de journée ou au fond des salles. Pistes : activer la torche du téléphone depuis l'écran de scan, agrandir les étiquettes, afficher le code court.",
+    "reporter": "Léo Bernard",
+    "status": "À faire",
+    "priority": "Haute",
+    "labels": ["bug", "qr-code", "beta"],
+    "updated_at": "{{J-2}}"
+  },
+  {
+    "id": "ATLAS-112",
+    "type": "Story",
+    "title": "Audit d'accessibilité RGAA AA avant le pilote",
+    "description": "Organiser l'audit externe RGAA niveau AA deux semaines avant le pilote, corriger les non-conformités bloquantes et publier la déclaration d'accessibilité.",
+    "reporter": "Léo Bernard",
+    "status": "À faire",
+    "priority": "Haute",
+    "labels": ["rgaa", "pilote"],
+    "updated_at": "{{J-10}}"
+  }
+]

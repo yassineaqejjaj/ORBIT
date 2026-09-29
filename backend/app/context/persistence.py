@@ -33,6 +33,7 @@ from app.context.visibility import (
     redact_markdown,
 )
 from app.enums import (
+    GOVERNANCE_ORDER,
     CandidateType,
     ContextRequestStatus,
     FeedbackFlag,
@@ -390,6 +391,9 @@ async def get_request(session: AsyncSession, project_id: uuid.UUID, request_id: 
     return request
 
 
+_EXCLUSION_ORDER = {code: index for index, code in enumerate(GOVERNANCE_ORDER)}
+
+
 def _parse_date(value: Any) -> datetime | None:
     if not value:
         return None
@@ -489,6 +493,8 @@ async def reconstitute(
                 )
             )
     items.sort(key=lambda i: int(i.citation[1:]) if i.citation[1:].isdigit() else 10_000)
+    # Same order as the live package: governance order, then selection exclusions (stable: by rank).
+    excluded.sort(key=lambda e: _EXCLUSION_ORDER.get(e.reason_code, len(_EXCLUSION_ORDER)))
     summary: dict[ReasonCode, int] = {}
     for row in decisions:
         if not row.included:
