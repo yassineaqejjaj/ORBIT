@@ -188,15 +188,26 @@ export const JOB_KIND_META: Record<JobKind, EnumMeta> = {
   extract_memory: { label: "Extraction mémoire", tone: "teal" },
 };
 
-export const JOB_STATUSES = ["queued", "running", "succeeded", "failed"] as const;
+export const JOB_STATUSES = ["queued", "running", "succeeded", "failed", "dead"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
-export const JOB_STATUS_META: Record<JobStatus, EnumMeta> = {
+/** `cancelled` is only displayed (never used as a filter): the API may return it after `POST …/cancel`. */
+export const JOB_STATUS_META: Record<JobStatus | "cancelled", EnumMeta> = {
   queued: { label: "En file", tone: "neutral" },
   running: { label: "En cours", tone: "blue" },
   succeeded: { label: "Réussi", tone: "green" },
   failed: { label: "Échec", tone: "red" },
+  dead: {
+    label: "Abandonné",
+    tone: "orange",
+    description: "Tentatives épuisées ou tâche empoisonnée : à relancer ou annuler depuis la file d'erreurs.",
+  },
+  cancelled: { label: "Annulé", tone: "neutral" },
 };
+
+/** Job statuses on which an editor may act (retry / cancel). */
+export const RETRYABLE_JOB_STATUSES: ReadonlySet<string> = new Set(["failed", "dead", "cancelled"]);
+export const CANCELLABLE_JOB_STATUSES: ReadonlySet<string> = new Set(["queued", "failed", "dead"]);
 
 /** Canonical ingestion pipeline steps (ARCHITECTURE §7). */
 export const JOB_STEP_NAMES = ["extract", "pii", "classify", "chunk", "embed", "index", "extract_memory"] as const;
@@ -607,4 +618,109 @@ export function aclPrincipalLabel(principal: string, userNames?: Record<string, 
   }
   if (principal.startsWith("role:")) return `Rôle ${principal.slice(5)}`;
   return principal;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Identity, agents & operations (docs/PRODUCTION.md §3)                      */
+/* -------------------------------------------------------------------------- */
+
+export const AUTH_PROVIDERS = ["local", "oidc"] as const;
+export type AuthProvider = (typeof AUTH_PROVIDERS)[number];
+
+export const AUTH_PROVIDER_META: Record<AuthProvider, EnumMeta> = {
+  local: { label: "Compte local", tone: "neutral", description: "E-mail et mot de passe gérés par ORBIT" },
+  oidc: { label: "SSO", tone: "violet", description: "Authentification déléguée au fournisseur d'identité (OIDC)" },
+};
+
+export const MFA_POLICIES = ["none", "privileged", "all"] as const;
+export type MfaPolicy = (typeof MFA_POLICIES)[number];
+
+export const MFA_POLICY_META: Record<MfaPolicy, EnumMeta> = {
+  none: { label: "Facultative", tone: "neutral", description: "La double authentification est recommandée mais facultative." },
+  privileged: {
+    label: "Comptes privilégiés",
+    tone: "amber",
+    description: "Obligatoire pour les administrateurs et les habilitations C2 ou supérieures.",
+  },
+  all: { label: "Tous les comptes", tone: "red", description: "Obligatoire pour tous les comptes locaux." },
+};
+
+/** True when the MFA policy forces a second factor for this (local) account. */
+export function isMfaRequiredFor(
+  policy: MfaPolicy | null | undefined,
+  user: { is_admin: boolean; clearance: number; auth_provider?: AuthProvider | null },
+): boolean {
+  if (user.auth_provider === "oidc") return false;
+  if (policy === "all") return true;
+  if (policy === "privileged") return user.is_admin || toClassification(user.clearance) >= 2;
+  return false;
+}
+
+export const AGENT_SCOPES = [
+  "context:read",
+  "search:read",
+  "snapshots:read",
+  "memory:propose",
+  "sessions:write",
+  "documents:write",
+  "feedback:write",
+] as const;
+export type AgentScope = (typeof AGENT_SCOPES)[number];
+
+export const AGENT_SCOPE_META: Record<AgentScope, EnumMeta> = {
+  "context:read": {
+    label: "Obtenir du contexte",
+    tone: "teal",
+    description: "Assembler des contextes gouvernés (API et outil MCP get_context).",
+  },
+  "search:read": { label: "Rechercher", tone: "blue", description: "Recherche hybride dans les documents et la mémoire du projet." },
+  "snapshots:read": { label: "Lire les snapshots", tone: "sky", description: "Consulter les contextes partagés et versionnés." },
+  "memory:propose": {
+    label: "Proposer de la mémoire",
+    tone: "violet",
+    description: "Créer des items mémoire au statut « proposé », à valider par un humain.",
+  },
+  "sessions:write": { label: "Sessions", tone: "neutral", description: "Enregistrer les échanges de session (mémoire court terme)." },
+  "documents:write": {
+    label: "Déposer des documents",
+    tone: "amber",
+    description: "Ajouter des documents et des notes au projet. Désactivé par défaut.",
+  },
+  "feedback:write": { label: "Donner un retour", tone: "green", description: "Noter la pertinence des contextes reçus." },
+};
+
+/** Scopes granted when none are chosen explicitly (backend default: everything but `documents:write`). */
+export const DEFAULT_AGENT_SCOPES: readonly AgentScope[] = AGENT_SCOPES.filter((s) => s !== "documents:write");
+
+/** Default lifetime of an agent key, in days (backend default `expires_at`). */
+export const AGENT_KEY_DEFAULT_DAYS = 180;
+/** Hours during which the previous key keeps working after a rotation. */
+export const AGENT_KEY_ROTATION_GRACE_HOURS = 24;
+
+export const REINDEX_TARGETS = ["all", "chunks", "memory"] as const;
+export type ReindexTarget = (typeof REINDEX_TARGETS)[number];
+
+export const REINDEX_TARGET_META: Record<ReindexTarget, EnumMeta> = {
+  all: { label: "Tout", tone: "violet", description: "Chunks de documents et items mémoire." },
+  chunks: { label: "Chunks de documents", tone: "blue", description: "Index de recherche des documents." },
+  memory: { label: "Mémoire", tone: "teal", description: "Index des items mémoire." },
+};
+
+export const DEPENDENCY_STATUSES = ["ok", "degraded", "down"] as const;
+export type DependencyStatus = (typeof DEPENDENCY_STATUSES)[number];
+
+export const DEPENDENCY_STATUS_META: Record<DependencyStatus, EnumMeta> = {
+  ok: { label: "Opérationnel", tone: "green" },
+  degraded: { label: "Dégradé", tone: "amber" },
+  down: { label: "Indisponible", tone: "red" },
+};
+
+/** Map loose status strings from the API (ok/up/healthy, degraded/warn, down/error…) to a known status. */
+export function toDependencyStatus(value: unknown): DependencyStatus {
+  if (value === true) return "ok";
+  if (value === false) return "down";
+  const v = String(value ?? "").toLowerCase();
+  if (["ok", "up", "healthy", "ready", "green", "pass", "passing"].includes(v)) return "ok";
+  if (["degraded", "warn", "warning", "yellow", "slow", "stale"].includes(v)) return "degraded";
+  return "down";
 }

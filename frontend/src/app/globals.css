@@ -20,7 +20,7 @@
   --popover-foreground: #0f172a;
 
   /* Brand — ORBIT teal (#0E9384). `--primary` is one step darker for AA text contrast. */
-  --brand: #0e9384;
+  --brand: #0b766a; /* text-safe (>= 4.5:1); the logo keeps --orbit */
   --brand-soft: #e6f6f4;
   --primary: #107569;
   --primary-hover: #125d56;
@@ -35,8 +35,8 @@
   --secondary: #f1f4f6;
   --secondary-foreground: #1e293b;
   --muted: #f1f4f6;
-  --muted-foreground: #5b6b7f;
-  --subtle-foreground: #8593a3;
+  --muted-foreground: #4e5c6d;
+  --subtle-foreground: #5a6979; /* RGAA 3.2 / WCAG 1.4.3: >= 4.5:1 on every surface */
   --accent: #eef2f5;
   --accent-foreground: #0f172a;
   --border: #e3e8ee;
@@ -55,7 +55,7 @@
   /* Sidebar */
   --sidebar: #f7f9fa;
   --sidebar-foreground: #334155;
-  --sidebar-muted: #64748b;
+  --sidebar-muted: #5a697d;
   --sidebar-border: #e6ebf0;
   --sidebar-accent: #e9eef2;
   --sidebar-accent-foreground: #0f172a;
@@ -68,7 +68,7 @@
   --chart-5: #7a5af8; /* violet */
   --chart-6: #e87ba4; /* magenta — < 3:1 on light: pair with labels */
   --chart-grid: #e8edf2;
-  --chart-axis: #8593a3;
+  --chart-axis: #5a6979;
 
   /* Status (reserved — never for series identity; always with icon + label) */
   --status-good: #0ca30c;
@@ -107,8 +107,8 @@
   --secondary: #18212b;
   --secondary-foreground: #d7e0ea;
   --muted: #151d26;
-  --muted-foreground: #93a3b5;
-  --subtle-foreground: #6b7c8f;
+  --muted-foreground: #a1b0c0;
+  --subtle-foreground: #8494a6; /* RGAA 3.2 / WCAG 1.4.3: >= 4.5:1 on every surface */
   --accent: #1a2430;
   --accent-foreground: #e6edf3;
   --border: #1e2934;
@@ -116,16 +116,16 @@
   --input: #2a3643;
   --ring: #2ed3b7;
 
-  --destructive: #f04438;
-  --destructive-hover: #f97066;
-  --destructive-foreground: #ffffff;
+  --destructive: #f97066;
+  --destructive-hover: #fda29b;
+  --destructive-foreground: #1f0a07;
   --success: #47cd89;
   --warning: #fdb022;
   --info: #53b1fd;
 
   --sidebar: #0c1117;
   --sidebar-foreground: #c4d0dc;
-  --sidebar-muted: #7d8da0;
+  --sidebar-muted: #8595a8;
   --sidebar-border: #19222c;
   --sidebar-accent: #17202a;
   --sidebar-accent-foreground: #f1f5f9;
@@ -137,7 +137,7 @@
   --chart-5: #9085e9;
   --chart-6: #d55181;
   --chart-grid: #1c2631;
-  --chart-axis: #6b7c8f;
+  --chart-axis: #8494a6;
 
   --shadow-color: 220 60% 2%;
 }
