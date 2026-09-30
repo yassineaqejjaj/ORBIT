@@ -1,5 +1,5 @@
 # ORBIT — complete platform: `docker compose up -d --build` (see Makefile for shortcuts).
-# Host ports: web 3000, api 8000, postgres 5433, opensearch 9201, valkey 6380.
+# Host ports (bound to 127.0.0.1 only — never exposed on the network): web 3000, api 8000, postgres 5433, opensearch 9201, valkey 6380.
 
 name: orbit
 
@@ -34,7 +34,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orbit}
       POSTGRES_DB: ${POSTGRES_DB:-orbit}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - orbit_pg:/var/lib/postgresql/data
     healthcheck:
@@ -59,7 +59,7 @@ services:
         soft: 65536
         hard: 65536
     ports:
-      - "9201:9200"
+      - "127.0.0.1:9201:9200"
     volumes:
       - orbit_os:/usr/share/opensearch/data
     healthcheck:
@@ -74,7 +74,7 @@ services:
     restart: unless-stopped
     command: ["valkey-server", "--appendonly", "yes", "--save", "60", "1000"]
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
     volumes:
       - orbit_valkey:/data
     healthcheck:
@@ -90,7 +90,7 @@ services:
       <<: *backend-env
       ORBIT_SERVICE_NAME: orbit-api
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -131,7 +131,7 @@ services:
       ORBIT_API_URL: http://api:8000
       NODE_ENV: production
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       api:
         condition: service_healthy
