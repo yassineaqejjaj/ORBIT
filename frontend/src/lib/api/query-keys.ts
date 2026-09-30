@@ -20,6 +20,29 @@ export const queryKeys = {
   all: [ROOT] as const,
   me: () => [ROOT, "me"] as const,
   meta: () => [ROOT, "meta"] as const,
+  authConfig: () => [ROOT, "auth-config"] as const,
+
+  account: {
+    all: () => [ROOT, "account"] as const,
+    sessions: () => [ROOT, "account", "sessions"] as const,
+    delegations: () => [ROOT, "account", "delegations"] as const,
+    /** User-scope memory of the caller, aggregated over projects. */
+    memory: (projectIds: readonly string[]) => [ROOT, "account", "memory", [...projectIds]] as const,
+  },
+
+  compliance: {
+    all: () => [ROOT, "compliance"] as const,
+    retention: () => [ROOT, "compliance", "retention"] as const,
+    auditVerify: () => [ROOT, "compliance", "audit-verify"] as const,
+    register: () => [ROOT, "compliance", "processing-register"] as const,
+  },
+
+  ops: {
+    all: () => [ROOT, "ops"] as const,
+    status: () => [ROOT, "ops", "status"] as const,
+    deadLetter: () => [ROOT, "ops", "dead-letter"] as const,
+    drift: (project: string | undefined) => [ROOT, "ops", "drift", project ?? null] as const,
+  },
 
   users: {
     all: () => [ROOT, "users"] as const,

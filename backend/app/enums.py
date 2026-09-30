@@ -56,6 +56,9 @@ class JobStatus(StrEnum):
     running = "running"
     succeeded = "succeeded"
     failed = "failed"
+    #: Dead letter: retries exhausted or poison pill (worker crashed repeatedly on the job).
+    dead = "dead"
+    cancelled = "cancelled"
 
 
 class MemoryScope(StrEnum):

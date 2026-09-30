@@ -4,7 +4,35 @@
  */
 import { apiUrl, http, request } from "./client";
 import type {
+  AccountSession,
   Agent,
+  AgentDelegation,
+  AuditVerifyResult,
+  AuthConfig,
+  DeadLetterJob,
+  DelegationCreateIn,
+  DriftReport,
+  ErasureIn,
+  ErasureResult,
+  InvitationAcceptIn,
+  InvitationCreated,
+  InvitationIn,
+  LoginResult,
+  MfaDisableIn,
+  MfaEnableIn,
+  MfaRecoveryCodes,
+  MfaSetup,
+  MfaVerifyIn,
+  OpsStatus,
+  PasswordChangeIn,
+  PasswordChangeRequiredIn,
+  PersonalDataExport,
+  ProcessingRegister,
+  ProjectConfirmIn,
+  ReindexIn,
+  RetentionState,
+  RetentionUpdateIn,
+  TemporaryPassword,
   AgentCreateIn,
   AgentCreated,
   AuditEvent,
@@ -83,9 +111,12 @@ const p = (slug: string) => `/projects/${e(slug)}`;
 /* Auth & users                                                               */
 /* -------------------------------------------------------------------------- */
 
-/** POST /auth/login → User (+ `orbit_session` cookie). Never redirects on 401. */
-export function login(body: LoginIn): Promise<User> {
-  return http.post<User>("/auth/login", body, { redirectOnUnauthorized: false });
+/**
+ * POST /auth/login → User (+ session cookie), or an MFA / forced password change challenge.
+ * Never redirects on 401.
+ */
+export function login(body: LoginIn): Promise<LoginResult> {
+  return http.post<LoginResult>("/auth/login", body, { redirectOnUnauthorized: false });
 }
 
 /** POST /auth/logout → 204 */
@@ -512,4 +543,188 @@ export function exportTraces(slug: string, params: TraceExportParams = {}, opts:
 /** GET /api/v1/meta → {version, embedding_model, reranker, llm, reason_codes} */
 export function getMeta(opts: Opts = {}): Promise<Meta> {
   return http.get<Meta>("/meta", { ...opts, redirectOnUnauthorized: false });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Identity & account (docs/PRODUCTION.md §3)                                 */
+/* -------------------------------------------------------------------------- */
+
+/** GET /auth/config (public) → login options and password policy. */
+export function getAuthConfig(opts: Opts = {}): Promise<AuthConfig> {
+  return http.get<AuthConfig>("/auth/config", { ...opts, redirectOnUnauthorized: false });
+}
+
+/** POST /auth/mfa (public) → User. */
+export function verifyMfa(body: MfaVerifyIn): Promise<User> {
+  return http.post<User>("/auth/mfa", body, { redirectOnUnauthorized: false });
+}
+
+/** POST /auth/password/change-required (public) → User. */
+export function changeRequiredPassword(body: PasswordChangeRequiredIn): Promise<User> {
+  return http.post<User>("/auth/password/change-required", body, { redirectOnUnauthorized: false });
+}
+
+/** URL of `GET /auth/oidc/login?next=` (full-page navigation to the identity provider). */
+export function oidcLoginUrl(next?: string): string {
+  return apiUrl("/auth/oidc/login", { next });
+}
+
+/** POST /auth/invitations/{token}/accept (public) → User. */
+export function acceptInvitation(token: string, body: InvitationAcceptIn): Promise<User> {
+  return http.post<User>(`/auth/invitations/${e(token)}/accept`, body, { redirectOnUnauthorized: false });
+}
+
+/** GET /account/sessions → AccountSession[] */
+export function listAccountSessions(opts: Opts = {}): Promise<AccountSession[]> {
+  return http.get<AccountSession[]>("/account/sessions", opts);
+}
+
+/** DELETE /account/sessions/{id} → 204 */
+export function revokeAccountSession(id: UUID): Promise<void> {
+  return http.delete<void>(`/account/sessions/${e(id)}`);
+}
+
+/** POST /account/password → 204 (other sessions are revoked). Wrong current password → 400/403, no redirect. */
+export function changePassword(body: PasswordChangeIn): Promise<void> {
+  return http.post<void>("/account/password", body, { redirectOnUnauthorized: false });
+}
+
+/** POST /account/mfa/setup → secret, otpauth URI and QR code (SVG). */
+export function setupMfa(): Promise<MfaSetup> {
+  return http.post<MfaSetup>("/account/mfa/setup");
+}
+
+/** POST /account/mfa/enable → recovery codes (shown once). */
+export function enableMfa(body: MfaEnableIn): Promise<MfaRecoveryCodes> {
+  return http.post<MfaRecoveryCodes>("/account/mfa/enable", body);
+}
+
+/** POST /account/mfa/disable → 204 (refused when the policy requires MFA). */
+export function disableMfa(body: MfaDisableIn): Promise<void> {
+  return http.post<void>("/account/mfa/disable", body, { redirectOnUnauthorized: false });
+}
+
+/** GET /account/export → personal data export (JSON). */
+export function exportMyData(opts: Opts = {}): Promise<PersonalDataExport> {
+  return http.get<PersonalDataExport>("/account/export", opts);
+}
+
+/** GET /account/delegations → delegations I granted. */
+export function listMyDelegations(opts: Opts = {}): Promise<AgentDelegation[]> {
+  return http.get<AgentDelegation[]>("/account/delegations", opts);
+}
+
+/** POST /projects/{slug}/delegations (member) → AgentDelegation */
+export function createDelegation(slug: string, body: DelegationCreateIn): Promise<AgentDelegation> {
+  return http.post<AgentDelegation>(`${p(slug)}/delegations`, body);
+}
+
+/** DELETE /projects/{slug}/delegations/{id} (delegator or owner) → 204 */
+export function revokeDelegation(slug: string, delegationId: UUID): Promise<void> {
+  return http.delete<void>(`${p(slug)}/delegations/${e(delegationId)}`);
+}
+
+/* Admin user lifecycle ------------------------------------------------------ */
+
+/** POST /users/{id}/deactivate (admin) → User (sessions and delegations revoked). */
+export function deactivateUser(id: UUID): Promise<User> {
+  return http.post<User>(`/users/${e(id)}/deactivate`);
+}
+
+/** POST /users/{id}/reactivate (admin) → User */
+export function reactivateUser(id: UUID): Promise<User> {
+  return http.post<User>(`/users/${e(id)}/reactivate`);
+}
+
+/** POST /users/{id}/reset-password (admin) → temporary password (shown once). */
+export function resetUserPassword(id: UUID): Promise<TemporaryPassword> {
+  return http.post<TemporaryPassword>(`/users/${e(id)}/reset-password`);
+}
+
+/** POST /users/{id}/mfa/reset (admin) → User */
+export function resetUserMfa(id: UUID): Promise<User> {
+  return http.post<User>(`/users/${e(id)}/mfa/reset`);
+}
+
+/** POST /users/invitations (admin) → invitation URL (shown once). */
+export function inviteUser(body: InvitationIn): Promise<InvitationCreated> {
+  return http.post<InvitationCreated>("/users/invitations", body);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Compliance                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/** GET /compliance/users/{id}/export (admin) → same format as /account/export. */
+export function exportUserData(userId: UUID, opts: Opts = {}): Promise<PersonalDataExport> {
+  return http.get<PersonalDataExport>(`/compliance/users/${e(userId)}/export`, opts);
+}
+
+/** POST /compliance/users/{id}/erase (admin) → erasure summary (GDPR art. 17). */
+export function eraseUser(userId: UUID, body: ErasureIn): Promise<ErasureResult> {
+  return http.post<ErasureResult>(`/compliance/users/${e(userId)}/erase`, body);
+}
+
+/** POST /projects/{slug}/archive (owner) → Project (read-only). */
+export function archiveProject(slug: string, body: ProjectConfirmIn): Promise<Project> {
+  return http.post<Project>(`${p(slug)}/archive`, body);
+}
+
+/** DELETE /projects/{slug} (owner, body `{confirm_slug}`) → purge job (or 204). */
+export function deleteProject(slug: string, body: ProjectConfirmIn): Promise<Job | undefined> {
+  return request<Job | undefined>(p(slug), { method: "DELETE", json: body });
+}
+
+/** GET /compliance/retention (admin) */
+export function getRetention(opts: Opts = {}): Promise<RetentionState> {
+  return http.get<RetentionState>("/compliance/retention", opts);
+}
+
+/** PATCH /compliance/retention (admin) */
+export function updateRetention(body: RetentionUpdateIn): Promise<RetentionState> {
+  return http.patch<RetentionState>("/compliance/retention", body);
+}
+
+/** GET /compliance/audit/verify (admin) → hash-chain verification. */
+export function verifyAuditChain(opts: Opts = {}): Promise<AuditVerifyResult> {
+  return http.get<AuditVerifyResult>("/compliance/audit/verify", opts);
+}
+
+/** GET /compliance/processing-register (admin) */
+export function getProcessingRegister(opts: Opts = {}): Promise<ProcessingRegister> {
+  return http.get<ProcessingRegister>("/compliance/processing-register", opts);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Operations                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/** GET /ops/status (admin) */
+export function getOpsStatus(opts: Opts = {}): Promise<OpsStatus> {
+  return http.get<OpsStatus>("/ops/status", opts);
+}
+
+/** GET /ops/jobs/dead-letter (admin) → list (or page) of `dead` jobs. */
+export function listDeadLetterJobs(opts: Opts = {}): Promise<DeadLetterJob[] | Page<DeadLetterJob>> {
+  return http.get<DeadLetterJob[] | Page<DeadLetterJob>>("/ops/jobs/dead-letter", opts);
+}
+
+/** POST /projects/{slug}/jobs/{id}/retry (editor) → Job */
+export function retryJob(slug: string, jobId: UUID): Promise<Job> {
+  return http.post<Job>(`${p(slug)}/jobs/${e(jobId)}/retry`);
+}
+
+/** POST /projects/{slug}/jobs/{id}/cancel (editor) → Job */
+export function cancelJob(slug: string, jobId: UUID): Promise<Job> {
+  return http.post<Job>(`${p(slug)}/jobs/${e(jobId)}/cancel`);
+}
+
+/** GET /ops/index/drift?project= (admin) */
+export function getIndexDrift(project: string | undefined, opts: Opts = {}): Promise<DriftReport> {
+  return http.get<DriftReport>("/ops/index/drift", { query: { project }, ...opts });
+}
+
+/** POST /ops/index/reindex (admin) → Job */
+export function startReindex(body: ReindexIn): Promise<Job> {
+  return http.post<Job>("/ops/index/reindex", body);
 }

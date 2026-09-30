@@ -19,10 +19,34 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { saveBlob, type ApiError } from "./client";
+import { isSignedInUser } from "@/lib/auth/login-result";
+
+import { resetCsrfToken, saveBlob, type ApiError } from "./client";
 import * as api from "./endpoints";
 import { queryKeys } from "./query-keys";
 import type {
+  AccountSession,
+  AgentDelegation,
+  AuditVerifyResult,
+  AuthConfig,
+  DeadLetterJob,
+  DelegationCreateIn,
+  DriftReport,
+  ErasureResult,
+  InvitationCreated,
+  InvitationIn,
+  LoginResult,
+  MfaDisableIn,
+  MfaRecoveryCodes,
+  MfaSetup,
+  OpsStatus,
+  PasswordChangeIn,
+  PersonalDataExport,
+  ProcessingRegister,
+  ReindexIn,
+  RetentionState,
+  RetentionUpdateIn,
+  TemporaryPassword,
   Agent,
   AgentCreateIn,
   AgentCreated,
@@ -141,13 +165,58 @@ export function useMe(
   });
 }
 
-export function useLogin(options?: MutationOpts<User, LoginIn>) {
-  return useApiMutation<User, LoginIn>(
+/** Drop every cached query of the previous identity and store the new one. */
+function onSignedIn(qc: QueryClient, user: User): void {
+  resetCsrfToken();
+  qc.removeQueries({ predicate: (q) => q.queryKey[0] === "orbit" && q.queryKey[1] !== "me" && q.queryKey[1] !== "auth-config" });
+  qc.setQueryData(queryKeys.me(), user);
+}
+
+/** Step 1 of the login: may return the User or an MFA / password-change challenge. */
+export function useLogin(options?: MutationOpts<LoginResult, LoginIn>) {
+  return useApiMutation<LoginResult, LoginIn>(
     api.login,
-    (qc, user) => {
-      qc.removeQueries({ predicate: (q) => q.queryKey[0] === "orbit" && q.queryKey[1] !== "me" });
-      qc.setQueryData(queryKeys.me(), user);
+    (qc, result) => {
+      if (isSignedInUser(result)) onSignedIn(qc, result);
     },
+    { meta: { silentError: true }, ...options },
+  );
+}
+
+/** Public login options (`GET /auth/config`). */
+export function useAuthConfig(options?: QueryOpts<AuthConfig>) {
+  return useQuery<AuthConfig, ApiError>({
+    queryKey: queryKeys.authConfig(),
+    queryFn: ({ signal }) => api.getAuthConfig({ signal }),
+    staleTime: 10 * 60_000,
+    retry: 1,
+    ...options,
+  });
+}
+
+/** Step 2 (MFA): TOTP or recovery code. */
+export function useVerifyMfa(options?: MutationOpts<User, { mfa_token: string; code: string }>) {
+  return useApiMutation<User, { mfa_token: string; code: string }>(
+    api.verifyMfa,
+    (qc, user) => onSignedIn(qc, user),
+    { meta: { silentError: true }, ...options },
+  );
+}
+
+/** Step 2 (alternative): forced password change before the session is opened. */
+export function useChangeRequiredPassword(options?: MutationOpts<User, { change_token: string; new_password: string }>) {
+  return useApiMutation<User, { change_token: string; new_password: string }>(
+    api.changeRequiredPassword,
+    (qc, user) => onSignedIn(qc, user),
+    { meta: { silentError: true }, ...options },
+  );
+}
+
+/** Invitation acceptance (`/invitation/[token]`): sets the password and signs in. */
+export function useAcceptInvitation(options?: MutationOpts<User, { token: string; password: string }>) {
+  return useApiMutation<User, { token: string; password: string }>(
+    ({ token, password }) => api.acceptInvitation(token, { password }),
+    (qc, user) => onSignedIn(qc, user),
     { meta: { silentError: true }, ...options },
   );
 }
@@ -159,6 +228,7 @@ export function useLogout(options?: MutationOpts<void, void>) {
     mutationFn: () => api.logout(),
     meta: { silentError: true },
     onSettled: (...args) => {
+      resetCsrfToken();
       options?.onSettled?.(...args);
       if (typeof window !== "undefined") window.location.replace("/login");
     },
@@ -824,4 +894,288 @@ export function useMeta(options?: QueryOpts<Meta>) {
     retry: 1,
     ...options,
   });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Account (docs/PRODUCTION.md §3)                                            */
+/* -------------------------------------------------------------------------- */
+
+export function useAccountSessions(options?: QueryOpts<AccountSession[]>) {
+  return useQuery<AccountSession[], ApiError>({
+    queryKey: queryKeys.account.sessions(),
+    queryFn: ({ signal }) => api.listAccountSessions({ signal }),
+    ...options,
+  });
+}
+
+export function useRevokeAccountSession(options?: MutationOpts<void, UUID>) {
+  return useApiMutation<void, UUID>(api.revokeAccountSession, (qc) => inv(qc, queryKeys.account.sessions()), options);
+}
+
+export function useChangePassword(options?: MutationOpts<void, PasswordChangeIn>) {
+  return useApiMutation<void, PasswordChangeIn>(
+    api.changePassword,
+    (qc) => inv(qc, queryKeys.account.sessions(), queryKeys.me()),
+    { meta: { silentError: true }, ...options },
+  );
+}
+
+export function useSetupMfa(options?: MutationOpts<MfaSetup, void>) {
+  return useApiMutation<MfaSetup, void>(() => api.setupMfa(), null, { meta: { silentError: true }, ...options });
+}
+
+export function useEnableMfa(options?: MutationOpts<MfaRecoveryCodes, string>) {
+  return useApiMutation<MfaRecoveryCodes, string>(
+    (code) => api.enableMfa({ code }),
+    (qc) => inv(qc, queryKeys.me()),
+    { meta: { silentError: true }, ...options },
+  );
+}
+
+export function useDisableMfa(options?: MutationOpts<void, MfaDisableIn>) {
+  return useApiMutation<void, MfaDisableIn>(api.disableMfa, (qc) => inv(qc, queryKeys.me()), {
+    meta: { silentError: true },
+    ...options,
+  });
+}
+
+/** Save a JSON document as a file. */
+function saveJson(data: unknown, filename: string): void {
+  saveBlob(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), filename);
+}
+
+/** Downloads `GET /account/export` as `orbit-mes-donnees-<date>.json`. */
+export function useExportMyData(options?: MutationOpts<PersonalDataExport, void>) {
+  return useApiMutation<PersonalDataExport, void>(
+    async () => {
+      const data = await api.exportMyData();
+      saveJson(data, `orbit-mes-donnees-${new Date().toISOString().slice(0, 10)}.json`);
+      return data;
+    },
+    null,
+    options,
+  );
+}
+
+export function useMyDelegations(options?: QueryOpts<AgentDelegation[]>) {
+  return useQuery<AgentDelegation[], ApiError>({
+    queryKey: queryKeys.account.delegations(),
+    queryFn: ({ signal }) => api.listMyDelegations({ signal }),
+    ...options,
+  });
+}
+
+export function useCreateDelegation(options?: MutationOpts<AgentDelegation, { slug: string; body: DelegationCreateIn }>) {
+  return useApiMutation<AgentDelegation, { slug: string; body: DelegationCreateIn }>(
+    ({ slug, body }) => api.createDelegation(slug, body),
+    (qc) => inv(qc, queryKeys.account.delegations()),
+    options,
+  );
+}
+
+export function useRevokeDelegation(options?: MutationOpts<void, { slug: string; id: UUID }>) {
+  return useApiMutation<void, { slug: string; id: UUID }>(
+    ({ slug, id }) => api.revokeDelegation(slug, id),
+    (qc) => inv(qc, queryKeys.account.delegations()),
+    options,
+  );
+}
+
+/** A user-scope memory item of the caller, with the project it belongs to. */
+export type MyMemoryItem = MemoryItem & { project: Pick<ProjectSummary, "id" | "slug" | "name"> };
+
+/**
+ * User-scope memory about the caller across every project they belong to ("Mes données").
+ * The API only returns user-scope items to their subject; the filter on `subject_user_id` is a safeguard.
+ */
+export function useMyUserMemory(
+  projects: ReadonlyArray<Pick<ProjectSummary, "id" | "slug" | "name">> | undefined,
+  userId: UUID | undefined,
+  options?: QueryOpts<MyMemoryItem[]>,
+) {
+  const list = projects ?? [];
+  return useQuery<MyMemoryItem[], ApiError>({
+    queryKey: queryKeys.account.memory(list.map((p) => p.id)),
+    queryFn: async ({ signal }) => {
+      const pages = await Promise.all(
+        list.map(async (project) => {
+          const page = await api.listMemory(project.slug, { scope: "user", page_size: 100 }, { signal });
+          return page.items
+            .filter((item) => item.subject_user_id === userId)
+            .map((item) => ({ ...item, project: { id: project.id, slug: project.slug, name: project.name } }));
+        }),
+      );
+      return pages.flat().sort((a, b) => b.created_at.localeCompare(a.created_at));
+    },
+    enabled: Boolean(projects && userId),
+    ...options,
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Admin — user lifecycle                                                     */
+/* -------------------------------------------------------------------------- */
+
+const invUsers = (qc: QueryClient) => inv(qc, queryKeys.users.all());
+
+export function useDeactivateUser(options?: MutationOpts<User, UUID>) {
+  return useApiMutation<User, UUID>(api.deactivateUser, invUsers, options);
+}
+
+export function useReactivateUser(options?: MutationOpts<User, UUID>) {
+  return useApiMutation<User, UUID>(api.reactivateUser, invUsers, options);
+}
+
+export function useResetUserPassword(options?: MutationOpts<TemporaryPassword, UUID>) {
+  return useApiMutation<TemporaryPassword, UUID>(api.resetUserPassword, invUsers, options);
+}
+
+export function useResetUserMfa(options?: MutationOpts<User, UUID>) {
+  return useApiMutation<User, UUID>(api.resetUserMfa, invUsers, options);
+}
+
+export function useInviteUser(options?: MutationOpts<InvitationCreated, InvitationIn>) {
+  return useApiMutation<InvitationCreated, InvitationIn>(api.inviteUser, invUsers, options);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Compliance                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/** Downloads the personal data export of a user (admin DSAR). */
+export function useExportUserData(options?: MutationOpts<PersonalDataExport, { id: UUID; email: string }>) {
+  return useApiMutation<PersonalDataExport, { id: UUID; email: string }>(
+    async ({ id, email }) => {
+      const data = await api.exportUserData(id);
+      const safe = email.replace(/[^a-z0-9._-]+/gi, "_");
+      saveJson(data, `orbit-export-${safe}-${new Date().toISOString().slice(0, 10)}.json`);
+      return data;
+    },
+    null,
+    options,
+  );
+}
+
+export function useEraseUser(options?: MutationOpts<ErasureResult, { id: UUID; reason: string }>) {
+  return useApiMutation<ErasureResult, { id: UUID; reason: string }>(
+    ({ id, reason }) => api.eraseUser(id, { reason }),
+    (qc) => inv(qc, queryKeys.users.all(), queryKeys.projects.all()),
+    options,
+  );
+}
+
+export function useArchiveProject(slug: string, options?: MutationOpts<Project, string>) {
+  return useApiMutation<Project, string>(
+    (confirmSlug) => api.archiveProject(slug, { confirm_slug: confirmSlug }),
+    (qc) => inv(qc, queryKeys.project.all(slug), queryKeys.projects.all()),
+    options,
+  );
+}
+
+export function useDeleteProject(slug: string, options?: MutationOpts<Job | undefined, string>) {
+  return useApiMutation<Job | undefined, string>(
+    (confirmSlug) => api.deleteProject(slug, { confirm_slug: confirmSlug }),
+    (qc) => {
+      qc.removeQueries({ queryKey: queryKeys.project.all(slug) });
+      return inv(qc, queryKeys.projects.all());
+    },
+    options,
+  );
+}
+
+export function useRetention(options?: QueryOpts<RetentionState>) {
+  return useQuery<RetentionState, ApiError>({
+    queryKey: queryKeys.compliance.retention(),
+    queryFn: ({ signal }) => api.getRetention({ signal }),
+    ...options,
+  });
+}
+
+export function useUpdateRetention(options?: MutationOpts<RetentionState, RetentionUpdateIn>) {
+  return useApiMutation<RetentionState, RetentionUpdateIn>(
+    api.updateRetention,
+    (qc) => inv(qc, queryKeys.compliance.retention()),
+    options,
+  );
+}
+
+/** On-demand verification of the chained audit log (button-triggered). */
+export function useVerifyAuditChain(options?: MutationOpts<AuditVerifyResult, void>) {
+  return useApiMutation<AuditVerifyResult, void>(() => api.verifyAuditChain(), null, {
+    meta: { silentError: true },
+    ...options,
+  });
+}
+
+export function useProcessingRegister(options?: QueryOpts<ProcessingRegister>) {
+  return useQuery<ProcessingRegister, ApiError>({
+    queryKey: queryKeys.compliance.register(),
+    queryFn: ({ signal }) => api.getProcessingRegister({ signal }),
+    staleTime: 5 * 60_000,
+    ...options,
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Operations                                                                 */
+/* -------------------------------------------------------------------------- */
+
+const OPS_POLL_MS = 15_000;
+
+export function useOpsStatus(options?: QueryOpts<OpsStatus>) {
+  return useQuery<OpsStatus, ApiError>({
+    queryKey: queryKeys.ops.status(),
+    queryFn: ({ signal }) => api.getOpsStatus({ signal }),
+    refetchInterval: OPS_POLL_MS,
+    ...options,
+  });
+}
+
+/** Dead-letter jobs, normalized to a list whatever the envelope (list or page). */
+export function useDeadLetterJobs(options?: QueryOpts<DeadLetterJob[]>) {
+  return useQuery<DeadLetterJob[], ApiError>({
+    queryKey: queryKeys.ops.deadLetter(),
+    queryFn: async ({ signal }) => {
+      const data = await api.listDeadLetterJobs({ signal });
+      return Array.isArray(data) ? data : (data?.items ?? []);
+    },
+    refetchInterval: OPS_POLL_MS,
+    ...options,
+  });
+}
+
+export function useIndexDrift(project: string | undefined, options?: QueryOpts<DriftReport>) {
+  return useQuery<DriftReport, ApiError>({
+    queryKey: queryKeys.ops.drift(project),
+    queryFn: ({ signal }) => api.getIndexDrift(project, { signal }),
+    ...options,
+  });
+}
+
+export function useStartReindex(options?: MutationOpts<Job, ReindexIn>) {
+  return useApiMutation<Job, ReindexIn>(
+    api.startReindex,
+    (qc, _job, vars) =>
+      inv(qc, queryKeys.ops.all(), ...(vars.project_slug ? [queryKeys.project.jobs.all(vars.project_slug)] : [])),
+    options,
+  );
+}
+
+const invJobs = (qc: QueryClient, slug: string) =>
+  inv(qc, queryKeys.project.jobs.all(slug), queryKeys.project.documents.all(slug), queryKeys.ops.deadLetter(), queryKeys.ops.status());
+
+export function useRetryJob(options?: MutationOpts<Job, { slug: string; jobId: UUID }>) {
+  return useApiMutation<Job, { slug: string; jobId: UUID }>(
+    ({ slug, jobId }) => api.retryJob(slug, jobId),
+    (qc, _job, { slug }) => invJobs(qc, slug),
+    options,
+  );
+}
+
+export function useCancelJob(options?: MutationOpts<Job, { slug: string; jobId: UUID }>) {
+  return useApiMutation<Job, { slug: string; jobId: UUID }>(
+    ({ slug, jobId }) => api.cancelJob(slug, jobId),
+    (qc, _job, { slug }) => invJobs(qc, slug),
+    options,
+  );
 }
