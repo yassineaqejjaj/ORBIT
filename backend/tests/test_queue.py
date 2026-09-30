@@ -1,4 +1,4 @@
-"""Postgres job queue: claim with SKIP LOCKED, retries with backoff, steps, stale recovery."""
+"""Postgres job queue: claim with SKIP LOCKED, retries with backoff, dead letter, steps, stale recovery."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from app.ingestion.queue import (
     enqueue_job,
     mark_failed,
     mark_succeeded,
-    requeue_stale_jobs,
+    reap_stale_jobs,
     track_step,
 )
 from app.models import IngestionJob
@@ -100,7 +100,7 @@ async def test_future_jobs_are_not_claimed(project_id: uuid.UUID) -> None:
         assert await claim_next_job(session, "w") is None
 
 
-async def test_retry_with_backoff_then_final_failure(project_id: uuid.UUID) -> None:
+async def test_retry_with_backoff_then_dead_letter(project_id: uuid.UUID) -> None:
     job_id = await _enqueue(project_id, max_attempts=3)
     sessionmaker = get_sessionmaker()
     for attempt in (1, 2, 3):
@@ -124,7 +124,7 @@ async def test_retry_with_backoff_then_final_failure(project_id: uuid.UUID) -> N
                 await session.commit()
         else:
             assert not will_retry
-            assert stored.status == JobStatus.failed
+            assert stored.status == JobStatus.dead  # retries exhausted: dead letter
             assert stored.finished_at is not None
 
 
@@ -196,10 +196,14 @@ async def test_stale_running_jobs_are_requeued(project_id: uuid.UUID) -> None:
             .values(locked_at=utcnow() - timedelta(hours=2))
         )
         await session.commit()
-        assert await requeue_stale_jobs(session, older_than_seconds=3600) == 1
+        result = await reap_stale_jobs(session, older_than_seconds=3600)
+    assert result.requeued == [job_id] and result.total == 1
     stored = await _get(job_id)
     assert stored.status == JobStatus.queued
     assert stored.locked_by is None
+    assert stored.crash_count == 1
+    assert stored.attempts == 1  # the crashed attempt is consumed
+    assert stored.run_after > utcnow()  # re-queued with backoff
 
 
 def test_backoff_delay_grows_and_is_capped() -> None:

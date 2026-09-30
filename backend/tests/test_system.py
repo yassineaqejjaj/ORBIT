@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 
+from app.config import settings
 from app.enums import REASON_CODE_LABELS, ReasonCode
 
 
@@ -36,8 +38,16 @@ async def test_meta(client: httpx.AsyncClient) -> None:
     assert body["reason_codes"]["EXCLUDED_ACL"] == REASON_CODE_LABELS[ReasonCode.EXCLUDED_ACL]
 
 
-async def test_prometheus_metrics(client: httpx.AsyncClient) -> None:
-    response = await client.get("/metrics")
+async def test_prometheus_metrics(client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Without ORBIT_METRICS_TOKEN the public API never serves metrics (internal port only).
+    monkeypatch.setattr(settings, "metrics_token", "")
+    assert (await client.get("/metrics")).status_code == 404
+
+    monkeypatch.setattr(settings, "metrics_token", "scrape-token-for-tests")
+    assert (await client.get("/metrics")).status_code == 401
+    wrong = await client.get("/metrics", headers={"Authorization": "Bearer nope"})
+    assert wrong.status_code == 401
+    response = await client.get("/metrics", headers={"Authorization": "Bearer scrape-token-for-tests"})
     assert response.status_code == 200
     assert "orbit_context_requests_total" in response.text
     assert "orbit_ingestion_jobs_total" in response.text
