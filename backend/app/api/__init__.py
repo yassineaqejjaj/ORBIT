@@ -3,16 +3,21 @@
 from fastapi import APIRouter
 
 from app.api import (
+    account,
     agents,
     audit,
     auth,
+    compliance,
+    connectors,
     context,
     documents,
+    evaluation,
     jobs,
     members,
     memory,
     meta,
     metrics,
+    ops,
     projects,
     search,
     sessions,
@@ -32,6 +37,7 @@ for module in (
     agents,
     sources,
     documents,
+    evaluation,
     jobs,
     search,
     memory,
@@ -41,6 +47,11 @@ for module in (
     metrics,
     audit,
     meta,
+    account,
+    compliance,
+    ops,
+    connectors,
+    evaluation,
 ):
     api_router.include_router(module.router)
 

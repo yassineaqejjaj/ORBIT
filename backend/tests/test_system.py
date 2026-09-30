@@ -18,7 +18,7 @@ async def test_ready_reports_dependencies(client: httpx.AsyncClient) -> None:
     body = response.json()
     assert set(body["checks"]) == {"postgres", "opensearch", "valkey", "model"}
     assert body["checks"]["postgres"]["status"] == "ok"
-    assert body["checks"]["postgres"]["info"]["migration"] == "0001"
+    assert body["checks"]["postgres"]["info"]["migration"] == "0006"  # head of the chained production-readiness migrations
     assert body["checks"]["valkey"]["status"] == "ok"
     assert body["checks"]["opensearch"]["status"] == "ok"
     assert response.status_code == (200 if body["status"] == "ok" else 503)

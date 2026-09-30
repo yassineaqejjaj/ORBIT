@@ -3,9 +3,12 @@
 from app.db import Base
 from app.models.agent import Agent
 from app.models.audit import AuditLog
+from app.models.compliance import *  # noqa: F403  (production workstream tables)
+from app.models.connector import *  # noqa: F403  (production workstream tables)
 from app.models.context import ContextDecision, ContextFeedback, ContextRequest, ContextSnapshot
 from app.models.document import Chunk, Document, DocumentVersion
 from app.models.governance import Tombstone
+from app.models.identity import *  # noqa: F403  (production workstream tables)
 from app.models.job import IngestionJob
 from app.models.memory import MemoryEvent, MemoryItem, MemoryProvenance, Relation
 from app.models.project import Project, ProjectMember
