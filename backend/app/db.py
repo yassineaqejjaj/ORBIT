@@ -7,6 +7,7 @@ loads in async code).
 
 from __future__ import annotations
 
+import ssl
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -74,13 +75,41 @@ _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
 
+def _ssl_argument() -> ssl.SSLContext | str:
+    """asyncpg ``ssl`` argument from ``ORBIT_DATABASE_SSLMODE`` / ``_CA_CERTS`` (libpq semantics)."""
+    mode = settings.database_sslmode
+    if mode in ("require", "verify-ca", "verify-full") and settings.database_ca_certs:
+        context = ssl.create_default_context(cafile=settings.database_ca_certs)
+        if mode != "verify-full":
+            context.check_hostname = False  # verify-ca / require: chain checked, host name not
+        return context
+    return mode
+
+
+def engine_connect_args(url: str) -> dict[str, Any]:
+    """Driver connection arguments: TLS mode, statement timeout, application name (asyncpg only).
+
+    An explicit ``ssl``/``sslmode`` query parameter in the URL wins over ``ORBIT_DATABASE_SSLMODE``.
+    """
+    if not url.startswith("postgresql+asyncpg"):
+        return {}
+    args: dict[str, Any] = {"server_settings": {"application_name": settings.service_name}}
+    if settings.db_statement_timeout_ms > 0:
+        args["server_settings"]["statement_timeout"] = str(settings.db_statement_timeout_ms)
+    query = url.partition("?")[2].lower()
+    if "ssl=" not in query and "sslmode=" not in query:
+        args["ssl"] = _ssl_argument()
+    return args
+
+
 def _engine_kwargs(url: str) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"pool_pre_ping": True, "future": True}
     if not url.startswith("sqlite"):
         kwargs.update(
-            pool_size=settings.database_pool_size,
-            max_overflow=settings.database_max_overflow,
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
             pool_recycle=1800,
+            connect_args=engine_connect_args(url),
         )
     return kwargs
 

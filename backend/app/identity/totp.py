@@ -65,7 +65,9 @@ def verify(secret: str, code: str, *, last_step: int | None = None, at: float | 
 
 def otpauth_uri(secret: str, account: str) -> str:
     label = quote(f"{ISSUER}:{account}")
-    query = urlencode({"secret": secret, "issuer": ISSUER, "algorithm": "SHA1", "digits": DIGITS, "period": PERIOD})
+    query = urlencode(
+        {"secret": secret, "issuer": ISSUER, "algorithm": "SHA1", "digits": DIGITS, "period": PERIOD}
+    )
     return f"otpauth://totp/{label}?{query}"
 
 

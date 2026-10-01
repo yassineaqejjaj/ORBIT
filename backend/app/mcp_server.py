@@ -41,6 +41,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.applications import Starlette
 from starlette.datastructures import Headers
+from starlette.requests import HTTPConnection
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -170,9 +171,9 @@ class AgentKeyGate:
             return
         try:
             async with get_sessionmaker()() as session:
-                await authenticate_agent_key(session, key, touch=True)
+                await authenticate_agent_key(session, key, touch=True, conn=HTTPConnection(scope))
         except ApiError as exc:
-            await _reject(scope, receive, send, exc.status_code, str(exc.detail), exc.code)
+            await _reject(scope, receive, send, exc.status_code, str(exc.detail), exc.code, exc.headers)
             return
         except Exception:
             logger.exception("MCP authentication backend unavailable")
@@ -188,9 +189,19 @@ class AgentKeyGate:
         await self.app(scope, receive, send)
 
 
-async def _reject(scope: Scope, receive: Receive, send: Send, status: int, detail: str, code: str) -> None:
-    headers = {"WWW-Authenticate": 'Bearer realm="orbit-mcp"'} if status == 401 else None
-    response = JSONResponse({"detail": detail, "code": code}, status_code=status, headers=headers)
+async def _reject(
+    scope: Scope,
+    receive: Receive,
+    send: Send,
+    status: int,
+    detail: str,
+    code: str,
+    extra_headers: Mapping[str, str] | None = None,
+) -> None:
+    headers = dict(extra_headers or {})
+    if status == 401:
+        headers["WWW-Authenticate"] = 'Bearer realm="orbit-mcp"'
+    response = JSONResponse({"detail": detail, "code": code}, status_code=status, headers=headers or None)
     await response(scope, receive, send)
 
 
@@ -249,7 +260,7 @@ async def agent_scope(ctx: Context) -> AsyncIterator[AgentScope]:
         raise ToolError(MISSING_KEY_MESSAGE)
     async with get_sessionmaker()() as session:
         try:
-            agent = await authenticate_agent_key(session, key, touch=False)
+            agent = await authenticate_agent_key(session, key, touch=False, throttle=False)
             project = await session.get(Project, agent.project_id)
             if project is None:
                 raise ToolError("Projet de l'agent introuvable")

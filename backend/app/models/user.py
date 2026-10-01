@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-
 from typing import Any
 
 from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Index, SmallInteger, Text, text
@@ -21,7 +20,12 @@ class User(UUIDPkMixin, CreatedAtMixin, Base):
     __table_args__ = (
         range_check("clearance", 0, 3),
         Index("uq_users_email", "email", unique=True),
-        Index("uq_users_oidc_subject", "oidc_subject", unique=True, postgresql_where=text("oidc_subject IS NOT NULL")),
+        Index(
+            "uq_users_oidc_subject",
+            "oidc_subject",
+            unique=True,
+            postgresql_where=text("oidc_subject IS NOT NULL"),
+        ),
         CheckConstraint("auth_provider IN ('local', 'oidc')", name="auth_provider"),
     )
 
@@ -37,16 +41,22 @@ class User(UUIDPkMixin, CreatedAtMixin, Base):
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # --- Lifecycle & authentication (docs/PRODUCTION.md, identity workstream) ---
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     must_change_password: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: ``local`` (password, optional TOTP) or ``oidc`` (SSO, JIT-provisioned).
-    auth_provider: Mapped[str] = mapped_column(Text, nullable=False, default="local", server_default=text("'local'"))
+    auth_provider: Mapped[str] = mapped_column(
+        Text, nullable=False, default="local", server_default=text("'local'")
+    )
     oidc_subject: Mapped[str | None] = mapped_column(Text, nullable=True)
-    mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    mfa_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     #: TOTP secret, encrypted (AES-256-GCM, see app/identity/secretbox.py).
     mfa_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: Secret being enrolled (``/account/mfa/setup``), promoted by ``/account/mfa/enable``.

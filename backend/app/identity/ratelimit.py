@@ -16,6 +16,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 from redis.exceptions import RedisError
 
@@ -40,11 +41,12 @@ _LIMIT_RE = re.compile(r"^\s*(\d+)\s*/\s*(\d+)?\s*([a-z]+?)s?\s*$", re.IGNORECAS
 _SLIDING_WINDOW_LUA = """
 local now = tonumber(ARGV[1])
 local member = ARGV[2]
+local record = ARGV[3] == '1'
 local n = #KEYS
 local retry = 0
 for i = 1, n do
-  local window = tonumber(ARGV[2 + (i - 1) * 2 + 1])
-  local limit = tonumber(ARGV[2 + (i - 1) * 2 + 2])
+  local window = tonumber(ARGV[3 + (i - 1) * 2 + 1])
+  local limit = tonumber(ARGV[3 + (i - 1) * 2 + 2])
   redis.call('ZREMRANGEBYSCORE', KEYS[i], '-inf', now - window)
   local count = redis.call('ZCARD', KEYS[i])
   if count >= limit then
@@ -54,9 +56,9 @@ for i = 1, n do
     if wait > retry then retry = wait end
   end
 end
-if retry > 0 then return retry end
+if retry > 0 or not record then return retry end
 for i = 1, n do
-  local window = tonumber(ARGV[2 + (i - 1) * 2 + 1])
+  local window = tonumber(ARGV[3 + (i - 1) * 2 + 1])
   redis.call('ZADD', KEYS[i], now, member)
   redis.call('PEXPIRE', KEYS[i], window)
 end
@@ -82,22 +84,27 @@ def parse_limits(spec: str) -> list[Limit]:
     for part in (item for item in spec.split(",") if item.strip()):
         match = _LIMIT_RE.match(part)
         if match is None:
-            raise ValueError(f"Limite de débit invalide « {part.strip()} » (format attendu : 5/minute,20/hour).")
+            raise ValueError(
+                f"Limite de débit invalide « {part.strip()} » (format attendu : 5/minute,20/hour)."
+            )
         count, multiplier, unit = int(match.group(1)), int(match.group(2) or 1), match.group(3).lower()
         if unit not in _UNITS or count < 1 or multiplier < 1:
-            raise ValueError(f"Limite de débit invalide « {part.strip()} » (unités : second, minute, hour, day).")
+            raise ValueError(
+                f"Limite de débit invalide « {part.strip()} » (unités : second, minute, hour, day)."
+            )
         limits.append(Limit(count=count, window_seconds=_UNITS[unit] * multiplier))
     return limits
 
 
 class RateLimited(ApiError):
-    """429 with ``Retry-After`` (seconds) and a French message."""
+    """429 with ``Retry-After`` (seconds) and a French message (``{delay}`` in ``detail`` is replaced)."""
 
     def __init__(self, retry_after: float, detail: str | None = None, *, code: str = "rate_limited") -> None:
         seconds = max(1, math.ceil(retry_after))
+        template = detail or "Trop de requêtes : réessayez dans {delay}."
         super().__init__(
             429,
-            detail or f"Trop de requêtes : réessayez dans {_human_delay(seconds)}.",
+            template.replace("{delay}", _human_delay(seconds)),
             code=code,
             headers={"Retry-After": str(seconds)},
         )
@@ -111,28 +118,42 @@ def _human_delay(seconds: int) -> str:
     return f"{minutes} minutes"
 
 
-def _client():  # type: ignore[no-untyped-def]
+def _client() -> Any:
     from app.memory.short_term import get_valkey
 
     return get_valkey()
 
 
-async def hit(bucket: str, identity: str, spec: str) -> float:
-    """Record one request for ``bucket:identity``; return 0 when allowed, else the wait in seconds."""
+async def _run(bucket: str, identity: str, spec: str, *, record: bool) -> float:
     limits = parse_limits(spec)
     if not limits:
         return 0.0
     now_ms = int(time.time() * 1000)
     keys = [f"{KEY_PREFIX}:{bucket}:{limit.window_seconds}:{identity}" for limit in limits]
-    args: list[str | int] = [now_ms, uuid.uuid4().hex]
+    args: list[str | int] = [now_ms, uuid.uuid4().hex, "1" if record else "0"]
     for limit in limits:
         args.extend([limit.window_seconds * 1000, limit.count])
     try:
-        retry_ms = await _client().eval(_SLIDING_WINDOW_LUA, len(keys), *keys, *args)  # type: ignore[misc]
+        retry_ms = await _client().eval(_SLIDING_WINDOW_LUA, len(keys), *keys, *args)
     except (RedisError, OSError) as exc:
         logger.warning("Rate limiting unavailable (Valkey error, failing open): %s", exc)
         return 0.0
     return max(0.0, float(retry_ms or 0) / 1000.0)
+
+
+async def hit(bucket: str, identity: str, spec: str) -> float:
+    """Record one request for ``bucket:identity``; return 0 when allowed, else the wait in seconds."""
+    return await _run(bucket, identity, spec, record=True)
+
+
+async def check(bucket: str, identity: str, spec: str) -> float:
+    """Like :func:`hit` without recording anything (used to count failures only)."""
+    return await _run(bucket, identity, spec, record=False)
+
+
+def scaled(spec: str, factor: int) -> str:
+    """``spec`` with every count multiplied by ``factor`` (coarser per-IP limit from a per-account one)."""
+    return ",".join(f"{limit.count * factor}/{limit.window_seconds}s" for limit in parse_limits(spec))
 
 
 async def enforce(bucket: str, identity: str, spec: str, *, detail: str | None = None) -> None:

@@ -11,10 +11,38 @@ from app.errors import ApiError
 #: Short embedded list of the most common passwords / patterns (lower-cased, compared after normalisation).
 _COMMON = frozenset(
     {
-        "password", "motdepasse", "azerty", "qwerty", "123456", "1234567890", "admin", "administrateur",
-        "orbit", "orbitadmin", "orbit-admin", "welcome", "bienvenue", "letmein", "changeme", "soleil",
-        "iloveyou", "jetaime", "football", "passw0rd", "p@ssw0rd", "secret", "loulou", "doudou",
-        "chouchou", "marseille", "dragon", "monkey", "master", "sunshine", "princess", "abc123",
+        "password",
+        "motdepasse",
+        "azerty",
+        "qwerty",
+        "123456",
+        "1234567890",
+        "admin",
+        "administrateur",
+        "orbit",
+        "orbitadmin",
+        "orbit-admin",
+        "welcome",
+        "bienvenue",
+        "letmein",
+        "changeme",
+        "soleil",
+        "iloveyou",
+        "jetaime",
+        "football",
+        "passw0rd",
+        "p@ssw0rd",
+        "secret",
+        "loulou",
+        "doudou",
+        "chouchou",
+        "marseille",
+        "dragon",
+        "monkey",
+        "master",
+        "sunshine",
+        "princess",
+        "abc123",
     }
 )
 _SEQUENCES = ("0123456789", "abcdefghijklmnopqrstuvwxyz", "azertyuiop", "qwertyuiop", "qsdfghjklm")
@@ -60,6 +88,8 @@ def generate_password(length: int = 20) -> str:
     """Random password satisfying the policy (temporary / bootstrap passwords)."""
     alphabet = string.ascii_letters + string.digits + "-_.!@#%"
     while True:
-        candidate = "".join(secrets.choice(alphabet) for _ in range(max(length, settings.password_min_length)))
+        candidate = "".join(
+            secrets.choice(alphabet) for _ in range(max(length, settings.password_min_length))
+        )
         if not password_problems(candidate):
             return candidate

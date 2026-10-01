@@ -2,8 +2,12 @@
 
 Two kinds of callers exist (ARCHITECTURE §3):
 
-* **users** — session cookie ``orbit_session`` or ``Authorization: Bearer <jwt>``;
+* **users** — session cookie ``orbit_session`` or ``Authorization: Bearer <jwt>``; the JWT ``sid`` must
+  reference a live server-side session (``user_sessions``: not revoked, absolute and idle expiry);
 * **agents** — API key ``orb_…`` via ``Authorization: Bearer orb_…`` or ``X-Orbit-Key``.
+
+Every authenticated request counts against a per-principal sliding window (``ORBIT_RATE_LIMIT_API`` for
+users, ``ORBIT_RATE_LIMIT_AGENT`` for agents); failed agent-key authentications are limited per client IP.
 
 Every router and the context engine reason about a :class:`Principal`. Project-scoped endpoints use
 :func:`require_project` (or the ``*Access`` aliases) which resolve ``{slug}`` into a
@@ -27,10 +31,15 @@ from typing import Annotated, Literal
 from fastapi import Depends, Path, Request
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import HTTPConnection
 
+from app.config import settings
 from app.db import get_session, utcnow
 from app.enums import ActorType, Role, role_at_least
-from app.errors import forbidden, not_found, unauthorized
+from app.errors import ApiError, forbidden, not_found, unauthorized
+from app.identity import ratelimit
+from app.identity import sessions as session_service
+from app.identity.netutil import client_ip
 from app.models import Agent, Project, User
 from app.security import (
     API_KEY_HEADER,
@@ -50,6 +59,8 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 #: ``last_used_at`` is written at most once per interval per agent (avoids a write on every call).
 AGENT_LAST_USED_RESOLUTION = timedelta(seconds=30)
+#: Failed agent-key authentications allowed per client IP: ``ORBIT_RATE_LIMIT_LOGIN`` × this factor.
+AGENT_AUTH_FAILURE_FACTOR = 4
 
 
 @dataclass(slots=True)
@@ -193,23 +204,88 @@ def _session_token(request: Request) -> str | None:
     return cookie or None
 
 
-async def _user_from_token(session: AsyncSession, token: str) -> User:
+def _reauthenticate(detail: str, code: str = "unauthorized") -> ApiError:
+    return ApiError(
+        401, f"{detail} — veuillez vous reconnecter", code=code, headers={"WWW-Authenticate": "Bearer"}
+    )
+
+
+async def _user_from_token(conn: HTTPConnection, session: AsyncSession, token: str) -> User:
+    """Validate the JWT, its server-side session and the account state; stores the session row on
+    ``conn.state.user_session``."""
     try:
         claims = decode_access_token(token)
     except TokenError as exc:
-        raise unauthorized(f"{exc} — veuillez vous reconnecter") from exc
+        raise _reauthenticate(str(exc)) from exc
+    if claims.session_id is None:
+        raise _reauthenticate("Session invalide")
     user = await session.get(User, claims.user_id)
     if user is None:
-        raise unauthorized("Session invalide — veuillez vous reconnecter")
-    if claims.password_fingerprint and claims.password_fingerprint != password_fingerprint(
-        user.password_hash
-    ):
-        raise unauthorized("Session révoquée (mot de passe modifié) — veuillez vous reconnecter")
+        raise _reauthenticate("Session invalide")
+    if not user.is_active:
+        raise ApiError(401, "Compte désactivé — contactez un administrateur", code="account_disabled")
+    if claims.password_fingerprint != password_fingerprint(user.password_hash):
+        raise _reauthenticate("Session révoquée (mot de passe modifié)")
+    if user.must_change_password:
+        raise _reauthenticate("Changement de mot de passe requis", code="password_change_required")
+    try:
+        row = await session_service.validate_session(session, claims.session_id, user.id)
+    except session_service.SessionInvalid as exc:
+        raise _reauthenticate(str(exc)) from exc
+    conn.state.user_session = row
     return user
 
 
-async def authenticate_agent_key(session: AsyncSession, key: str, *, touch: bool = True) -> Agent:
-    """Validate an ``orb_…`` key and return the active agent. Also used by the MCP server."""
+async def _throttle(conn: HTTPConnection, bucket: str, identity: str, spec: str) -> None:
+    """Per-principal API limit, counted once per request."""
+    if getattr(conn.state, "principal_throttled", False):
+        return
+    conn.state.principal_throttled = True
+    await ratelimit.enforce(bucket, identity, spec)
+
+
+def _agent_failure_spec() -> str:
+    return ratelimit.scaled(settings.rate_limit_login, AGENT_AUTH_FAILURE_FACTOR)
+
+
+async def authenticate_agent_key(
+    session: AsyncSession,
+    key: str,
+    *,
+    touch: bool = True,
+    conn: HTTPConnection | None = None,
+    throttle: bool = True,
+) -> Agent:
+    """Validate an ``orb_…`` key and return the active agent. Also used by the MCP server.
+
+    With ``throttle`` (once per HTTP request), failed attempts are rate limited per client IP and
+    successful calls count against the agent's own ``ORBIT_RATE_LIMIT_AGENT`` window.
+    """
+    if not throttle:
+        return await _lookup_agent_key(session, key)
+    ip = (client_ip(conn) if conn is not None else None) or "unknown"
+    failure_spec = _agent_failure_spec()
+    retry_after = await ratelimit.check("agent-auth-fail", ip, failure_spec)
+    if retry_after > 0:
+        raise ratelimit.RateLimited(
+            retry_after, "Trop d'échecs d'authentification par clé d'agent : réessayez plus tard."
+        )
+    try:
+        agent_obj = await _lookup_agent_key(session, key)
+    except ApiError:
+        await ratelimit.hit("agent-auth-fail", ip, failure_spec)
+        raise
+    await ratelimit.enforce("agent", str(agent_obj.id), settings.rate_limit_agent)
+    if touch:
+        now = utcnow()
+        if agent_obj.last_used_at is None or now - agent_obj.last_used_at >= AGENT_LAST_USED_RESOLUTION:
+            await session.execute(update(Agent).where(Agent.id == agent_obj.id).values(last_used_at=now))
+            agent_obj.last_used_at = now
+            await session.commit()
+    return agent_obj
+
+
+async def _lookup_agent_key(session: AsyncSession, key: str) -> Agent:
     parsed = parse_api_key(key)
     if parsed is None:
         raise unauthorized("Clé d'agent invalide")
@@ -223,12 +299,6 @@ async def authenticate_agent_key(session: AsyncSession, key: str, *, touch: bool
         raise unauthorized("Clé d'agent invalide")
     if not agent_obj.active:
         raise unauthorized("Clé d'agent révoquée")
-    if touch:
-        now = utcnow()
-        if agent_obj.last_used_at is None or now - agent_obj.last_used_at >= AGENT_LAST_USED_RESOLUTION:
-            await session.execute(update(Agent).where(Agent.id == agent_obj.id).values(last_used_at=now))
-            agent_obj.last_used_at = now
-            await session.commit()
     return agent_obj
 
 
@@ -242,7 +312,9 @@ async def get_current_user(request: Request, session: SessionDep) -> User:
         if _agent_key(request):
             raise forbidden("Cette opération n'est pas accessible avec une clé d'agent")
         raise unauthorized("Authentification requise")
-    return await _user_from_token(session, token)
+    user = await _user_from_token(request, session, token)
+    await _throttle(request, "api", f"user:{user.id}", settings.rate_limit_api)
+    return user
 
 
 async def get_optional_user(request: Request, session: SessionDep) -> User | None:
@@ -250,8 +322,8 @@ async def get_optional_user(request: Request, session: SessionDep) -> User | Non
     if token is None:
         return None
     try:
-        return await _user_from_token(session, token)
-    except Exception:
+        return await _user_from_token(request, session, token)
+    except ApiError:
         return None
 
 
@@ -259,12 +331,13 @@ async def get_principal(request: Request, session: SessionDep) -> Principal:
     """User **or** agent principal. Agent keys take precedence when both are present."""
     key = _agent_key(request)
     if key:
-        agent = await authenticate_agent_key(session, key)
+        agent = await authenticate_agent_key(session, key, conn=request)
         return Principal.for_agent(agent)
     token = _session_token(request)
     if token is None:
         raise unauthorized("Authentification requise (session ou clé d'agent)")
-    user = await _user_from_token(session, token)
+    user = await _user_from_token(request, session, token)
+    await _throttle(request, "api", f"user:{user.id}", settings.rate_limit_api)
     return Principal.for_user(user)
 
 

@@ -1,15 +1,22 @@
-"""ORBIT API application: REST ``/api/v1``, MCP ``/mcp``, ``/metrics``, ``/health``, ``/ready``."""
+"""ORBIT API application: REST ``/api/v1``, MCP ``/mcp``, ``/metrics``, ``/health``, ``/ready``.
+
+Exposure rules (audit finding ``sec-unauthenticated-ops-endpoints``): Swagger/ReDoc/OpenAPI are only
+served when ``ORBIT_DOCS_ENABLED`` (off in production); ``/metrics`` requires ``ORBIT_METRICS_TOKEN`` when
+set and is otherwise only served on the internal metrics port; ``/ready`` hides dependency details in
+production unless the caller presents the metrics token.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -21,6 +28,7 @@ from app.api import API_PREFIX, api_router
 from app.config import settings
 from app.db import dispose_engine, get_engine, get_sessionmaker
 from app.errors import install_exception_handlers
+from app.identity.csrf import CsrfMiddleware
 from app.observability.logging_setup import setup_logging
 from app.observability.metrics import metrics_asgi_app
 from app.observability.middleware import RequestContextMiddleware
@@ -33,7 +41,8 @@ logger = logging.getLogger("orbit.main")
 READY_TIMEOUT_SECONDS = 3.0
 
 OPENAPI_TAGS = [
-    {"name": "auth", "description": "Connexion, session"},
+    {"name": "auth", "description": "Connexion, session, CSRF"},
+    {"name": "account", "description": "Mon compte : sessions, mot de passe"},
     {"name": "users", "description": "Administration des utilisateurs (admin)"},
     {"name": "projects", "description": "Projets et paramètres"},
     {"name": "members", "description": "Membres et rôles"},
@@ -85,6 +94,30 @@ def _prepare_object_store() -> None:
         get_object_store().ensure_root()
     except OSError as exc:
         logger.warning("Object store directory %s unavailable: %s", settings.object_store_path, exc)
+
+
+async def _api_liveness() -> tuple[bool, dict[str, Any]]:
+    return True, {"service": settings.service_name, "version": settings.app_version}
+
+
+async def _start_internal_metrics() -> Any:
+    """Internal ``/metrics`` + ``/healthz`` listener on ``ORBIT_METRICS_PORT`` (0 disables it).
+
+    With several uvicorn workers only the first process binds the port (metrics are aggregated
+    through ``PROMETHEUS_MULTIPROC_DIR``); the others log and continue.
+    """
+    if settings.metrics_port <= 0:
+        return None
+    from app.observability.internal_server import InternalServer
+
+    server = InternalServer("0.0.0.0", settings.metrics_port, _api_liveness)
+    try:
+        await server.start()
+    except OSError as exc:
+        logger.info("Internal metrics port %d not bound by this process: %s", settings.metrics_port, exc)
+        return None
+    logger.info("Internal metrics endpoint on :%d/metrics", settings.metrics_port)
+    return server
 
 
 async def _close_clients() -> None:
@@ -152,7 +185,16 @@ async def health() -> Health:
     return Health()
 
 
-async def ready() -> JSONResponse:
+def _ready_details_allowed(request: Request) -> bool:
+    """Dependency details (errors, versions) are public outside production, token-gated in production."""
+    if settings.env != "production":
+        return True
+    token = settings.metrics_token
+    authorization = request.headers.get("authorization", "")
+    return bool(token) and hmac.compare_digest(authorization.encode(), f"Bearer {token}".encode())
+
+
+async def ready(request: Request) -> JSONResponse:
     names = ("postgres", "opensearch", "valkey", "model")
     results = await asyncio.gather(
         _timed_check(_check_postgres),
@@ -162,6 +204,8 @@ async def ready() -> JSONResponse:
     )
     checks = dict(zip(names, results, strict=True))
     healthy = all(c.status in ("ok", "not_implemented", "disabled") for c in checks.values())
+    if not _ready_details_allowed(request):
+        checks = {name: DependencyCheck(status=check.status) for name, check in checks.items()}
     body = Ready(status="ok" if healthy else "degraded", version=settings.app_version, checks=checks)
     return JSONResponse(status_code=200 if healthy else 503, content=body.model_dump(mode="json"))
 
@@ -212,9 +256,15 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("ORBIT API %s starting (env=%s)", settings.app_version, settings.env)
+        logger.info("Effective configuration: %s", settings.redacted_summary())
+        if settings.allow_insecure_demo and settings.production_problems():
+            logger.warning(
+                "ORBIT_ALLOW_INSECURE_DEMO=true: unsafe demo configuration accepted (never in production)"
+            )
         _prepare_object_store()
         await _bootstrap_admin()
         await _ensure_indices()
+        internal_metrics = await _start_internal_metrics()
         async with AsyncExitStack() as stack:
             target = _mcp_lifespan_target(mcp_app)
             if target is not None:
@@ -224,6 +274,8 @@ def create_app() -> FastAPI:
                 yield
             finally:
                 logger.info("ORBIT API shutting down")
+        if internal_metrics is not None:
+            await internal_metrics.close()
         await _close_clients()
         await dispose_engine()
         shutdown_tracing()
@@ -236,10 +288,12 @@ def create_app() -> FastAPI:
         ),
         lifespan=lifespan,
         openapi_tags=OPENAPI_TAGS,
-        docs_url=f"{API_PREFIX}/docs",
-        redoc_url=None,
-        swagger_ui_oauth2_redirect_url=f"{API_PREFIX}/docs/oauth2-redirect",
-        openapi_url=f"{API_PREFIX}/openapi.json",
+        docs_url=f"{API_PREFIX}/docs" if settings.docs_enabled else None,
+        redoc_url=f"{API_PREFIX}/redoc" if settings.docs_enabled else None,
+        swagger_ui_oauth2_redirect_url=f"{API_PREFIX}/docs/oauth2-redirect"
+        if settings.docs_enabled
+        else None,
+        openapi_url=f"{API_PREFIX}/openapi.json" if settings.docs_enabled else None,
     )
     install_exception_handlers(app)
     app.include_router(api_router)
@@ -258,6 +312,7 @@ def create_app() -> FastAPI:
         app.router.routes.append(Route("/mcp", endpoint=_Asgi(mcp_app), include_in_schema=False))
         app.router.routes.append(Route("/mcp/", endpoint=_Asgi(mcp_app), include_in_schema=False))
     # CORS is intentionally not enabled: the UI calls the API same-origin through the Next.js proxy.
+    app.add_middleware(CsrfMiddleware)  # inner: runs after the request context is set up
     app.add_middleware(RequestContextMiddleware)
     instrument_fastapi(app)
     return app

@@ -36,7 +36,9 @@ def _master_keys() -> list[bytes]:
     elif settings.encryption_key_file and Path(settings.encryption_key_file).is_file():
         keys.append(base64.b64decode(Path(settings.encryption_key_file).read_text().strip()))
     keys.extend(
-        base64.b64decode(item.strip()) for item in settings.encryption_previous_keys.split(",") if item.strip()
+        base64.b64decode(item.strip())
+        for item in settings.encryption_previous_keys.split(",")
+        if item.strip()
     )
     if not keys:
         keys.append(hashlib.sha256(settings.jwt_secret.encode()).digest())

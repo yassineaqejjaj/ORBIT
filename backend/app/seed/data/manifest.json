@@ -1,7 +1,7 @@
 {
   "version": 1,
   "notice": "Données fictives (entreprise fictive Nordalis, domaine nordalis.example). J = date d'exécution du seed ; offset_days = nombre de jours avant J. Dans les fichiers : {{J-n}} = date ISO, {{date:J-n}} = date en toutes lettres.",
-  "demo_password": "orbit-demo",
+  "demo_password": "orbit-demo-2026",
   "users": [
     {"key": "camille", "email": "camille.martin@nordalis.example", "full_name": "Camille Martin", "job_title": "Product Owner", "role": "owner", "clearance": 2},
     {"key": "leo", "email": "leo.bernard@nordalis.example", "full_name": "Léo Bernard", "job_title": "Product Designer", "role": "editor", "clearance": 1},

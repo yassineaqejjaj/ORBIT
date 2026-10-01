@@ -9,10 +9,10 @@ from sqlalchemy import or_, select
 
 from app.deps import AdminUser, SessionDep
 from app.errors import conflict, not_found
+from app.identity import sessions as session_service
+from app.identity.passwords import enforce_password_policy
+from app.identity.schemas import AdminUserCreateIn, AdminUserUpdateIn, UserOut
 from app.models import User
-from app.schemas import User as UserOut
-from app.schemas import UserCreateIn, UserUpdateIn
-from app.security import hash_password
 from app.services import audit
 from app.services import users as user_service
 from app.services.audit import AuditAction
@@ -35,9 +35,10 @@ async def list_users(
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED, summary="Créer un utilisateur")
-async def create_user(body: UserCreateIn, admin: AdminUser, session: SessionDep) -> UserOut:
+async def create_user(body: AdminUserCreateIn, admin: AdminUser, session: SessionDep) -> UserOut:
     if await user_service.get_by_email(session, body.email):
         raise conflict("Un utilisateur existe déjà avec cette adresse e-mail")
+    enforce_password_policy(body.password, email=body.email, full_name=body.full_name)
     user = await user_service.create_user(
         session,
         email=body.email,
@@ -45,6 +46,7 @@ async def create_user(body: UserCreateIn, admin: AdminUser, session: SessionDep)
         password=body.password,
         clearance=body.clearance,
         is_admin=body.is_admin,
+        must_change_password=body.must_change_password,
     )
     await audit.record(
         session,
@@ -54,7 +56,11 @@ async def create_user(body: UserCreateIn, admin: AdminUser, session: SessionDep)
         "user",
         user.id,
         summary=f"Création de l'utilisateur {user.full_name} ({user.email})",
-        details={"clearance": user.clearance, "is_admin": user.is_admin},
+        details={
+            "clearance": user.clearance,
+            "is_admin": user.is_admin,
+            "must_change_password": user.must_change_password,
+        },
     )
     await session.commit()
     return UserOut.model_validate(user)
@@ -62,7 +68,7 @@ async def create_user(body: UserCreateIn, admin: AdminUser, session: SessionDep)
 
 @router.patch("/{user_id}", response_model=UserOut, summary="Modifier un utilisateur")
 async def update_user(
-    user_id: uuid.UUID, body: UserUpdateIn, admin: AdminUser, session: SessionDep
+    user_id: uuid.UUID, body: AdminUserUpdateIn, admin: AdminUser, session: SessionDep
 ) -> UserOut:
     user = await session.get(User, user_id)
     if user is None:
@@ -80,8 +86,19 @@ async def update_user(
         changes["is_admin"] = body.is_admin
         user.is_admin = body.is_admin
     if body.password is not None:
-        user.password_hash = hash_password(body.password)
+        enforce_password_policy(body.password, email=user.email, full_name=user.full_name)
+        # Set by an administrator: the user must choose a new one at the next login (own account excepted).
+        must_change = (
+            body.must_change_password if body.must_change_password is not None else user.id != admin.id
+        )
+        user_service.set_password(user, body.password, must_change=must_change)
+        await session_service.revoke_user_sessions(
+            session, user.id, session_service.RevokeReason.password_reset
+        )
         changes["password"] = "modifié"
+    elif body.must_change_password is not None and body.must_change_password != user.must_change_password:
+        user.must_change_password = body.must_change_password
+        changes["must_change_password"] = body.must_change_password
     if changes:
         await audit.record(
             session,

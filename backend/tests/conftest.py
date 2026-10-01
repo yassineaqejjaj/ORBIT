@@ -50,6 +50,15 @@ os.environ.update(
         "ORBIT_BOOTSTRAP_ADMIN_EMAIL": ADMIN_EMAIL,
         "ORBIT_BOOTSTRAP_ADMIN_PASSWORD": ADMIN_PASSWORD,
         "ORBIT_WORKER_METRICS_PORT": "0",
+        "ORBIT_METRICS_PORT": "0",
+        # The ASGI test transport speaks plain http: Secure cookies would never be sent back.
+        "ORBIT_COOKIE_SECURE": "false",
+        # Every test shares one client IP and the bootstrap admin: throttling is exercised by dedicated
+        # tests that lower these limits (tests/test_rate_limiting.py).
+        "ORBIT_RATE_LIMIT_LOGIN": "100000/minute",
+        "ORBIT_RATE_LIMIT_API": "100000/minute",
+        "ORBIT_RATE_LIMIT_AGENT": "100000/minute",
+        "ORBIT_LOGIN_LOCKOUT_THRESHOLD": "100",
         "ORBIT_LOG_LEVEL": "WARNING",
     }
 )
@@ -174,8 +183,21 @@ async def app(database: str) -> AsyncIterator[FastAPI]:
 
 
 def _client(app: FastAPI, **kwargs: object) -> httpx.AsyncClient:
+    """Test client behaving like the web UI: echoes the ``orbit_csrf`` cookie in ``X-CSRF-Token``."""
     transport = httpx.ASGITransport(app=app, **kwargs)  # type: ignore[arg-type]
-    return httpx.AsyncClient(transport=transport, base_url="http://testserver")
+    client = httpx.AsyncClient(transport=transport, base_url="http://testserver")
+
+    async def _csrf_header(request: httpx.Request) -> None:
+        token = client.cookies.get("orbit_csrf")
+        if (
+            request.method not in ("GET", "HEAD", "OPTIONS")
+            and token
+            and "x-csrf-token" not in request.headers
+        ):
+            request.headers["X-CSRF-Token"] = token
+
+    client.event_hooks["request"].append(_csrf_header)
+    return client
 
 
 @pytest_asyncio.fixture

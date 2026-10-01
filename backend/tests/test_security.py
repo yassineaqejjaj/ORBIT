@@ -45,7 +45,7 @@ def test_access_token_roundtrip() -> None:
 
 
 def test_expired_and_tampered_tokens_are_rejected() -> None:
-    expired = create_access_token(uuid.uuid4(), ttl_minutes=-1)
+    expired = create_access_token(uuid.uuid4(), session_id=uuid.uuid4(), ttl_seconds=-60)
     with pytest.raises(TokenError, match="expirée"):
         decode_access_token(expired)
     forged = jwt.encode(

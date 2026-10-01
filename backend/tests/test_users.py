@@ -6,12 +6,14 @@ import httpx
 
 from tests.conftest import unique
 
+STRONG = "Constellation-Boreale-73"
+
 
 async def test_admin_creates_lists_and_updates_users(admin_client: httpx.AsyncClient) -> None:
     email = f"{unique('claire')}@Devoteam.com"
     created = await admin_client.post(
         "/api/v1/users",
-        json={"email": email, "full_name": "Claire Martin", "password": "Mot-de-passe-123", "clearance": 2},
+        json={"email": email, "full_name": "Claire Martin", "password": STRONG, "clearance": 2},
     )
     assert created.status_code == 201, created.text
     user = created.json()
@@ -19,10 +21,12 @@ async def test_admin_creates_lists_and_updates_users(admin_client: httpx.AsyncCl
     assert user["clearance"] == 2
     assert user["is_admin"] is False
     assert user["avatar_color"].startswith("#")
+    assert user["must_change_password"] is True
+    assert user["is_active"] is True and user["auth_provider"] == "local"
 
     duplicate = await admin_client.post(
         "/api/v1/users",
-        json={"email": email.upper(), "full_name": "Autre", "password": "Mot-de-passe-123"},
+        json={"email": email.upper(), "full_name": "Autre", "password": STRONG},
     )
     assert duplicate.status_code == 409
     assert duplicate.json()["code"] == "conflict"
@@ -38,10 +42,35 @@ async def test_admin_creates_lists_and_updates_users(admin_client: httpx.AsyncCl
     assert patched.json()["clearance"] == 3
     assert patched.json()["full_name"] == "Claire M."
 
-    login = await admin_client.post(
-        "/api/v1/auth/login", json={"email": email, "password": "Mot-de-passe-123"}
-    )
+    login = await admin_client.post("/api/v1/auth/login", json={"email": email, "password": STRONG})
     assert login.status_code == 200
+    # Initial password chosen by an administrator: a change is required before any session exists.
+    assert login.json()["password_change_required"] is True
+
+
+async def test_password_policy_and_opt_out_of_forced_change(admin_client: httpx.AsyncClient) -> None:
+    email = f"{unique('policy')}@example.com"
+    weak = await admin_client.post(
+        "/api/v1/users", json={"email": email, "full_name": "Paul Politique", "password": "Mot-de-passe-123"}
+    )
+    assert weak.status_code == 422
+    assert weak.json()["code"] == "weak_password"
+    assert "mot de passe trop courant" in weak.json()["detail"]
+    created = await admin_client.post(
+        "/api/v1/users",
+        json={
+            "email": email,
+            "full_name": "Paul Politique",
+            "password": STRONG,
+            "must_change_password": False,
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["must_change_password"] is False
+    forced = await admin_client.patch(
+        f"/api/v1/users/{created.json()['id']}", json={"must_change_password": True}
+    )
+    assert forced.json()["must_change_password"] is True
 
 
 async def test_user_validation(admin_client: httpx.AsyncClient) -> None:

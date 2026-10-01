@@ -32,6 +32,9 @@ import httpx
 from app.seed import manifest as mf
 
 AGENTS_FILE = Path(__file__).resolve().parents[2] / ".seed-agents.json"
+#: Double-submit CSRF (same names as app.security; not imported so the seed runs without app settings).
+CSRF_COOKIE_NAME = "orbit_csrf"
+CSRF_HEADER_NAME = "X-CSRF-Token"
 DEFAULT_API = os.environ.get("ORBIT_SEED_API", "http://localhost:8000")
 MEMORY_STATUSES = ("proposed", "validated", "superseded", "obsolete", "forgotten")
 DOCUMENT_STATUSES = ("pending", "processing", "indexed", "failed", "forgotten")
@@ -106,6 +109,10 @@ class Api:
         await self.client.aclose()
 
     async def request(self, method: str, path: str, **kwargs: Any) -> Any:
+        csrf = self.client.cookies.get(CSRF_COOKIE_NAME)
+        if csrf and method.upper() not in ("GET", "HEAD", "OPTIONS"):
+            # Same double-submit behaviour as the web UI (docs/PRODUCTION.md §0 « CSRF »).
+            kwargs["headers"] = {**kwargs.get("headers", {}), CSRF_HEADER_NAME: csrf}
         try:
             response = await self.client.request(method, path, **kwargs)
         except httpx.HTTPError as exc:
@@ -335,7 +342,12 @@ class Seeder:
             if found:
                 record = await admin.patch(
                     f"/users/{found[0]['id']}",
-                    {"full_name": user["full_name"], "clearance": user["clearance"], "password": password},
+                    {
+                        "full_name": user["full_name"],
+                        "clearance": user["clearance"],
+                        "password": password,
+                        "must_change_password": False,
+                    },
                 )
                 state = "existant"
             else:
@@ -348,6 +360,7 @@ class Seeder:
                             "password": password,
                             "clearance": user["clearance"],
                             "is_admin": False,
+                            "must_change_password": False,
                         },
                     )
                 except ApiError as exc:
@@ -848,7 +861,7 @@ class Seeder:
                 say(f"  {code:<40} {count:>6}")
 
         say()
-        say("  Comptes de démonstration (mot de passe : orbit-demo) :")
+        say(f"  Comptes de démonstration (mot de passe : {self.manifest['demo_password']}) :")
         for user in self.manifest["users"]:
             say(f"    {user['email']:<34} {user['role']:<7} C{user['clearance']}  {user['full_name']}")
         say(f"    {self.admin_email:<34} admin   C3  (mot de passe administrateur)")
@@ -872,7 +885,7 @@ def _settings_default(name: str, fallback: str) -> str:
     try:
         from app.config import settings
 
-        return str(getattr(settings, name))
+        return str(getattr(settings, name)) or fallback
     except Exception:
         return fallback
 

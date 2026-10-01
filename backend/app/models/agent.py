@@ -48,7 +48,9 @@ class Agent(UUIDPkMixin, CreatedAtMixin, Base):
     #: The key stops working after this instant (default: creation + 180 days).
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: Granted :class:`app.identity.scopes.AgentScope` values.
-    scopes: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    scopes: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     #: Rotation grace: the previous key keeps working until ``previous_key_expires_at`` (24 h).
     previous_key_prefix: Mapped[str | None] = mapped_column(Text, nullable=True)
     previous_key_hash: Mapped[str | None] = mapped_column(Text, nullable=True)

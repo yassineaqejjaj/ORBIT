@@ -164,7 +164,9 @@ def decode_access_token(token: str) -> TokenClaims:
 # --- Short-lived purpose tokens (MFA step, forced password change, OIDC state) -------------------------
 
 
-def create_purpose_token(purpose: str, subject: str, *, ttl_seconds: int, extra: dict[str, Any] | None = None) -> str:
+def create_purpose_token(
+    purpose: str, subject: str, *, ttl_seconds: int, extra: dict[str, Any] | None = None
+) -> str:
     now = datetime.now(UTC)
     claims: dict[str, Any] = {
         "sub": subject,
@@ -198,21 +200,31 @@ CSRF_COOKIE_NAME = "orbit_csrf"
 CSRF_HEADER_NAME = "X-CSRF-Token"
 
 
-def _csrf_mac(nonce: str) -> str:
-    return hmac.new(settings.jwt_secret.encode(), f"csrf:{nonce}".encode(), hashlib.sha256).hexdigest()[:32]
+def _csrf_mac(nonce: str, binding: str) -> str:
+    message = f"csrf:{binding}:{nonce}".encode()
+    return hmac.new(settings.jwt_secret.encode(), message, hashlib.sha256).hexdigest()[:32]
 
 
-def new_csrf_token() -> str:
+def new_csrf_token(binding: str = "") -> str:
+    """Signed double-submit token, bound to ``binding`` (the session id ``sid``, empty when anonymous)."""
     nonce = secrets.token_urlsafe(24)
-    return f"{nonce}.{_csrf_mac(nonce)}"
+    return f"{nonce}.{_csrf_mac(nonce, binding)}"
 
 
-def csrf_token_valid(token: str | None) -> bool:
-    """A token minted by this deployment (signature check; the double-submit compare is done by the caller)."""
+def csrf_token_valid(token: str | None, binding: str = "") -> bool:
+    """Token minted by this deployment for ``binding`` (cookie/header equality: checked by the caller)."""
     if not token or "." not in token:
         return False
     nonce, _, mac = token.rpartition(".")
-    return bool(nonce) and hmac.compare_digest(mac, _csrf_mac(nonce))
+    return bool(nonce) and hmac.compare_digest(mac, _csrf_mac(nonce, binding))
+
+
+def peek_session_id(token: str) -> str | None:
+    """``sid`` of a signature-valid, unexpired session JWT, without any database access (CSRF binding)."""
+    try:
+        return str(decode_access_token(token).session_id or "") or None
+    except TokenError:
+        return None
 
 
 # --- Opaque one-time tokens (invitations) --------------------------------------------------------------

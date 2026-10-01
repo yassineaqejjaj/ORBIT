@@ -57,8 +57,12 @@ Env = Literal["development", "production", "test"]
 MfaPolicy = Literal["none", "privileged", "all"]
 
 
-class ConfigurationError(ValueError):
-    """Unsafe configuration refused at startup (fail-closed)."""
+class ConfigurationError(RuntimeError):
+    """Unsafe configuration refused at startup (fail-closed).
+
+    Deliberately not a ``ValueError``: pydantic would wrap it in a ``ValidationError`` and bury the list
+    of problems; the process must stop with this exact, readable message.
+    """
 
 
 def _csv(value: str) -> list[str]:
@@ -266,7 +270,8 @@ class Settings(BaseSettings):
         except json.JSONDecodeError as exc:
             raise ValueError(f"ORBIT_OIDC_CLEARANCE_MAP doit être un objet JSON valide : {exc}") from exc
         if not isinstance(parsed, dict) or not all(
-            isinstance(level, int) and not isinstance(level, bool) and 0 <= level <= 3 for level in parsed.values()
+            isinstance(level, int) and not isinstance(level, bool) and 0 <= level <= 3
+            for level in parsed.values()
         ):
             raise ValueError('ORBIT_OIDC_CLEARANCE_MAP doit être de la forme {"groupe": niveau 0..3}.')
         return raw
@@ -316,11 +321,14 @@ class Settings(BaseSettings):
             return []
         problems: list[str] = []
         if not self.jwt_secret or self.jwt_secret == DEV_JWT_SECRET or len(self.jwt_secret.encode()) < 32:
-            problems.append("ORBIT_JWT_SECRET doit être défini (au moins 32 octets aléatoires, pas la valeur de dev).")
+            problems.append(
+                "ORBIT_JWT_SECRET doit être défini (au moins 32 octets aléatoires, pas la valeur de dev)."
+            )
         if not self.cookie_secure:
             problems.append("ORBIT_COOKIE_SECURE doit valoir true.")
         if self.bootstrap_admin_password and (
-            self.bootstrap_admin_password == LEGACY_BOOTSTRAP_PASSWORD or len(self.bootstrap_admin_password) < 16
+            self.bootstrap_admin_password == LEGACY_BOOTSTRAP_PASSWORD
+            or len(self.bootstrap_admin_password) < 16
         ):
             problems.append(
                 "ORBIT_BOOTSTRAP_ADMIN_PASSWORD refusé (valeur historique ou moins de 16 caractères) ; "
@@ -328,30 +336,44 @@ class Settings(BaseSettings):
             )
         if not self.encryption_key and not self.encryption_key_file:
             problems.append("ORBIT_ENCRYPTION_KEY (ou ORBIT_ENCRYPTION_KEY_FILE) est requis.")
-        elif self.encryption_key_file and not self.encryption_key and not Path(self.encryption_key_file).is_file():
+        elif (
+            self.encryption_key_file
+            and not self.encryption_key
+            and not Path(self.encryption_key_file).is_file()
+        ):
             problems.append(f"ORBIT_ENCRYPTION_KEY_FILE introuvable : {self.encryption_key_file}.")
         if not self.public_url.startswith("https://"):
             problems.append("ORBIT_PUBLIC_URL doit être en https://.")
         if self.demo_mode:
-            problems.append("ORBIT_DEMO_MODE=true est interdit en production (réservé à ORBIT_ENV=development).")
+            problems.append(
+                "ORBIT_DEMO_MODE=true est interdit en production (réservé à ORBIT_ENV=development)."
+            )
         if self.docs_enabled:
             problems.append("ORBIT_DOCS_ENABLED=true est interdit en production.")
         if self.embedding_provider == "hash":
             problems.append("ORBIT_EMBEDDING_PROVIDER=hash (embeddings de test) est interdit en production.")
         if any(ipaddress.ip_network(item, strict=False).prefixlen == 0 for item in self.trusted_proxy_list):
-            problems.append("ORBIT_TRUSTED_PROXIES ne doit pas faire confiance à toutes les adresses (*, 0.0.0.0/0).")
+            problems.append(
+                "ORBIT_TRUSTED_PROXIES ne doit pas faire confiance à toutes les adresses (*, 0.0.0.0/0)."
+            )
         db_password = _url_password(self.database_url)
         if db_password is None or db_password in DEFAULT_DATASTORE_PASSWORDS:
             problems.append("Mot de passe Postgres absent ou par défaut dans ORBIT_DATABASE_URL.")
         if self.opensearch_user and self.opensearch_password in DEFAULT_DATASTORE_PASSWORDS:
             problems.append("ORBIT_OPENSEARCH_PASSWORD absent ou par défaut.")
         if not self.opensearch_user and _url_password(self.opensearch_url) is None:
-            problems.append("OpenSearch sans authentification (ORBIT_OPENSEARCH_USER / ORBIT_OPENSEARCH_PASSWORD).")
+            problems.append(
+                "OpenSearch sans authentification (ORBIT_OPENSEARCH_USER / ORBIT_OPENSEARCH_PASSWORD)."
+            )
         valkey_password = _url_password(self.valkey_url)
         if valkey_password is None or valkey_password in DEFAULT_DATASTORE_PASSWORDS:
-            problems.append("Mot de passe Valkey absent ou par défaut dans ORBIT_VALKEY_URL (redis[s]://:mdp@hôte).")
+            problems.append(
+                "Mot de passe Valkey absent ou par défaut dans ORBIT_VALKEY_URL (redis[s]://:mdp@hôte)."
+            )
         if self.oidc_enabled and not (self.oidc_issuer and self.oidc_client_id):
-            problems.append("ORBIT_OIDC_ISSUER et ORBIT_OIDC_CLIENT_ID sont requis lorsque ORBIT_OIDC_ENABLED=true.")
+            problems.append(
+                "ORBIT_OIDC_ISSUER et ORBIT_OIDC_CLIENT_ID sont requis lorsque ORBIT_OIDC_ENABLED=true."
+            )
         if self.oidc_enabled and not self.oidc_issuer.startswith("https://"):
             problems.append("ORBIT_OIDC_ISSUER doit être en https://.")
         return problems
