@@ -12,13 +12,18 @@ from app.config import settings
 from app.security import (
     TokenError,
     create_access_token,
+    create_purpose_token,
+    csrf_token_valid,
     decode_access_token,
+    decode_purpose_token,
     generate_api_key,
     hash_api_key,
     hash_password,
     looks_like_api_key,
+    new_csrf_token,
     parse_api_key,
     password_fingerprint,
+    peek_session_id,
     verify_api_key,
     verify_password,
 )
@@ -93,3 +98,51 @@ def test_malformed_api_keys(value: str) -> None:
 def test_api_keys_are_unique() -> None:
     keys = {generate_api_key().key for _ in range(200)}
     assert len(keys) == 200
+
+
+def test_jwt_secret_rotation_accepts_previous_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    user_id, session_id = uuid.uuid4(), uuid.uuid4()
+    old_secret = settings.jwt_secret
+    token = create_access_token(user_id, session_id=session_id)
+    monkeypatch.setattr(settings, "jwt_secret", "rotated-secret-0123456789abcdef0123456789")
+    # Rotated without listing the old secret: every existing session is invalid.
+    monkeypatch.setattr(settings, "jwt_previous_secrets", "")
+    with pytest.raises(TokenError):
+        decode_access_token(token)
+    # Old secret kept in ORBIT_JWT_PREVIOUS_SECRETS: still valid during the rotation window.
+    monkeypatch.setattr(
+        settings, "jwt_previous_secrets", f"another-retired-secret-0123456789abcdef,{old_secret}"
+    )
+    claims = decode_access_token(token)
+    assert claims.user_id == user_id and claims.session_id == session_id
+    # New tokens are signed with the current secret only.
+    fresh = create_access_token(user_id, session_id=session_id)
+    assert jwt.decode(fresh, settings.jwt_secret, algorithms=["HS256"], issuer="orbit")["sid"] == str(
+        session_id
+    )
+
+
+def test_purpose_tokens_are_not_sessions() -> None:
+    change = create_purpose_token("password_change", str(uuid.uuid4()), ttl_seconds=60)
+    with pytest.raises(TokenError):
+        decode_access_token(change)
+    with pytest.raises(TokenError):
+        decode_purpose_token(change, "mfa")
+    assert decode_purpose_token(change, "password_change")["typ"] == "password_change"
+    expired = create_purpose_token("password_change", "x", ttl_seconds=-5)
+    with pytest.raises(TokenError, match="expiré"):
+        decode_purpose_token(expired, "password_change")
+
+
+def test_csrf_tokens_are_signed_and_bound_to_the_session() -> None:
+    session_id = str(uuid.uuid4())
+    token = new_csrf_token(session_id)
+    assert csrf_token_valid(token, session_id)
+    assert not csrf_token_valid(token, str(uuid.uuid4()))
+    assert not csrf_token_valid(token, "")
+    assert not csrf_token_valid(token.split(".")[0] + ".forged", session_id)
+    assert not csrf_token_valid(None, session_id)
+    assert csrf_token_valid(new_csrf_token(), "")
+    session_token = create_access_token(uuid.uuid4(), session_id=uuid.UUID(session_id))
+    assert peek_session_id(session_token) == session_id
+    assert peek_session_id("not-a-jwt") is None

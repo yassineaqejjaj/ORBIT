@@ -83,6 +83,13 @@ async def _ensure_indices() -> None:
         logger.info("OpenSearch indices ready (%s, %s)", settings.chunks_index, settings.memory_index)
     except NotImplementedError:
         logger.warning("OpenSearch index setup not implemented yet — skipped")
+    except opensearch.IndexConfigurationError:
+        # An incompatible existing index (e.g. vector dimension) would silently break search:
+        # fatal in production (fail-closed), degraded elsewhere.
+        if settings.env == "production":
+            logger.critical("Incompatible OpenSearch index configuration: refusing to start")
+            raise
+        logger.exception("Incompatible OpenSearch index configuration (search degraded)")
     except Exception as exc:
         logger.warning("OpenSearch index setup failed (search degraded until it succeeds): %s", exc)
 

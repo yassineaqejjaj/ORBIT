@@ -51,7 +51,6 @@ for module in (
     compliance,
     ops,
     connectors,
-    evaluation,
 ):
     api_router.include_router(module.router)
 

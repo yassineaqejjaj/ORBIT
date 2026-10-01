@@ -673,13 +673,13 @@ async def snapshot_view(
             chunk_meta[str(cid)] = (list(acl), int(level), forgotten)
     memory_meta: dict[str, tuple[list[str], int, bool]] = {}
     if memory_ids:
-        rows = await session.execute(
+        memory_rows = await session.execute(
             select(
                 MemoryItem.id, MemoryItem.acl_principals, MemoryItem.classification, MemoryItem.status
             ).where(MemoryItem.id.in_(memory_ids))
         )
-        for mid, acl, level, status in rows.tuples():
-            memory_meta[str(mid)] = (list(acl), int(level), status == MemoryStatus.forgotten)
+        for mid, acl, level, memory_status in memory_rows.tuples():
+            memory_meta[str(mid)] = (list(acl), int(level), memory_status == MemoryStatus.forgotten)
 
     visible: list[SnapshotItem] = []
     restricted = 0

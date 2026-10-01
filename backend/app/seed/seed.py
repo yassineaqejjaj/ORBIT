@@ -614,6 +614,9 @@ class Seeder:
         failed = await owner.total(f"{self.base}/jobs", status="failed")
         if failed:
             self.warn(f"{failed} job(s) d'ingestion en échec (voir l'écran Sources)")
+        dead = await owner.total(f"{self.base}/jobs", status="dead")
+        if dead:
+            self.warn(f"{dead} job(s) abandonné(s) après échecs répétés (voir l'écran Exploitation)")
         say(f"  ✓ worker au repos après {int(time.monotonic() - start)} s")
 
     async def apply_validations(self, phase: int) -> None:

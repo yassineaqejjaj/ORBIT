@@ -227,3 +227,18 @@ async def test_ready_hides_details_in_production(
     )
     detailed = (await client.get("/ready", headers={"Authorization": "Bearer jeton-ready"})).json()
     assert detailed["checks"]["postgres"]["info"]["migration"]
+
+
+async def test_incompatible_index_is_fatal_only_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import main
+    from app.config import settings
+    from app.search import opensearch
+
+    async def incompatible() -> None:
+        raise opensearch.IndexConfigurationError("dimension des vecteurs 768 ≠ ORBIT_EMBEDDING_DIM=384")
+
+    monkeypatch.setattr(opensearch, "ensure_indices", incompatible)
+    await main._ensure_indices()  # ORBIT_ENV=test: degraded, the API still starts
+    monkeypatch.setattr(settings, "env", "production")
+    with pytest.raises(opensearch.IndexConfigurationError):
+        await main._ensure_indices()

@@ -10,6 +10,7 @@ availability of the platform is preferred over throttling, and the argon2 cost s
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import re
@@ -167,8 +168,10 @@ async def enforce(bucket: str, identity: str, spec: str, *, detail: str | None =
 
 
 def _lock_keys(account: str) -> tuple[str, str, str]:
+    # Hashed: no e-mail address (personal data) in Valkey key names.
+    digest = hashlib.sha256(account.encode()).hexdigest()[:32]
     base = f"{KEY_PREFIX}:lock"
-    return f"{base}:fails:{account}", f"{base}:level:{account}", f"{base}:until:{account}"
+    return f"{base}:fails:{digest}", f"{base}:level:{digest}", f"{base}:until:{digest}"
 
 
 async def lockout_remaining(account: str) -> float:

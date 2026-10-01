@@ -231,7 +231,9 @@ class Settings(BaseSettings):
     worker_poll_interval_seconds: float = 1.0
     worker_heartbeat_seconds: float = 30.0
     worker_job_timeout_seconds: float = 900.0
-    worker_stale_lock_seconds: float = 1800.0
+    worker_stale_lock_seconds: float = 600.0
+    #: Postgres ``lock_timeout`` applied by the worker to its claim/maintenance transactions.
+    worker_lock_timeout_ms: int = Field(default=30000, ge=0)
     worker_shutdown_grace_seconds: float = 30.0
     worker_maintenance_interval_seconds: float = 300.0
     worker_metrics_port: int = 9464  # 0 disables the worker Prometheus endpoint
