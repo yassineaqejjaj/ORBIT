@@ -142,6 +142,9 @@ class Settings(BaseSettings):
 
     @property
     def llm_enabled(self) -> bool:
+        if self.llm_provider == "anthropic":
+            # Base URL and model have defaults for the Messages API; only the key is required.
+            return bool(self.llm_api_key)
         return bool(self.llm_base_url and self.llm_model)
 
     @property
