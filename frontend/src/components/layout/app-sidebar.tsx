@@ -8,6 +8,7 @@ import { ConstellationDots, OrbitLogo } from "@/components/brand/orbit-logo";
 import { activeProjectNav, PROJECT_NAV, projectHref } from "@/components/layout/nav";
 import { ProjectSwitcher } from "@/components/layout/project-switcher";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { useInboxCount } from "@/lib/api/features-feed";
 import { useMeta, useProject } from "@/lib/api/hooks";
 import { hasMinRole } from "@/lib/enums";
 import { cn } from "@/lib/utils";
@@ -18,12 +19,17 @@ function NavLink({
   icon: Icon,
   label,
   onNavigate,
+  badge,
+  badgeLabel,
 }: {
   href: string;
   active: boolean;
   icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
   label: string;
   onNavigate?: () => void;
+  /** Counter shown on the right (hidden when 0 or undefined). */
+  badge?: number;
+  badgeLabel?: string;
 }) {
   return (
     <Link
@@ -44,6 +50,15 @@ function NavLink({
         aria-hidden
       />
       <span className="truncate">{label}</span>
+      {badge ? (
+        <span
+          className="ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brand-soft px-1.5 text-[10.5px] font-semibold tabular-nums text-brand"
+          aria-label={badgeLabel}
+          title={badgeLabel}
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
+      ) : null}
     </Link>
   );
 }
@@ -88,6 +103,9 @@ export function SidebarContent({ slug, onNavigate }: SidebarContentProps) {
   const project = useProject(slug);
   const active = slug ? activeProjectNav(pathname, slug) : undefined;
   const role = project.data?.role;
+  const canTriage = Boolean(role && hasMinRole(role, "editor"));
+  const inboxCount = useInboxCount(slug, canTriage);
+  const inboxTotal = inboxCount.data?.total;
 
   return (
     <div className="flex h-full flex-col">
@@ -113,7 +131,9 @@ export function SidebarContent({ slug, onNavigate }: SidebarContentProps) {
               Projet
             </p>
             <ul className="grid gap-0.5">
-              {PROJECT_NAV.filter((item) => item.segment !== "settings").map((item) => (
+              {PROJECT_NAV.filter(
+                (item) => item.segment !== "settings" && (!item.minRole || !role || hasMinRole(role, item.minRole)),
+              ).map((item) => (
                 <li key={item.segment || "overview"}>
                   <NavLink
                     href={projectHref(slug, item.segment)}
@@ -121,6 +141,12 @@ export function SidebarContent({ slug, onNavigate }: SidebarContentProps) {
                     icon={item.icon}
                     label={item.label}
                     onNavigate={onNavigate}
+                    badge={item.segment === "inbox" ? inboxTotal : undefined}
+                    badgeLabel={
+                      item.segment === "inbox" && inboxCount.data
+                        ? `${inboxCount.data.proposals} proposition(s), ${inboxCount.data.conflicts} contradiction(s)`
+                        : undefined
+                    }
                   />
                 </li>
               ))}
