@@ -38,6 +38,7 @@ import { cn } from "@/lib/utils";
 
 import { MemoryActions } from "./memory-actions";
 import { MemoryActor } from "./memory-actor";
+import { MemoryCardFields } from "./memory-card-fields";
 import { HistoryTimeline, ProvenanceList, RelationsList, VersionsList } from "./memory-detail-tabs";
 import {
   isExpired,
@@ -251,6 +252,8 @@ export function MemoryDetail({ slug, itemId, permissions, members, labels, onOpe
           <MarkdownPreview content={item.content} />
         )}
       </section>
+
+      {forgotten ? null : <MemoryCardFields item={item} />}
 
       <dl className="grid grid-cols-1 gap-x-6 gap-y-4 rounded-xl border border-border bg-muted/20 p-4 sm:grid-cols-2">
         <MetaRow label="Portée">
