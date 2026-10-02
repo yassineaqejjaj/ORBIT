@@ -49,6 +49,8 @@ class JobKind(StrEnum):
     forget = "forget"
     consolidate = "consolidate"
     extract_memory = "extract_memory"
+    webhook = "webhook"
+    connector_sync = "connector_sync"
 
 
 class JobStatus(StrEnum):

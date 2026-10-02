@@ -4,10 +4,14 @@ from fastapi import APIRouter
 
 from app.api import (
     agents,
+    ask,
     audit,
     auth,
+    connectors,
     context,
     documents,
+    feed,
+    inbox,
     jobs,
     members,
     memory,
@@ -18,7 +22,9 @@ from app.api import (
     sessions,
     snapshots,
     sources,
+    teams,
     users,
+    webhooks,
 )
 
 API_PREFIX = "/api/v1"
@@ -41,6 +47,12 @@ for module in (
     metrics,
     audit,
     meta,
+    inbox,
+    feed,
+    webhooks,
+    ask,
+    teams,
+    connectors,
 ):
     api_router.include_router(module.router)
 

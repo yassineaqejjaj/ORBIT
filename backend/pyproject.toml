@@ -35,6 +35,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.49b0",
     "prometheus-client>=0.21",
     "orjson>=3.10",
+    "cryptography>=50.0.1",
 ]
 
 [dependency-groups]

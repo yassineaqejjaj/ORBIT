@@ -58,6 +58,16 @@ class AuditAction(StrEnum):
     memory_forget = "memory.forget"
     memory_conflict = "memory.conflict"
     memory_consolidate = "memory.consolidate"
+    memory_bulk = "memory.bulk"
+    memory_conflict_resolved = "memory.conflict_resolved"
+    memory_conflict_dismissed = "memory.conflict_dismissed"
+    document_stale = "document.stale"
+    subscription_update = "subscription.update"
+    webhook_create = "webhook.create"
+    webhook_update = "webhook.update"
+    webhook_delete = "webhook.delete"
+    webhook_test = "webhook.test"
+    webhook_disabled = "webhook.disabled"
     session_close = "session.close"
     context_request = "context.request"
     context_feedback = "context.feedback"
@@ -134,6 +144,13 @@ async def record(
         details=_jsonable(details or {}),
     )
     session.add(entry)
+    if project_id is not None:
+        # Change feed (docs/FEATURES.md F2): notable actions also produce a change event.
+        from app.features.feed.events import on_audit
+
+        await on_audit(
+            session, project_id, resolved.label, str(action), target_type, target_id, summary, details or {}
+        )
     return entry
 
 

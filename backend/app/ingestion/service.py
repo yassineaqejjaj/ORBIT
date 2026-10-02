@@ -24,7 +24,15 @@ from sqlalchemy.dialects.postgresql import ARRAY, array
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import utcnow
-from app.enums import ChunkStatus, DocumentStatus, JobKind, Role, SourceKind, classification_code
+from app.enums import (
+    ChunkStatus,
+    DocumentStatus,
+    JobKind,
+    Role,
+    SourceKind,
+    TombstoneTarget,
+    classification_code,
+)
 from app.errors import conflict, not_found, validation_error
 from app.governance.acl import (
     acl_allows,
@@ -34,9 +42,9 @@ from app.governance.acl import (
     validate_acl_principals,
 )
 from app.ingestion.extractors import MARKDOWN
-from app.ingestion.pipeline import actor_payload, document_index_fields
+from app.ingestion.pipeline import FORGOTTEN_TEXT, actor_payload, document_index_fields
 from app.ingestion.queue import enqueue_job
-from app.models import Chunk, Document, DocumentVersion, IngestionJob, Source
+from app.models import Chunk, Document, DocumentVersion, IngestionJob, Source, Tombstone
 from app.schemas import DocumentSummary
 from app.schemas.common import Tags
 from app.search import opensearch
@@ -550,3 +558,57 @@ __all__ = [
     "sync_index_metadata",
     "title_from_filename",
 ]
+
+
+# --- Forget (deletion at the source) -------------------------------------------------------------------
+
+
+async def forget_document(
+    session: AsyncSession,
+    document: Document,
+    actor: Actor,
+    reason: str,
+    *,
+    requested_by: uuid.UUID | None = None,
+) -> IngestionJob:
+    """Selective forget of ``document`` (tombstone + immediate chunk scrub + ``forget`` job; caller commits).
+
+    Same path as ``POST /documents/{id}/forget``; used by connectors when an item is deleted at the source.
+    """
+    now = utcnow()
+    tombstone = Tombstone(
+        project_id=document.project_id,
+        target_type=TombstoneTarget.document,
+        target_id=document.id,
+        reason=reason,
+        requested_by=requested_by,
+    )
+    session.add(tombstone)
+    document.status = DocumentStatus.forgotten
+    document.status_reason = None
+    document.forgotten_at = now
+    document.forgotten_by = requested_by
+    await session.execute(
+        update(Chunk)
+        .where(Chunk.document_id == document.id)
+        .values(status=ChunkStatus.forgotten, text=FORGOTTEN_TEXT, text_redacted=FORGOTTEN_TEXT, pii=[])
+    )
+    await session.flush()
+    job = await enqueue_job(
+        session,
+        document.project_id,
+        JobKind.forget,
+        document.id,
+        payload={"tombstone_id": str(tombstone.id), "actor": actor_payload(actor), "reason": reason},
+    )
+    await audit.record(
+        session,
+        document.project_id,
+        actor,
+        AuditAction.document_forget,
+        "document",
+        document.id,
+        summary=f"Oubli sélectif de « {document.title} »",
+        details={"reason": reason, "tombstone_id": str(tombstone.id), "job_id": str(job.id)},
+    )
+    return job

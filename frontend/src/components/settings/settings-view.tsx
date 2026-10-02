@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Lock, Plug, ScrollText, Settings, SlidersHorizontal, Users } from "lucide-react";
+import { Bot, Lock, Plug, ScrollText, Settings, SlidersHorizontal, Users, Webhook } from "lucide-react";
 
 import { RoleBadge } from "@/components/domain/enum-badge";
 import { useUrlParams } from "@/components/sources/use-url-params";
@@ -14,8 +14,9 @@ import { AuditPanel } from "./audit-panel";
 import { McpPanel } from "./mcp-panel";
 import { MembersPanel } from "./members-panel";
 import { ProjectSettingsPanel } from "./project-settings-panel";
+import { WebhooksPanel } from "./webhooks-panel";
 
-const TABS = ["project", "members", "agents", "mcp", "audit"] as const;
+const TABS = ["project", "members", "agents", "mcp", "webhooks", "audit"] as const;
 type SettingsTab = (typeof TABS)[number];
 const DEFAULT_TAB: SettingsTab = "project";
 
@@ -44,7 +45,7 @@ export function SettingsView() {
         icon={<Settings />}
         eyebrow={project.name}
         title="Paramètres"
-        description="Configuration du projet, membres et rôles, agents et clés API, connexion MCP et journal d'audit."
+        description="Configuration du projet, membres et rôles, agents et clés API, connexion MCP, webhooks et journal d'audit."
         meta={
           <>
             <RoleBadge value={role} size="sm" />
@@ -75,6 +76,10 @@ export function SettingsView() {
             <Plug aria-hidden />
             Intégration MCP
           </TabsTrigger>
+          <TabsTrigger value="webhooks">
+            <Webhook aria-hidden />
+            Webhooks
+          </TabsTrigger>
           <TabsTrigger value="audit">
             <ScrollText aria-hidden />
             Audit
@@ -92,6 +97,9 @@ export function SettingsView() {
         </TabsContent>
         <TabsContent value="mcp">
           <McpPanel onShowAgents={() => goTo("agents")} />
+        </TabsContent>
+        <TabsContent value="webhooks">
+          <WebhooksPanel />
         </TabsContent>
         <TabsContent value="audit">
           <AuditPanel />

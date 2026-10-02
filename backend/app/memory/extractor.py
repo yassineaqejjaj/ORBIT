@@ -43,9 +43,15 @@ from app.enums import (
     SourceKind,
 )
 from app.ingestion.queue import PermanentJobError, track_step
-from app.llm import client as llm
 from app.memory import lifecycle
 from app.memory.conflicts import content_terms, fold, kind_family, normalize_text
+from app.memory.llm_extraction import (
+    LLMExtractionStats,
+    MemoryCard,
+    card_kind,
+    extract_cards,
+    normalize_quote,
+)
 from app.models import Chunk, Document, IngestionJob, MemoryItem, MemoryProvenance, Relation, Source
 from app.schemas.memory import MemoryIn, ProvenanceIn
 from app.services import audit
@@ -154,6 +160,11 @@ class Statement:
     confidence: float
     explicit_decision: bool
     rule: str
+    #: Memory-card fields (LLM extraction only).
+    quote: str | None = None
+    rationale: str | None = None
+    decided_by: str | None = None
+    confidence_reason: str | None = None
 
 
 @dataclass(slots=True)
@@ -176,6 +187,7 @@ class ExtractionResult:
     conflicts: int = 0
     obsoleted: int = 0
     used_llm: bool = False
+    llm: LLMExtractionStats = field(default_factory=LLMExtractionStats)
 
     def counters(self) -> dict[str, int]:
         by_kind = Counter(MemoryKind(item.kind).value for item in self.created)
@@ -187,6 +199,7 @@ class ExtractionResult:
             "superseded": self.superseded,
             "conflicts": self.conflicts,
             "obsoleted": self.obsoleted,
+            **self.llm.counters(),
             **{f"kind_{kind}": count for kind, count in by_kind.items()},
         }
 
@@ -208,7 +221,13 @@ class ExtractionResult:
         if self.obsoleted:
             extras.append(f"{self.obsoleted} item(s) absent(s) de la nouvelle version marqué(s) obsolète(s)")
         if self.used_llm:
-            extras.append("extraction assistée par LLM")
+            extras.append(
+                f"extraction assistée par LLM ({self.llm.calls} appel(s), {self.llm.tokens} jetons"
+                + (f", {self.llm.rejected_cards} fiche(s) rejetée(s)" if self.llm.rejected_cards else "")
+                + ")"
+            )
+        if self.llm.skipped_guardrail:
+            extras.append(f"{self.llm.skipped_guardrail} fragment(s) non envoyé(s) au LLM (garde-fou)")
         return " · ".join([summary, *extras])
 
 
@@ -394,61 +413,44 @@ def extract_statements(
     return statements
 
 
-# --- LLM path ----------------------------------------------------------------------------------------------
-
-_LLM_SYSTEM = (
-    "Tu es un assistant qui extrait la mémoire d'un projet à partir d'un extrait de document en français. "
-    "Identifie uniquement les décisions, besoins utilisateurs, contraintes, risques et faits chiffrés "
-    "explicitement présents dans le texte. Réponds uniquement en JSON : "
-    '{"items": [{"kind": "decision|requirement|constraint|risk|fact", '
-    '"title": "titre court (≤ 90 caractères)", '
-    '"content": "phrase exacte du texte", "explicit_decision": true|false}]}. '
-    "explicit_decision vaut true seulement si la ligne commence par « Décision : ». "
-    'N\'invente rien ; renvoie {"items": []} si le texte ne contient rien de pertinent.'
-)
-_LLM_KINDS = {
-    MemoryKind.decision,
-    MemoryKind.requirement,
-    MemoryKind.constraint,
-    MemoryKind.risk,
-    MemoryKind.fact,
-}
+# --- LLM path (F3: validated memory cards, see app.memory.llm_extraction) --------------------------------
 
 
-async def _llm_statements(
-    document: Document, chunk: Chunk, source_kind: SourceKind
-) -> list[Statement] | None:
-    """Statements proposed by the optional LLM, grounded in the chunk text; ``None`` on any failure."""
-    if not llm.is_enabled():
+def _card_statement(card: MemoryCard) -> Statement | None:
+    content = " ".join(card.statement.split())
+    if not MIN_STATEMENT_LENGTH <= len(content) <= MAX_STATEMENT_LENGTH:
         return None
-    text = chunk.text_redacted[:LLM_MAX_CHARS]
-    user = f"Document : {document.title}\nType de source : {source_kind.value}\n\nTexte :\n{text}"
-    try:
-        data: Any = await llm.complete_json(_LLM_SYSTEM, user, max_tokens=1200)
-    except Exception as exc:  # the client already handles transport errors; stay defensive
-        logger.warning("LLM memory extraction failed: %s", exc)
-        return None
-    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
-        return None
-    chunk_terms = content_terms(text)
-    statements: list[Statement] = []
-    for raw in data["items"][:40]:
-        if not isinstance(raw, dict):
+    kind = card_kind(card)
+    explicit = kind == MemoryKind.decision and fold(card.source_quote).lstrip("*_ -").startswith("decision")
+    return Statement(
+        kind=kind,
+        title=make_title(card.title) or make_title(content),
+        content=content,
+        confidence=round(max(0.3, min(0.95, card.confidence)), 2),
+        explicit_decision=explicit,
+        rule="llm",
+        quote=" ".join(card.source_quote.split()),
+        rationale=card.rationale,
+        decided_by=card.decided_by,
+        confidence_reason=card.confidence_reason or None,
+    )
+
+
+def _covered_by_card(rule: Statement, cards: Sequence[Statement]) -> bool:
+    """A rule-based statement whose sentence is (part of) a card's quote is merged into that card."""
+    text = normalize_quote(rule.content)
+    for card in cards:
+        if kind_family(card.kind) != kind_family(rule.kind) or not card.quote:
             continue
-        try:
-            kind = MemoryKind(str(raw.get("kind", "")).strip())
-        except ValueError:
-            continue
-        content = " ".join(str(raw.get("content", "")).split())
-        if kind not in _LLM_KINDS or not (MIN_STATEMENT_LENGTH <= len(content) <= MAX_STATEMENT_LENGTH):
-            continue
-        terms = content_terms(content)
-        if not terms or len(terms & chunk_terms) / len(terms) < 0.7:
-            continue  # not grounded in the source text
-        title = make_title(str(raw.get("title") or "")) or make_title(content)
-        explicit = bool(raw.get("explicit_decision")) and fold(content).startswith("decision")
-        statements.append(Statement(kind, title, content, 0.75, explicit, "llm"))
-    return statements
+        quote = normalize_quote(card.quote)
+        if text and (text in quote or quote in text):
+            return True
+    return False
+
+
+def merge_statements(cards: Sequence[Statement], rules: Sequence[Statement]) -> list[Statement]:
+    """LLM cards first, then the rule-based statements they do not already cover."""
+    return [*cards, *(rule for rule in rules if not _covered_by_card(rule, cards))]
 
 
 # --- Extraction job ----------------------------------------------------------------------------------------
@@ -488,13 +490,12 @@ async def _collect_candidates(
     candidates: list[Candidate] = []
     by_text: dict[str, Candidate] = {}
     for chunk in chunks:
-        statements = await _llm_statements(document, chunk, source_kind)
-        if statements:
+        rules = extract_statements(chunk.text_redacted, section=chunk.section, source_kind=source_kind)
+        cards = await extract_cards(document, chunk, source_kind, result.llm)
+        card_statements = [st for st in (_card_statement(card) for card in cards or []) if st is not None]
+        if cards is not None:
             result.used_llm = True
-        else:
-            statements = extract_statements(
-                chunk.text_redacted, section=chunk.section, source_kind=source_kind
-            )
+        statements = merge_statements(card_statements, rules)
         for statement in statements:
             validated = meeting and statement.explicit_decision
             statement.confidence = round(
@@ -768,12 +769,14 @@ async def extract_from_document(session: AsyncSession, job: IngestionJob) -> dic
                 status=status.value,
                 confidence=statement.confidence,
                 valid_from=document.source_updated_at,
-                tags=["extraction-auto"],
+                tags=["extraction-auto", "extraction-llm"]
+                if statement.rule == "llm"
+                else ["extraction-auto"],
                 provenance=[
                     ProvenanceIn(
                         chunk_id=chunk.id,
                         document_id=document.id,
-                        excerpt=statement.content,
+                        excerpt=statement.quote or statement.content,
                         source_label=_source_label(document, chunk),
                     )
                     for chunk in candidate.chunks[:10]
@@ -789,6 +792,10 @@ async def extract_from_document(session: AsyncSession, job: IngestionJob) -> dic
                 audit_entry=False,
                 refresh_index=False,
             )
+            if statement.rule == "llm":
+                item.rationale = statement.rationale
+                item.decided_by = statement.decided_by
+                item.confidence_reason = statement.confidence_reason
             result.created.append(item)
 
         for item in result.created:

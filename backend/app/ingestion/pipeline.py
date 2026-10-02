@@ -93,8 +93,24 @@ async def run_job(session: AsyncSession, job: IngestionJob) -> None:
         JobKind.forget: handle_forget,
         JobKind.consolidate: handle_consolidate,
         JobKind.extract_memory: handle_extract_memory,
+        JobKind.webhook: handle_webhook,
+        JobKind.connector_sync: handle_connector_sync,
     }
     await handlers[JobKind(job.kind)](session, job)
+
+
+async def handle_webhook(session: AsyncSession, job: IngestionJob) -> None:
+    """Outgoing webhook delivery (docs/FEATURES.md F2)."""
+    from app.features.feed.delivery import handle_webhook as deliver
+
+    await deliver(session, job)
+
+
+async def handle_connector_sync(session: AsyncSession, job: IngestionJob) -> None:
+    """Connector synchronisation (docs/FEATURES.md F5)."""
+    from app.connectors.sync import handle_connector_sync as sync
+
+    await sync(session, job)
 
 
 # --- Helpers --------------------------------------------------------------------------------------

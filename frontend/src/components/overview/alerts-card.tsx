@@ -32,10 +32,10 @@ export function alertLink(slug: string, message: string): AlertLink | null {
     return { href: `${projectHref(slug, "sources")}?tab=jobs&job_status=failed`, label: "Voir les traitements" };
   }
   if (/(conflit|contradi)/.test(text)) {
-    return { href: `${projectHref(slug, "memory")}`, label: "Examiner la mémoire" };
+    return { href: `${projectHref(slug, "inbox")}?tab=conflicts`, label: "Arbitrer les contradictions" };
   }
   if (/(propos|a valider|en attente de validation)/.test(text)) {
-    return { href: `${projectHref(slug, "memory")}?status=proposed`, label: "Revoir les propositions" };
+    return { href: projectHref(slug, "inbox"), label: "Trier les propositions" };
   }
   if (/\bc3\b|secret/.test(text)) {
     return { href: `${projectHref(slug, "sources")}?classification=3`, label: "Voir les documents C3" };

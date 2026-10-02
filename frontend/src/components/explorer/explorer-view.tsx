@@ -127,11 +127,14 @@ export function ExplorerView() {
   const requestParam = searchParams.get("request");
   const baseParam = searchParams.get("base");
   const versionParam = searchParams.get("version");
+  // `?task=` prefills the task (e.g. « Votre premier contexte » at the end of the connector wizard).
+  const taskParam = searchParams.get("task");
 
   const budgetDefault = defaultBudget(project);
-  const [form, setForm] = React.useState<ExplorerFormState>(() =>
-    initialExplorerForm(project, { name: baseParam, version: versionParam }),
-  );
+  const [form, setForm] = React.useState<ExplorerFormState>(() => {
+    const initial = initialExplorerForm(project, { name: baseParam, version: versionParam });
+    return taskParam ? { ...initial, task: taskParam.slice(0, 4000) } : initial;
+  });
   const [showErrors, setShowErrors] = React.useState(false);
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [activeRequestId, setActiveRequestId] = React.useState<string | null>(requestParam);
@@ -141,6 +144,12 @@ export function ExplorerView() {
 
   const agents = useAgents(slug);
   const members = useMembers(slug, { enabled: isOwner });
+
+  const [prevTaskParam, setPrevTaskParam] = React.useState(taskParam);
+  if (taskParam !== prevTaskParam) {
+    setPrevTaskParam(taskParam);
+    if (taskParam) setForm((f) => ({ ...f, task: taskParam.slice(0, 4000) }));
+  }
 
   // Follow `?base=&version=` (e.g. "Utiliser comme base" from the snapshots screen).
   const baseKey = `${baseParam ?? ""}@${versionParam ?? ""}`;

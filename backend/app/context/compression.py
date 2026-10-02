@@ -169,7 +169,11 @@ async def _llm_summaries(decisions: Sequence[Decision]) -> dict[int, str]:
             f"Titre : {d.candidate.title}\n\nExtrait :\n{d.candidate.text[:6000]}"
         )
         answer = await llm_client.complete(
-            LLM_SYSTEM_PROMPT, prompt, max_tokens=d.allowance * 2 + 32, timeout_seconds=LLM_TIMEOUT_SECONDS
+            LLM_SYSTEM_PROMPT,
+            prompt,
+            max_tokens=d.allowance * 2 + 32,
+            timeout_seconds=LLM_TIMEOUT_SECONDS,
+            classification=d.candidate.classification,
         )
         return id(d), answer
 
