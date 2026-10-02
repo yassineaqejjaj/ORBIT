@@ -18,6 +18,8 @@ export interface ActivityTimelineProps {
   events: readonly AuditEvent[];
   members?: readonly Member[];
   className?: string;
+  /** Dashboard: keep only semantic colors (red failures, green successes), neutral otherwise. */
+  quiet?: boolean;
 }
 
 /** Link to the screen showing the audit target, when there is one. */
@@ -49,7 +51,7 @@ export function auditTargetHref(slug: string, event: Pick<AuditEvent, "target_ty
 }
 
 /** Vertical timeline of recent audit events: actor avatar, action, French summary, relative time. */
-export function ActivityTimeline({ slug, events, members, className }: ActivityTimelineProps) {
+export function ActivityTimeline({ slug, events, members, className, quiet = false }: ActivityTimelineProps) {
   if (events.length === 0) {
     return (
       <EmptyState
@@ -74,7 +76,11 @@ export function ActivityTimeline({ slug, events, members, className }: ActivityT
             <div className="grid min-w-0 flex-1 gap-1 pt-0.5">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="truncate text-[13px] font-medium text-foreground">{event.actor_label}</span>
-                <Badge tone={meta.tone} size="sm" title={event.action}>
+                <Badge
+                  tone={quiet ? (meta.tone === "red" || meta.tone === "green" ? meta.tone : "neutral") : meta.tone}
+                  size="sm"
+                  title={event.action}
+                >
                   {meta.label}
                 </Badge>
                 <RelativeTime date={event.created_at} className="ml-auto text-xs text-muted-foreground" />

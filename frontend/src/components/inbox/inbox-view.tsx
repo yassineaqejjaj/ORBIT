@@ -14,7 +14,7 @@ import { ProposalsPanel } from "./proposals-panel";
 
 type InboxTab = "proposals" | "conflicts";
 
-/** « Tri de la mémoire » : proposals to validate and contradictions to arbitrate (docs/FEATURES.md F1). */
+/** « Revue mémoire » : proposals to validate and contradictions to arbitrate (docs/FEATURES.md F1). */
 export function InboxView() {
   const { slug, project, canEdit } = useCurrentProject();
   const { get, set } = useUrlParams();
@@ -26,7 +26,7 @@ export function InboxView() {
       <PageHeader
         icon={<Inbox />}
         eyebrow={project.name}
-        title="Tri de la mémoire"
+        title="Revue mémoire"
         description="Validez, rejetez ou fusionnez les propositions extraites des sources, et arbitrez les contradictions détectées entre items."
         meta={
           count.data ? (

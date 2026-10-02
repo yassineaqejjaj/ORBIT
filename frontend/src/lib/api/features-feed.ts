@@ -361,11 +361,11 @@ export function useDismissConflict(slug: string) {
   });
 }
 
-export function useChanges(slug: string, params: ChangesParams) {
+export function useChanges(slug: string, params: ChangesParams, enabled = true) {
   return useQuery<Page<ChangeEvent>, ApiError>({
     queryKey: featuresFeedKeys.changesList(slug, params),
     queryFn: ({ signal }) => featuresFeedApi.listChanges(slug, params, { signal }),
-    enabled: Boolean(slug),
+    enabled: Boolean(slug) && enabled,
     placeholderData: keepPreviousData,
   });
 }

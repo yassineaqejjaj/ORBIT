@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 
 import { ExplorerView } from "@/components/explorer/explorer-view";
 
-export const metadata: Metadata = { title: "Explorateur de contexte" };
+export const metadata: Metadata = { title: "Contexte" };
 
 export default function ExplorerPage() {
   // `useSearchParams` (?request=, ?base=, ?version=) requires a Suspense boundary.
