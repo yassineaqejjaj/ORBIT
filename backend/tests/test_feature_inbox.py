@@ -42,9 +42,7 @@ async def _member(
     clearance: int = 1,
 ) -> tuple[UserInfo, httpx.AsyncClient]:
     user = await make_user(clearance=clearance)
-    added = await admin_client.post(
-        f"{_base(project)}/members", json={"email": user.email, "role": role}
-    )
+    added = await admin_client.post(f"{_base(project)}/members", json={"email": user.email, "role": role})
     assert added.status_code == 201, added.text
     return user, await client_for(user)
 
@@ -85,7 +83,10 @@ async def test_inbox_lists_visible_proposals_with_signals(
 ) -> None:
     base = _base(project)
     proposal = await _create(
-        admin_client, project, title="Navette", content="La navette du salon part toutes les 20 minutes du hall A."
+        admin_client,
+        project,
+        title="Navette",
+        content="La navette du salon part toutes les 20 minutes du hall A.",
     )
     await _create(
         admin_client,
@@ -115,7 +116,9 @@ async def test_inbox_lists_visible_proposals_with_signals(
     assert proposal["id"] not in {i["id"] for i in high.json()["items"]}
 
     _, editor = await _member(admin_client, project, make_user, client_for, "editor", clearance=1)
-    editor_ids = {i["id"] for i in (await editor.get(f"{base}/inbox", params={"page_size": 100})).json()["items"]}
+    editor_ids = {
+        i["id"] for i in (await editor.get(f"{base}/inbox", params={"page_size": 100})).json()["items"]
+    }
     assert proposal["id"] in editor_ids
     assert secret["id"] not in editor_ids  # clearance
     assert private["id"] not in editor_ids  # user memory stays private to its subject
@@ -135,7 +138,8 @@ async def test_bulk_validate_reject_merge(admin_client: httpx.AsyncClient, proje
     validated = await _create(admin_client, project, status="validated")
 
     result = await admin_client.post(
-        f"{base}/inbox/bulk", json={"action": "validate", "ids": [a["id"], validated["id"], str(uuid.uuid4())]}
+        f"{base}/inbox/bulk",
+        json={"action": "validate", "ids": [a["id"], validated["id"], str(uuid.uuid4())]},
     )
     assert result.status_code == 200, result.text
     body = result.json()
@@ -160,7 +164,9 @@ async def test_bulk_validate_reject_merge(admin_client: httpx.AsyncClient, proje
     other = await _create(
         admin_client, project, provenance=[{"source_label": "Atelier 2", "excerpt": "extrait B"}]
     )
-    missing_into = await admin_client.post(f"{base}/inbox/bulk", json={"action": "merge", "ids": [other["id"]]})
+    missing_into = await admin_client.post(
+        f"{base}/inbox/bulk", json={"action": "merge", "ids": [other["id"]]}
+    )
     assert missing_into.status_code == 422
     merged = await admin_client.post(
         f"{base}/inbox/bulk",
@@ -187,9 +193,15 @@ async def test_conflict_resolution_and_dismissal(
 ) -> None:
     base = _base(project)
     a = await _create(
-        admin_client, project, title="Budget 720", content="Le budget de l'événement est de 720 k€.", status="validated"
+        admin_client,
+        project,
+        title="Budget 720",
+        content="Le budget de l'événement est de 720 k€.",
+        status="validated",
     )
-    b = await _create(admin_client, project, title="Budget 650", content="Le budget de l'événement est de 650 k€.")
+    b = await _create(
+        admin_client, project, title="Budget 650", content="Le budget de l'événement est de 650 k€."
+    )
     conflict_id = await _contradiction(db_session, project, a, b)
 
     open_ = await admin_client.get(f"{base}/conflicts")
@@ -208,7 +220,9 @@ async def test_conflict_resolution_and_dismissal(
     forbidden = await viewer.post(f"{base}/conflicts/{conflict_id}/resolve", json={"winner_id": a["id"]})
     assert forbidden.status_code == 403
 
-    bad = await admin_client.post(f"{base}/conflicts/{conflict_id}/resolve", json={"winner_id": str(uuid.uuid4())})
+    bad = await admin_client.post(
+        f"{base}/conflicts/{conflict_id}/resolve", json={"winner_id": str(uuid.uuid4())}
+    )
     assert bad.status_code == 422
 
     resolved = await admin_client.post(
@@ -229,9 +243,13 @@ async def test_conflict_resolution_and_dismissal(
 
     # Dismissal: the relation no longer counts as a contradiction.
     c = await _create(admin_client, project, title="Salle A", content="La salle A accueille 300 personnes.")
-    d = await _create(admin_client, project, title="Salle A bis", content="La salle A accueille 120 personnes.")
+    d = await _create(
+        admin_client, project, title="Salle A bis", content="La salle A accueille 120 personnes."
+    )
     second = await _contradiction(db_session, project, c, d)
-    dismissed = await admin_client.post(f"{base}/conflicts/{second}/dismiss", json={"reason": "Configurations"})
+    dismissed = await admin_client.post(
+        f"{base}/conflicts/{second}/dismiss", json={"reason": "Configurations"}
+    )
     assert dismissed.status_code == 200, dismissed.text
     assert dismissed.json()["status"] == "dismissed"
     assert str(second) not in {x["id"] for x in (await admin_client.get(f"{base}/conflicts")).json()}

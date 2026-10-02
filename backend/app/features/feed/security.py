@@ -129,7 +129,11 @@ async def check_destination(url: str) -> None:
     if _dev():
         return
     try:
-        addresses = await resolve_host(host, port)
+        addresses = [str(ipaddress.ip_address(host))]  # literal IP: no resolution
+    except ValueError:
+        addresses = []
+    try:
+        addresses = addresses or await resolve_host(host, port)
     except OSError as exc:
         raise UnsafeUrlError(f"Nom d'hôte introuvable : {host}") from exc
     if not addresses:
