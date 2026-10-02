@@ -166,15 +166,24 @@ _LLM_SYSTEM = (
 )
 
 
-async def llm_level(text: str, title: str | None) -> tuple[int | None, str | None]:
-    """Optional LLM opinion (``None`` when disabled or unusable)."""
+async def llm_level(
+    text: str, title: str | None, known_level: int | None = None
+) -> tuple[int | None, str | None]:
+    """Optional LLM opinion (``None`` when disabled, blocked by the guardrail or unusable).
+
+    ``known_level``: level already established by the rules — content above the LLM guardrail ceiling
+    is never sent to an external LLM.
+    """
     from app.llm import client as llm_client
 
     if not llm_client.is_enabled():
         return None, None
     excerpt = text[:LLM_MAX_CHARS]
     answer = await llm_client.complete_json(
-        _LLM_SYSTEM, f"Titre : {title or '(sans titre)'}\n\nContenu :\n{excerpt}", max_tokens=200
+        _LLM_SYSTEM,
+        f"Titre : {title or '(sans titre)'}\n\nContenu :\n{excerpt}",
+        max_tokens=200,
+        classification=known_level,
     )
     if not isinstance(answer, dict):
         return None, None
@@ -218,7 +227,7 @@ async def classify(
     result = ClassificationResult(level=level, reasons=reasons, keywords=keywords, sensitive_pii=sensitive)
     if use_llm:
         try:
-            llm, why = await llm_level(text, title)
+            llm, why = await llm_level(text, title, result.level)
         except Exception as exc:  # the LLM is optional: never fail the ingestion because of it
             logger.warning("LLM classification failed: %s", exc)
             llm, why = None, None

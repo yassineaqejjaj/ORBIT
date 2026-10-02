@@ -43,6 +43,9 @@ class MemoryItem(ApiModel):
     superseded_by_id: uuid.UUID | None
     created_by_type: ActorType
     created_by_id: uuid.UUID | None
+    rationale: str | None = None
+    decided_by: str | None = None
+    confidence_reason: str | None = None
     created_by_label: str = ""
     provenance_count: int = 0
     created_at: datetime

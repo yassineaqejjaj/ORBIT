@@ -90,6 +90,10 @@ class MemoryItem(UUIDPkMixin, TimestampMixin, Base):
         StrEnumType(ActorType), nullable=False, default=ActorType.system, server_default=text("'system'")
     )
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Memory card fields (F3, LLM-assisted extraction — nullable, migration f002).
+    rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class MemoryProvenance(UUIDPkMixin, CreatedAtMixin, Base):
