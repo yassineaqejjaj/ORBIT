@@ -164,7 +164,12 @@ def extractive_answer(question: str, items: list[ContextItem]) -> Answer:
     return Answer("\n".join(lines).strip(), cited, "extractive", relevance=best)
 
 
+_LABEL_PREFIX = re.compile(r"^(?:d[ée]cision|contrainte|besoin|risque|r[èe]gle)\s*:\s*", re.IGNORECASE)
+
+
 def _ensure_period(text: str) -> str:
+    text = _LABEL_PREFIX.sub("", text)
+    text = text[:1].upper() + text[1:]
     return text if text[-1:] in ".!?…»)" else f"{text}."
 
 
