@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     return [
+      // Public landing page (static bundle exported from the design tool).
+      { source: "/", destination: "/landing.html" },
       { source: "/api/:path*", destination: `${apiUrl}/api/:path*` },
       { source: "/mcp", destination: `${apiUrl}/mcp` },
       { source: "/mcp/:path*", destination: `${apiUrl}/mcp/:path*` },
