@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { ChangesView } from "@/components/changes/changes-view";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export const metadata: Metadata = { title: "Fil des changements" };
+export const metadata: Metadata = { title: "Changements" };
 
 function ChangesFallback() {
   return (

@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { InboxView } from "@/components/inbox/inbox-view";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export const metadata: Metadata = { title: "Tri de la mémoire" };
+export const metadata: Metadata = { title: "Revue mémoire" };
 
 function InboxFallback() {
   return (

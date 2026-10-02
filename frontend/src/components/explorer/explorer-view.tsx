@@ -331,7 +331,7 @@ export function ExplorerView() {
     <div className="grid grid-cols-1 gap-6">
       <PageHeader
         icon={<Telescope />}
-        title="Explorateur de contexte"
+        title="Contexte"
         description="Assemblez le contexte d'une tâche comme le recevrait un agent, et comprenez chaque inclusion et chaque exclusion."
         actions={
           <Button variant="secondary" size="sm" leftIcon={<History aria-hidden />} onClick={() => setHistoryOpen(true)}>

@@ -9,7 +9,7 @@ import { MemoryKindBadge } from "@/components/domain/memory-kind-badge";
 import { ScopeBadge } from "@/components/domain/scope-badge";
 import { ScoreBar } from "@/components/domain/score-bar";
 import { StatusBadge } from "@/components/domain/status-badge";
-import { memoryItemHref } from "@/components/overview/latest-decisions-card";
+import { memoryItemHref } from "@/components/overview/active-decisions";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { MemoryItem } from "@/lib/api/types";
 import { MEMORY_KIND_META, MEMORY_KINDS } from "@/lib/enums";

@@ -41,10 +41,10 @@ export interface ProjectNavItem {
 export const PROJECT_NAV: ProjectNavItem[] = [
   {
     segment: "",
-    label: "Vue projet",
+    label: "Vue d’ensemble",
     icon: LayoutDashboard,
     description: "Indicateurs, décisions récentes, alertes et activité",
-    keywords: ["accueil", "tableau de bord", "overview", "dashboard"],
+    keywords: ["accueil", "tableau de bord", "overview", "dashboard", "vue projet"],
   },
   {
     segment: "ask",
@@ -55,18 +55,18 @@ export const PROJECT_NAV: ProjectNavItem[] = [
   },
   {
     segment: "inbox",
-    label: "Tri de la mémoire",
+    label: "Revue mémoire",
     icon: Inbox,
     description: "Propositions à valider et contradictions à arbitrer",
     minRole: "editor",
-    keywords: ["propositions", "validation", "conflits", "arbitrage", "triage"],
+    keywords: ["propositions", "validation", "conflits", "arbitrage", "triage", "tri de la mémoire"],
   },
   {
     segment: "changes",
-    label: "Fil des changements",
+    label: "Changements",
     icon: History,
     description: "Ce qui a changé : décisions, remplacements, sources, snapshots",
-    keywords: ["changements", "nouveautés", "abonnements", "webhooks", "digest"],
+    keywords: ["changements", "nouveautés", "abonnements", "webhooks", "digest", "fil"],
   },
   {
     segment: "connectors",
@@ -92,10 +92,10 @@ export const PROJECT_NAV: ProjectNavItem[] = [
   },
   {
     segment: "explorer",
-    label: "Explorateur de contexte",
+    label: "Contexte",
     icon: Telescope,
     description: "Assembler un contexte et comprendre chaque inclusion ou exclusion",
-    keywords: ["contexte", "explorer", "agent", "requête"],
+    keywords: ["contexte", "explorer", "explorateur", "agent", "requête"],
   },
   {
     segment: "snapshots",
@@ -119,6 +119,31 @@ export const PROJECT_NAV: ProjectNavItem[] = [
     keywords: ["membres", "agents", "clés api", "configuration"],
   },
 ];
+
+export interface ProjectNavSection {
+  /** Small, discreet group title (null for the top-level entry). */
+  label: string | null;
+  segments: ProjectNavItem["segment"][];
+}
+
+/**
+ * Sidebar structure: the ORBIT cycle (data → context → quality → follow-up) rather than the internal modules.
+ * "ask" is not listed: it is the primary call to action under the project switcher.
+ */
+export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
+  { label: null, segments: [""] },
+  { label: "Données", segments: ["sources", "connectors"] },
+  { label: "Contexte", segments: ["memory", "explorer", "snapshots"] },
+  { label: "Qualité", segments: ["inbox", "changes"] },
+  { label: "Suivi", segments: ["observability"] },
+  { label: "Administration", segments: ["settings"] },
+];
+
+export function navItem(segment: ProjectNavItem["segment"]): ProjectNavItem {
+  const item = PROJECT_NAV.find((entry) => entry.segment === segment);
+  if (!item) throw new Error(`Unknown project nav segment: ${segment}`);
+  return item;
+}
 
 export function projectHref(slug: string, segment: ProjectNavItem["segment"] = ""): string {
   const base = `/projects/${encodeURIComponent(slug)}`;

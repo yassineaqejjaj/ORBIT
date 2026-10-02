@@ -23,7 +23,7 @@ import { DigestCard, SinceSnapshotCard, SubscriptionDialog } from "./changes-sid
 const PAGE_SIZE = 50;
 const DIGEST_LABELS = { off: null, daily: "Résumé quotidien", weekly: "Résumé hebdomadaire" } as const;
 
-/** « Fil des changements » (docs/FEATURES.md F2): day-grouped timeline filtered by rights. */
+/** « Changements » (docs/FEATURES.md F2): day-grouped timeline filtered by rights. */
 export function ChangesView() {
   const { slug, project, isOwner } = useCurrentProject();
   const { get, set } = useUrlParams();
@@ -45,7 +45,7 @@ export function ChangesView() {
       <PageHeader
         icon={<History />}
         eyebrow={project.name}
-        title="Fil des changements"
+        title="Changements"
         description="Décisions validées ou remplacées, contradictions, nouvelles sources et snapshots — uniquement ce que vos droits vous permettent de voir."
         meta={
           digestLabel ? (

@@ -21,7 +21,7 @@ export function MobileNav({ slug }: { slug?: string }) {
       <SheetContent side="left" size="sm" className="bg-sidebar p-0 lg:hidden">
         <SheetTitle className="sr-only">Navigation</SheetTitle>
         <SheetDescription className="sr-only">Navigation principale d&apos;ORBIT</SheetDescription>
-        <SidebarContent slug={slug} onNavigate={() => setMobileNavOpen(false)} />
+        <SidebarContent slug={slug} onNavigate={() => setMobileNavOpen(false)} collapsible />
       </SheetContent>
     </Sheet>
   );

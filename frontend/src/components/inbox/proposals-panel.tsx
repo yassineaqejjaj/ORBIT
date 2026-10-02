@@ -216,7 +216,7 @@ export function ProposalsPanel({ slug, active }: { slug: string; active: boolean
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
         <div className="grid min-w-0 content-start gap-3">
           {inbox.isPending ? (
             <ul className="grid gap-2" aria-busy="true" aria-label="Chargement des propositions">
@@ -242,7 +242,7 @@ export function ProposalsPanel({ slug, active }: { slug: string; active: boolean
                 />
                 <span>{plural(inbox.data?.total ?? 0, "proposition", "propositions")}</span>
               </div>
-              <ul className="grid gap-2" role="listbox" aria-label="Propositions" aria-multiselectable="true">
+              <ul className="grid grid-cols-1 gap-2" role="listbox" aria-label="Propositions" aria-multiselectable="true">
                 {items.map((item) => (
                   <ProposalRow
                     key={item.id}
@@ -333,7 +333,7 @@ const ProposalRow = React.forwardRef<
         onClick={(e) => e.stopPropagation()}
         onCheckedChange={onToggle}
       />
-      <div className="grid min-w-0 flex-1 gap-1">
+      <div className="grid min-w-0 flex-1 grid-cols-1 gap-1">
         <div className="flex flex-wrap items-center gap-1.5">
           <MemoryKindBadge kind={item.kind} />
           <ClassificationBadge level={item.classification} showLabel={false} />
