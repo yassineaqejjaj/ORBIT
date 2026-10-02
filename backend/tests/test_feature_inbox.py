@@ -275,3 +275,29 @@ async def test_conflict_hidden_when_one_side_is_not_visible(
     assert str(conflict_id) not in {c["id"] for c in (await editor.get(f"{base}/conflicts")).json()}
     hidden = await editor.post(f"{base}/conflicts/{conflict_id}/dismiss", json={})
     assert hidden.status_code == 404
+
+
+async def test_demo_capacity_pair_is_detected_as_conflict(
+    admin_client: httpx.AsyncClient, project: JSON
+) -> None:
+    """The pair added to the demo seed (open conflict on the overview / inbox) is detected naturally."""
+    base = _base(project)
+    a = await _create(
+        admin_client,
+        project,
+        kind="constraint",
+        status="validated",
+        title="Capacité du plateau de Lille",
+        content="Le plateau de Lille compte 180 postes réservables dans Atlas.",
+    )
+    b = await _create(
+        admin_client,
+        project,
+        kind="constraint",
+        title="Capacité du plateau de Lille (mise à jour)",
+        content="Le plateau de Lille compte 150 postes réservables dans Atlas.",
+    )
+    conflicts = (await admin_client.get(f"{base}/conflicts")).json()
+    assert any({c["a"]["id"], c["b"]["id"]} == {a["id"], b["id"]} for c in conflicts)
+    events = (await admin_client.get(f"{base}/changes", params={"types": "memory.conflict_detected"})).json()
+    assert events["total"] >= 1
