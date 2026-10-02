@@ -188,6 +188,12 @@ class Seeder:
 
     # -- helpers -----------------------------------------------------------------------------------
 
+    def __post_init__(self) -> None:
+        # Internet-facing demo instances override the published demo password.
+        override = os.environ.get("ORBIT_SEED_DEMO_PASSWORD", "").strip()
+        if override:
+            self.manifest["demo_password"] = override
+
     @property
     def slug(self) -> str:
         return str(self.manifest["project"]["slug"])
@@ -848,7 +854,10 @@ class Seeder:
                 say(f"  {code:<40} {count:>6}")
 
         say()
-        say("  Comptes de démonstration (mot de passe : orbit-demo) :")
+        if os.environ.get("ORBIT_SEED_DEMO_PASSWORD", "").strip():
+            say("  Comptes de démonstration (mot de passe : valeur de ORBIT_SEED_DEMO_PASSWORD) :")
+        else:
+            say(f"  Comptes de démonstration (mot de passe : {self.manifest['demo_password']}) :")
         for user in self.manifest["users"]:
             say(f"    {user['email']:<34} {user['role']:<7} C{user['clearance']}  {user['full_name']}")
         say(f"    {self.admin_email:<34} admin   C3  (mot de passe administrateur)")

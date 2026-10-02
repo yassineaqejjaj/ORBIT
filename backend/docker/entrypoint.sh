@@ -2,6 +2,7 @@
 # ORBIT backend entrypoint.
 #   api     wait for Postgres, run migrations, start uvicorn (REST + MCP + /metrics)
 #   worker  wait for Postgres, start the ingestion worker
+#   all     api + worker in one container (single-service hosts such as Railway, sharing the object store volume)
 #   migrate wait for Postgres, run migrations and exit
 #   *       exec the given command (e.g. "python -m app.seed")
 set -eu
@@ -56,6 +57,27 @@ case "$command" in
       --forwarded-allow-ips "${ORBIT_FORWARDED_ALLOW_IPS:-*}" \
       --timeout-graceful-shutdown 20 \
       "$@"
+    ;;
+  all)
+    shift || true
+    wait_for_postgres
+    run_migrations
+    python -m app.worker &
+    worker_pid=$!
+    uvicorn app.main:app \
+      --host 0.0.0.0 \
+      --port "${PORT:-${ORBIT_API_PORT:-8000}}" \
+      --proxy-headers \
+      --forwarded-allow-ips "${ORBIT_FORWARDED_ALLOW_IPS:-127.0.0.1}" \
+      --timeout-graceful-shutdown 20 \
+      "$@" &
+    api_pid=$!
+    trap 'kill -TERM "$api_pid" "$worker_pid" 2>/dev/null' TERM INT
+    # Exit (and let the platform restart us) as soon as either process stops.
+    while kill -0 "$api_pid" 2>/dev/null && kill -0 "$worker_pid" 2>/dev/null; do sleep 2; done
+    kill -TERM "$api_pid" "$worker_pid" 2>/dev/null || true
+    wait || true
+    exit 1
     ;;
   worker)
     shift || true
