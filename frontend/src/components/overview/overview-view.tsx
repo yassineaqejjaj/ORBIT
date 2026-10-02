@@ -19,6 +19,7 @@ import { useMembers, useProjectOverview } from "@/lib/api/hooks";
 import { formatNumber, plural } from "@/lib/format";
 import { ActivityTimeline } from "./activity-timeline";
 import { AlertsCard } from "./alerts-card";
+import { ConnectSourcesCta } from "./connect-sources-cta";
 import { IngestionHealthCard } from "./ingestion-health-card";
 import { LatestDecisionsCard } from "./latest-decisions-card";
 import { MemoryBreakdownCard } from "./memory-breakdown-card";
@@ -67,7 +68,7 @@ function OverviewSkeleton() {
 
 /** Project overview (Vue projet): KPIs, alerts, ingestion health, memory, sources, decisions and activity. */
 export function OverviewView() {
-  const { project, slug, role } = useCurrentProject();
+  const { project, slug, role, isOwner } = useCurrentProject();
   const overview = useProjectOverview(slug, {
     refetchInterval: (query) => {
       const data = query.state.data;
@@ -117,6 +118,8 @@ export function OverviewView() {
               message={`${plural(data.stats.restricted_documents, "document classifié", "documents classifiés")} C2 ou C3 : servis uniquement aux personnes et agents dont l'habilitation le permet.`}
             />
           ) : null}
+
+          {data.stats.documents === 0 ? <ConnectSourcesCta slug={slug} isOwner={isOwner} /> : null}
 
           <OverviewKpis slug={slug} overview={data} />
 
