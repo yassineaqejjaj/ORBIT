@@ -61,4 +61,4 @@ USER orbit
 EXPOSE 8000
 
 ENTRYPOINT ["/usr/local/bin/orbit-entrypoint"]
-CMD ["api"]
+CMD ["all"]
