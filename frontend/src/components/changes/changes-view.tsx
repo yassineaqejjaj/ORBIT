@@ -72,7 +72,7 @@ export function ChangesView() {
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,8fr)_minmax(0,4fr)]">
+      <div className="grid gap-6 2xl:grid-cols-[minmax(0,8fr)_minmax(0,4fr)]">
         <div className="grid min-w-0 content-start gap-4">
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrer par type de changement">
             <FilterChip active={families.length === 0} onClick={() => set({ types: null, page: null })}>
@@ -126,7 +126,7 @@ export function ChangesView() {
             </>
           )}
         </div>
-        <aside className="grid content-start gap-4" aria-label="Snapshots et résumé">
+        <aside className="grid min-w-0 content-start gap-4" aria-label="Snapshots et résumé">
           <SinceSnapshotCard slug={slug} />
           <DigestCard slug={slug} />
         </aside>
