@@ -68,6 +68,26 @@ class Settings(BaseSettings):
     llm_model: str = ""
     llm_api_key: str = ""
     llm_timeout_seconds: float = 30.0
+    #: "openai" = OpenAI-compatible chat completions (vLLM, Ollama, LiteLLM); "anthropic" = Messages API.
+    llm_provider: Literal["openai", "anthropic"] = "openai"
+    #: Guardrail (docs/FEATURES.md): highest classification sent to an EXTERNAL LLM (0-3).
+    llm_max_classification: int = Field(default=1, ge=0, le=3)
+    #: True when the LLM is self-hosted: lifts the classification ceiling.
+    llm_local: bool = False
+    llm_redact_pii: bool = True
+
+    # --- Product features (docs/FEATURES.md) ----------------------------------------------------
+    #: Fernet key (urlsafe base64, 32 bytes) encrypting connector / integration secrets.
+    encryption_key: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_starttls: bool = True
+    webhook_timeout_seconds: float = 10.0
+    webhook_max_failures: int = 20
+    connector_default_schedule_minutes: int = 60
 
     # --- Observability ---------------------------------------------------------------------------
     otlp_endpoint: str = ""

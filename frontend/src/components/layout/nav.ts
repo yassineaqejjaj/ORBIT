@@ -3,6 +3,10 @@ import {
   Brain,
   Camera,
   Database,
+  History,
+  Inbox,
+  MessageCircleQuestion,
+  Plug,
   LayoutDashboard,
   Settings,
   Telescope,
@@ -13,7 +17,18 @@ import type { Role } from "@/lib/enums";
 
 export interface ProjectNavItem {
   /** Path segment after /projects/[slug] ("" for the overview). */
-  segment: "" | "sources" | "memory" | "explorer" | "snapshots" | "observability" | "settings";
+  segment:
+    | ""
+    | "ask"
+    | "inbox"
+    | "changes"
+    | "connectors"
+    | "sources"
+    | "memory"
+    | "explorer"
+    | "snapshots"
+    | "observability"
+    | "settings";
   label: string;
   icon: LucideIcon;
   description: string;
@@ -30,6 +45,36 @@ export const PROJECT_NAV: ProjectNavItem[] = [
     icon: LayoutDashboard,
     description: "Indicateurs, décisions récentes, alertes et activité",
     keywords: ["accueil", "tableau de bord", "overview", "dashboard"],
+  },
+  {
+    segment: "ask",
+    label: "Demander à ORBIT",
+    icon: MessageCircleQuestion,
+    description: "Questions-réponses sur la mémoire du projet, avec citations",
+    keywords: ["question", "chat", "assistant", "ask", "pourquoi"],
+  },
+  {
+    segment: "inbox",
+    label: "Tri de la mémoire",
+    icon: Inbox,
+    description: "Propositions à valider et contradictions à arbitrer",
+    minRole: "editor",
+    keywords: ["propositions", "validation", "conflits", "arbitrage", "triage"],
+  },
+  {
+    segment: "changes",
+    label: "Fil des changements",
+    icon: History,
+    description: "Ce qui a changé : décisions, remplacements, sources, snapshots",
+    keywords: ["changements", "nouveautés", "abonnements", "webhooks", "digest"],
+  },
+  {
+    segment: "connectors",
+    label: "Connecteurs",
+    icon: Plug,
+    description: "SharePoint, Confluence, Jira : synchronisation automatique",
+    minRole: "editor",
+    keywords: ["sharepoint", "confluence", "jira", "synchronisation", "intégration"],
   },
   {
     segment: "sources",
