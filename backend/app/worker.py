@@ -226,6 +226,14 @@ class Worker:
         except Exception:
             logger.exception("Feed maintenance failed")
 
+    async def _connector_maintenance(self) -> None:
+        try:
+            summary = await _connector_maintenance_once()
+            if summary:
+                logger.info("Connector maintenance: %s", summary)
+        except Exception:
+            logger.exception("Connector maintenance failed")
+
     async def _heartbeat(self) -> None:
         while not self.stop_event.is_set():
             await self._sleep(settings.worker_heartbeat_seconds)
@@ -271,6 +279,7 @@ class Worker:
             except Exception:
                 logger.exception("Memory maintenance failed")
             await self._feed_maintenance()
+            await self._connector_maintenance()
             await self._sleep(settings.worker_maintenance_interval_seconds)
 
 
@@ -280,6 +289,16 @@ async def _feed_maintenance_once() -> dict[str, int]:
 
     async with get_sessionmaker()() as session:
         summary = await run_feed_maintenance(session)
+        await session.commit()
+    return summary
+
+
+async def _connector_maintenance_once() -> dict[str, int]:
+    """Connectors (docs/FEATURES.md F5): queue the scheduled syncs that are due, close orphan runs."""
+    from app.connectors.service import run_connector_maintenance
+
+    async with get_sessionmaker()() as session:
+        summary = await run_connector_maintenance(session)
         await session.commit()
     return summary
 
