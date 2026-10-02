@@ -218,6 +218,14 @@ class Worker:
             logger.error("Job %s failed permanently: %s", job_id, error)
 
     # -- background loops -------------------------------------------------------------------------------
+    async def _feed_maintenance(self) -> None:
+        try:
+            summary = await _feed_maintenance_once()
+            if summary:
+                logger.info("Feed maintenance: %s", summary)
+        except Exception:
+            logger.exception("Feed maintenance failed")
+
     async def _heartbeat(self) -> None:
         while not self.stop_event.is_set():
             await self._sleep(settings.worker_heartbeat_seconds)
@@ -262,7 +270,18 @@ class Worker:
                     self._maintenance_unavailable_logged = True
             except Exception:
                 logger.exception("Memory maintenance failed")
+            await self._feed_maintenance()
             await self._sleep(settings.worker_maintenance_interval_seconds)
+
+
+async def _feed_maintenance_once() -> dict[str, int]:
+    """Change feed upkeep (docs/FEATURES.md F2): stale documents + due digest e-mails."""
+    from app.features.feed.service import run_feed_maintenance
+
+    async with get_sessionmaker()() as session:
+        summary = await run_feed_maintenance(session)
+        await session.commit()
+    return summary
 
 
 def _start_metrics_server() -> None:
