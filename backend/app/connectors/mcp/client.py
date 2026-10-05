@@ -228,7 +228,7 @@ class McpClient:
 
         assert self._ready is not None and self._stderr_path is not None
         try:
-            with open(self._stderr_path, "w", encoding="utf-8", errors="replace") as stderr:
+            with open(self._stderr_path, "w", encoding="utf-8", errors="replace") as stderr:  # noqa: ASYNC230
                 async with Client(self._server_arg(stderr), read_timeout_seconds=self.timeout) as client:
                     info = client.server_info
                     if info is not None:

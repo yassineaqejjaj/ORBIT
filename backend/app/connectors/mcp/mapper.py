@@ -91,7 +91,11 @@ def resource_blobs(result: Any) -> list[tuple[str, str | None, bytes]]:
         if blob:
             try:
                 blobs.append(
-                    (str(getattr(resource, "uri", "")), getattr(resource, "mime_type", None), base64.b64decode(blob))
+                    (
+                        str(getattr(resource, "uri", "")),
+                        getattr(resource, "mime_type", None),
+                        base64.b64decode(blob),
+                    )
                 )
             except (ValueError, TypeError):
                 continue
@@ -181,7 +185,17 @@ def text_of(value: Any) -> str:
     if isinstance(value, (int, float)):
         return str(value)
     if isinstance(value, dict):
-        for key in ("value", "text", "content", "markdown", "body", "displayName", "display_name", "name", "login"):
+        for key in (
+            "value",
+            "text",
+            "content",
+            "markdown",
+            "body",
+            "displayName",
+            "display_name",
+            "name",
+            "login",
+        ):
             if value.get(key):
                 return text_of(value[key])
         return ""
@@ -226,7 +240,9 @@ def as_datetime(value: Any) -> datetime | None:
         return None
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=UTC)
-    if isinstance(value, (int, float)) or (isinstance(value, str) and re.fullmatch(r"\d{9,13}(\.\d+)?", value)):
+    if isinstance(value, (int, float)) or (
+        isinstance(value, str) and re.fullmatch(r"\d{9,13}(\.\d+)?", value)
+    ):
         number = float(value)
         if number > 1e11:
             number /= 1000
@@ -261,7 +277,10 @@ _DRIVE_LINE = re.compile(
 
 
 def drive_lines(text: str) -> tuple[list[dict[str, Any]], str | None]:
-    """Files of a Google Workspace MCP listing (one ``- Name: "…" (ID: …, Type: …, Modified: …)`` per line)."""
+    """Files of a Google Workspace MCP listing.
+
+    One ``- Name: "…" (ID: …, Type: …, Modified: …) Link: …`` line per file, then ``nextPageToken: …``.
+    """
     files: list[dict[str, Any]] = []
     next_token: str | None = None
     for line in text.splitlines():

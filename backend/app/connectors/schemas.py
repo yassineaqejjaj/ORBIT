@@ -13,7 +13,7 @@ from pydantic import Field
 
 from app.schemas.common import ApiModel, InputModel
 
-ConnectorType = Literal["sharepoint", "confluence", "jira"]
+ConnectorType = Literal["sharepoint", "confluence", "jira", "mcp"]
 SCHEDULE_MAX_MINUTES = 7 * 24 * 60
 
 
@@ -69,6 +69,8 @@ class ConnectorTestOut(ApiModel):
     message: str
     account: str | None = None
     scope_options: list[ScopeOptionOut] = Field(default_factory=list)
+    #: Tools discovered on the MCP server (MCP connectors).
+    tools: list[str] = Field(default_factory=list)
     duration_ms: float
 
 
@@ -97,6 +99,9 @@ class ConnectorOut(ApiModel):
     id: uuid.UUID
     type: ConnectorType
     type_label: str
+    #: MCP preset id (``type == "mcp"``).
+    preset: str | None = None
+    via_mcp: bool = False
     name: str
     config: dict[str, Any]
     has_secret: bool
@@ -117,7 +122,33 @@ class ConnectorOut(ApiModel):
     updated_at: datetime
 
 
+class PresetFieldOut(ApiModel):
+    key: str
+    label: str
+    group: Literal["secret", "connection", "scope"]
+    kind: str
+    required: bool = False
+    help: str = ""
+    placeholder: str = ""
+    default: Any = None
+    options: list[dict[str, str]] = Field(default_factory=list)
+    visible_if: str | None = None
+
+
 class ConnectorTypeOut(ApiModel):
     type: ConnectorType
     label: str
     source_kind: str
+    #: MCP presets (``type == "mcp"``): one entry per preset.
+    preset: str | None = None
+    via_mcp: bool = False
+    description: str = ""
+    vendor: str = ""
+    icon: str = ""
+    transport: str | None = None
+    version: str = ""
+    docs_url: str = ""
+    credentials_help: str = ""
+    required_tools: list[str] = Field(default_factory=list)
+    fields: list[PresetFieldOut] = Field(default_factory=list)
+    admin_only: bool = False

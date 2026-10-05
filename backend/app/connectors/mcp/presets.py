@@ -18,7 +18,7 @@ import re
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any, Literal
 
@@ -84,7 +84,8 @@ class Stream:
 
     key: str
     label: str
-    list_tool: str
+    #: Tool name, or a function of the context (Obsidian: vault root vs sub-directory).
+    list_tool: str | Callable[[Ctx], str]
     list_args: Callable[[Ctx], dict[str, Any]]
     item_id: Callable[[dict[str, Any], Ctx], str | None]
     map: Callable[[dict[str, Any], Any, Ctx], Record | None]
@@ -107,6 +108,14 @@ class Stream:
     aggregate: Callable[[list[Record], Ctx], list[Record]] | None = None
     #: Cursor granularity: the cursor goes back to the start of the day (day-grouped documents).
     day_cursor: bool = False
+    #: Value used when the ``foreach`` list is empty (``"*"`` = whole drive/vault); ``None`` = skip.
+    foreach_default: str | None = None
+    #: Items come sorted by ascending update date: the cursor may advance even on a partial run.
+    ascending: bool = False
+    #: First pages to list (default: one listing without page value).
+    initial_pages: Callable[[Ctx], list[Any]] = lambda ctx: [None]
+    #: A failing list call (e.g. missing optional path) only skips that page.
+    ignore_list_errors: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,12 +189,14 @@ def _quote(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _offset_pages(page_size: int, total_key: str = "total") -> Callable[[Any, list[dict[str, Any]], Ctx], list[Any]]:
+def _offset_pages(
+    page_size: int, total_key: str = "total"
+) -> Callable[[Any, list[dict[str, Any]], Ctx], list[Any]]:
     def pages(payload: Any, items: list[dict[str, Any]], ctx: Ctx) -> list[Any]:
         offset = int(ctx.page or 0) + len(items)
         total = payload.get(total_key) if isinstance(payload, dict) else None
         token = first(payload, "next_page_token", "nextPageToken") if isinstance(payload, dict) else None
-        if not items or len(items) < page_size and not token:
+        if not items or (len(items) < page_size and not token):
             return []
         if isinstance(total, int) and total >= 0 and offset >= total:
             return []
@@ -198,7 +209,11 @@ def _graphql_pages(payload: Any, items: list[dict[str, Any]], ctx: Ctx) -> list[
     info = first(payload, "pageInfo", "page_info") if isinstance(payload, dict) else None
     if isinstance(info, dict) and info.get("hasNextPage") and info.get("endCursor"):
         return [info["endCursor"]]
-    token = first(payload, "nextCursor", "next_cursor", "cursor", "endCursor") if isinstance(payload, dict) else None
+    token = (
+        first(payload, "nextCursor", "next_cursor", "cursor", "endCursor")
+        if isinstance(payload, dict)
+        else None
+    )
     if isinstance(token, str) and token and items and token != ctx.page:
         return [token]
     return []
@@ -225,7 +240,9 @@ def _day_groups(prefix: str, title: Callable[[Ctx, str], str]) -> Callable[[list
             lines = [f"# {title(ctx, day)}", ""]
             for message in messages:
                 hour = message.updated_at.astimezone(UTC).strftime("%H:%M") if message.updated_at else ""
-                lines.append(f"- **{message.author or '?'}** ({hour} UTC) : {(message.content or '').strip()}")
+                lines.append(
+                    f"- **{message.author or '?'}** ({hour} UTC) : {(message.content or '').strip()}"
+                )
                 for reply in message.metadata.get("replies") or []:
                     lines.append(f"  - ↳ {reply}")
             authors = sorted({m.author for m in messages if m.author})
@@ -238,7 +255,12 @@ def _day_groups(prefix: str, title: Callable[[Ctx, str], str]) -> Callable[[list
                     author=", ".join(authors[:5]) or None,
                     updated_at=max((m.updated_at for m in messages if m.updated_at), default=None),
                     source_kind=messages[0].source_kind,
-                    metadata={"channel": ctx.item, "day": day, "message_count": len(messages), "kind": prefix},
+                    metadata={
+                        "channel": ctx.item,
+                        "day": day,
+                        "message_count": len(messages),
+                        "kind": prefix,
+                    },
                 )
             )
         return out
@@ -251,6 +273,11 @@ def _since_days(ctx: Ctx, default_days: int) -> int:
         return max(1, default_days)
     delta = datetime.now(UTC) - ctx.since
     return max(1, min(default_days, math.ceil(delta.total_seconds() / 86400) + 1))
+
+
+def _require(ok: Any, message: str) -> None:
+    if not ok:
+        raise ValueError(message)
 
 
 def _https_endpoint(value: Any) -> list[str]:
@@ -310,7 +337,11 @@ def _confluence_next(payload: Any, items: list[dict[str, Any]], ctx: Ctx) -> lis
     """Keyset pagination on ``lastmodified`` (the tool has no offset): continue after the newest page."""
     if len(items) < 50:
         return []
-    newest = max((as_datetime(first(i, "updated", "last_modified")) for i in items), default=None, key=lambda d: d or datetime.min.replace(tzinfo=UTC))
+    newest = max(
+        (as_datetime(first(i, "updated", "last_modified")) for i in items),
+        default=None,
+        key=lambda d: d or datetime.min.replace(tzinfo=UTC),
+    )
     seen = ctx.state.setdefault("seen_pages", set())
     fresh = {str(i.get("id")) for i in items} - seen
     seen.update(str(i.get("id")) for i in items)
@@ -329,12 +360,18 @@ def _map_confluence(item: dict[str, Any], page: Any, ctx: Ctx) -> Record | None:
     return Record(
         external_id=str(item.get("id")),
         title=title,
-        content=markdown_sections(title, [("Espace", first(meta, "space.name", "space.key") or ctx.item)], content),
+        content=markdown_sections(
+            title, [("Espace", first(meta, "space.name", "space.key") or ctx.item)], content
+        ),
         uri=text_of(first(meta, "url") or item.get("url")) or None,
         author=text_of(first(meta, "author", "version.by") or item.get("author")) or None,
         updated_at=as_datetime(first(meta, "updated", "last_modified") or item.get("updated")),
         source_kind="document",
-        metadata={"space": ctx.item, "version": first(meta, "version.number", "version"), "kind": "confluence_page"},
+        metadata={
+            "space": ctx.item,
+            "version": first(meta, "version.number", "version"),
+            "kind": "confluence_page",
+        },
     )
 
 
@@ -394,16 +431,22 @@ ATLASSIAN = Preset(
     version="mcp-atlassian 0.23.1",
     env=_atlassian_env,
     validate=_atlassian_validate,
-    endpoints=lambda config: _https_endpoint(config.get("confluence_url")) + _https_endpoint(config.get("jira_url")),
+    endpoints=lambda config: (
+        _https_endpoint(config.get("confluence_url")) + _https_endpoint(config.get("jira_url"))
+    ),
     required_tools=ATLASSIAN_TOOLS,
     probe=lambda config: (
         ("confluence_search", {"query": "type = page", "limit": 1})
         if config.get("confluence_url")
-        else ("jira_search", {"jql": str(config.get("jql") or "order by updated DESC"), "limit": 1, "fields": "summary"})
+        else (
+            "jira_search",
+            {"jql": str(config.get("jql") or "order by updated DESC"), "limit": 1, "fields": "summary"},
+        )
     ),
     docs_url="https://github.com/sooperset/mcp-atlassian",
     credentials_help=(
-        "Cloud : créez un jeton d'API sur id.atlassian.com → Sécurité → Jetons d'API (compte de service en lecture). "
+        "Cloud : créez un jeton d'API sur id.atlassian.com → Sécurité → Jetons d'API (compte de service "
+        "en lecture). "
         "Data Center : jeton d'accès personnel (PAT) depuis le profil utilisateur."
     ),
     fields=(
@@ -416,13 +459,36 @@ ATLASSIAN = Preset(
             default="cloud",
             options=(("cloud", "Atlassian Cloud"), ("datacenter", "Data Center / Server")),
         ),
-        PresetField("confluence_url", "URL Confluence", "connection", "url", placeholder="https://exemple.atlassian.net/wiki"),
+        PresetField(
+            "confluence_url",
+            "URL Confluence",
+            "connection",
+            "url",
+            placeholder="https://exemple.atlassian.net/wiki",
+        ),
         PresetField("jira_url", "URL Jira", "connection", "url", placeholder="https://exemple.atlassian.net"),
         PresetField(
-            "username", "E-mail du compte (Cloud)", "connection", placeholder="robot-orbit@exemple.fr", visible_if="deployment=cloud"
+            "username",
+            "E-mail du compte (Cloud)",
+            "connection",
+            placeholder="robot-orbit@exemple.fr",
+            visible_if="deployment=cloud",
         ),
-        PresetField("space_keys", "Espaces Confluence (clés)", "scope", "list", placeholder="ORB, ARCHI", help="Clés des espaces à synchroniser"),
-        PresetField("jql", "Requête JQL (tickets Jira)", "scope", placeholder="project = ORB", help="Le tri est ajouté par ORBIT"),
+        PresetField(
+            "space_keys",
+            "Espaces Confluence (clés)",
+            "scope",
+            "list",
+            placeholder="ORB, ARCHI",
+            help="Clés des espaces à synchroniser",
+        ),
+        PresetField(
+            "jql",
+            "Requête JQL (tickets Jira)",
+            "scope",
+            placeholder="project = ORB",
+            help="Le tri est ajouté par ORBIT",
+        ),
     ),
     streams=(
         Stream(
@@ -435,23 +501,34 @@ ATLASSIAN = Preset(
             item_id=lambda item, ctx: str(item.get("id") or "") or None,
             item_updated=lambda item: as_datetime(first(item, "updated", "last_modified")),
             read_tool="confluence_get_page",
-            read_args=lambda item, ctx: {"page_id": str(item.get("id")), "convert_to_markdown": True, "include_metadata": True},
+            read_args=lambda item, ctx: {
+                "page_id": str(item.get("id")),
+                "convert_to_markdown": True,
+                "include_metadata": True,
+            },
             map=_map_confluence,
             foreach="space_keys",
             enabled=lambda config: bool(config.get("confluence_url")),
             incremental="filter",
+            ascending=True,
         ),
         Stream(
             key="jira",
             label="Tickets Jira",
             list_tool="jira_search",
-            list_args=lambda ctx: {"jql": _jql(ctx), "fields": JIRA_FIELDS, "limit": 50, "start_at": int(ctx.page or 0)},
+            list_args=lambda ctx: {
+                "jql": _jql(ctx),
+                "fields": JIRA_FIELDS,
+                "limit": 50,
+                "start_at": int(ctx.page or 0),
+            },
             next_pages=_offset_pages(50),
             item_id=lambda item, ctx: text_of(item.get("key")) or None,
             item_updated=lambda item: as_datetime(first(item, "updated", "fields.updated")),
             map=_map_jira,
             enabled=lambda config: bool(config.get("jira_url")),
             incremental="filter",
+            ascending=True,
         ),
     ),
     suggested_task="Résumer les décisions, contraintes et tickets ouverts documentés dans Confluence et Jira",
@@ -499,9 +576,11 @@ def _map_ms365_file(item: dict[str, Any], result: Any, ctx: Ctx) -> Record | Non
         title=name,
         data=data,
         filename=name,
-        mime_type=str(dig(item, "file.mimeType") or (result or {}).get("contentType") or "application/octet-stream")
-        if isinstance(result, dict) or result is None
-        else "application/octet-stream",
+        mime_type=str(
+            dig(item, "file.mimeType")
+            or (result.get("contentType") if isinstance(result, dict) else None)
+            or "application/octet-stream"
+        ),
         uri=text_of(item.get("webUrl")) or None,
         author=text_of(first(item, "lastModifiedBy.user.displayName", "createdBy.user.displayName")) or None,
         updated_at=as_datetime(item.get("lastModifiedDateTime")),
@@ -528,7 +607,9 @@ def _map_mail(item: dict[str, Any], full: Any, ctx: Ctx) -> Record | None:
     if html:
         content = f"<h1>{subject}</h1><p><b>De :</b> {sender}</p>{content}"
     else:
-        content = markdown_sections(subject, [("De", sender), ("Reçu le", data.get("receivedDateTime"))], content)
+        content = markdown_sections(
+            subject, [("De", sender), ("Reçu le", data.get("receivedDateTime"))], content
+        )
     return Record(
         external_id=str(data.get("id")),
         title=subject,
@@ -576,7 +657,10 @@ MS365 = Preset(
     id="ms365",
     label="Microsoft 365",
     vendor="Microsoft · ms-365-mcp-server",
-    description="Fichiers SharePoint/OneDrive, e-mails Outlook et messages Teams via le serveur MCP Softeria (lecture seule).",
+    description=(
+        "Fichiers SharePoint/OneDrive, e-mails Outlook et messages Teams via le serveur MCP Softeria "
+        "(lecture seule)."
+    ),
     icon="microsoft",
     source_kind="document",
     transport="stdio",
@@ -584,36 +668,67 @@ MS365 = Preset(
     fallback=("npx", "-y", "@softeria/ms-365-mcp-server@0.158.0"),
     version="@softeria/ms-365-mcp-server 0.158.0",
     args=lambda config: ["--read-only", "--org-mode"],
-    env=lambda config, secrets: {"MS365_MCP_OAUTH_TOKEN": secrets.get("access_token", ""), "LOG_LEVEL": "warn"},
+    env=lambda config, secrets: {
+        "MS365_MCP_OAUTH_TOKEN": secrets.get("access_token", ""),
+        "LOG_LEVEL": "warn",
+    },
     required_tools=("get-drive-delta", "download-bytes", "list-mail-messages", "list-channel-messages"),
     probe=lambda config: (
-        ("get-drive-root-item", {"driveId": _list(config, "drive_ids")[0]}) if _list(config, "drive_ids") else None
+        ("get-drive-root-item", {"driveId": _list(config, "drive_ids")[0]})
+        if _list(config, "drive_ids")
+        else None
     ),
-    validate=lambda config, require_scope: (
-        None
-        if not require_scope or config.get("drive_ids") or config.get("channels") or _bool(config, "include_mail")
-        else (_ for _ in ()).throw(ValueError("Choisissez au moins un drive, un canal Teams ou la messagerie"))
+    validate=lambda config, require_scope: _require(
+        not require_scope
+        or config.get("drive_ids")
+        or config.get("channels")
+        or _bool(config, "include_mail"),
+        "Choisissez au moins un drive, un canal Teams ou la messagerie",
     ),
     docs_url="https://github.com/Softeria/ms-365-mcp-server",
     credentials_help=(
         "Mode « Bring Your Own Token » : jeton d'accès Microsoft Graph délégué (Files.Read.All, Mail.Read, "
-        "ChannelMessage.Read.All) obtenu par votre application Entra ID. Il expire (~1 h) : pour une synchronisation "
+        "ChannelMessage.Read.All) obtenu par votre application Entra ID. Il expire (~1 h) : pour une "
+        "synchronisation "
         "planifiée durable, préférez le connecteur SharePoint natif (client credentials)."
     ),
     fields=(
         PresetField("access_token", "Jeton d'accès Microsoft Graph", "secret", "password", True),
-        PresetField("drive_ids", "Drives / bibliothèques (ID Graph)", "scope", "list", placeholder="b!AbC…", help="ID des drives SharePoint/OneDrive"),
+        PresetField(
+            "drive_ids",
+            "Drives / bibliothèques (ID Graph)",
+            "scope",
+            "list",
+            placeholder="b!AbC…",
+            help="ID des drives SharePoint/OneDrive",
+        ),
         PresetField("include_mail", "Inclure les e-mails Outlook", "scope", "bool", default=False),
-        PresetField("mail_search", "Recherche e-mail (KQL)", "scope", placeholder="subject:ORBIT", visible_if="include_mail=true"),
-        PresetField("channels", "Canaux Teams (teamId/channelId)", "scope", "list", placeholder="team-id/19:abc@thread.tacv2"),
+        PresetField(
+            "mail_search",
+            "Recherche e-mail (KQL)",
+            "scope",
+            placeholder="subject:ORBIT",
+            visible_if="include_mail=true",
+        ),
+        PresetField(
+            "channels",
+            "Canaux Teams (teamId/channelId)",
+            "scope",
+            "list",
+            placeholder="team-id/19:abc@thread.tacv2",
+        ),
     ),
     streams=(
         Stream(
             key="files",
             label="Fichiers SharePoint/OneDrive",
             list_tool="get-drive-delta",
-            list_args=lambda ctx: _drop_empty({"driveId": ctx.item, "driveItemId": "root", "skiptoken": ctx.page}),
-            items=lambda payload, ctx: [i for i in find_list(payload, "value") if isinstance(i.get("file"), dict) or i.get("deleted")],
+            list_args=lambda ctx: _drop_empty(
+                {"driveId": ctx.item, "driveItemId": "root", "skiptoken": ctx.page}
+            ),
+            items=lambda payload, ctx: [
+                i for i in find_list(payload, "value") if isinstance(i.get("file"), dict) or i.get("deleted")
+            ],
             next_pages=_graph_next,
             item_id=lambda item, ctx: str(item.get("id") or "") or None,
             item_updated=lambda item: as_datetime(item.get("lastModifiedDateTime")),
@@ -636,10 +751,20 @@ MS365 = Preset(
                     "filter": None
                     if ctx.config.get("mail_search") or not ctx.since
                     else f"receivedDateTime ge {_iso(ctx.since)}",
-                    "select": ["id", "subject", "from", "receivedDateTime", "lastModifiedDateTime", "body", "webLink"],
+                    "select": [
+                        "id",
+                        "subject",
+                        "from",
+                        "receivedDateTime",
+                        "lastModifiedDateTime",
+                        "body",
+                        "webLink",
+                    ],
                 }
             ),
-            next_pages=lambda payload, items, ctx: [int(ctx.page or 0) + len(items)] if len(items) >= 50 else [],
+            next_pages=lambda payload, items, ctx: (
+                [int(ctx.page or 0) + len(items)] if len(items) >= 50 else []
+            ),
             item_id=lambda item, ctx: str(item.get("id") or "") or None,
             item_updated=lambda item: as_datetime(first(item, "lastModifiedDateTime", "receivedDateTime")),
             map=_map_mail,
@@ -685,7 +810,9 @@ def _drive_query(ctx: Ctx) -> str:
 def _drive_items(payload: Any, ctx: Ctx) -> list[dict[str, Any]]:
     if isinstance(payload, (dict, list)):
         items = find_list(payload, "files")
-        ctx.state["next_token"] = first(payload, "nextPageToken", "next_page_token") if isinstance(payload, dict) else None
+        ctx.state["next_token"] = (
+            first(payload, "nextPageToken", "next_page_token") if isinstance(payload, dict) else None
+        )
     else:
         items, ctx.state["next_token"] = drive_lines(str(payload or ""))
     return [i for i in items if i.get("mimeType") != GOOGLE_FOLDER]
@@ -750,7 +877,10 @@ GOOGLE = Preset(
     id="google_workspace",
     label="Google Workspace",
     vendor="Google · workspace-mcp",
-    description="Fichiers Google Drive, Docs et Sheets (et Gmail en option) via le serveur MCP workspace-mcp, compte de service.",
+    description=(
+        "Fichiers Google Drive, Docs et Sheets (et Gmail en option) via le serveur MCP workspace-mcp, "
+        "compte de service."
+    ),
     icon="google",
     source_kind="document",
     transport="stdio",
@@ -773,24 +903,50 @@ GOOGLE = Preset(
     required_tools=("search_drive_files", "get_drive_file_content"),
     probe=lambda config: (
         "search_drive_files",
-        {"user_google_email": str(config.get("user_email") or ""), "query": "trashed = false", "page_size": 1},
+        {
+            "user_google_email": str(config.get("user_email") or ""),
+            "query": "trashed = false",
+            "page_size": 1,
+        },
     ),
-    validate=lambda config, require_scope: (
-        None if config.get("user_email") else (_ for _ in ()).throw(ValueError("Champ requis : Utilisateur Google à impersonner"))
+    validate=lambda config, require_scope: _require(
+        config.get("user_email"), "Champ requis : Utilisateur Google à impersonner"
     ),
     docs_url="https://github.com/taylorwilsdon/google_workspace_mcp",
     credentials_help=(
-        "Console Google Cloud : créez un compte de service, une clé JSON, puis dans la console d'administration "
+        "Console Google Cloud : créez un compte de service, une clé JSON, puis dans la console "
+        "d'administration "
         "Workspace accordez la délégation au niveau du domaine (scopes drive.readonly, documents.readonly, "
         "spreadsheets.readonly, gmail.readonly)."
     ),
     fields=(
-        PresetField("service_account_json", "Clé JSON du compte de service", "secret", "textarea", True, placeholder='{"type": "service_account", …}'),
-        PresetField("user_email", "Utilisateur Google à impersonner", "connection", required=True, placeholder="robot-orbit@exemple.fr"),
-        PresetField("folder_ids", "Dossiers Drive (ID)", "scope", "list", help="Vide = tous les fichiers accessibles"),
+        PresetField(
+            "service_account_json",
+            "Clé JSON du compte de service",
+            "secret",
+            "textarea",
+            True,
+            placeholder='{"type": "service_account", …}',
+        ),
+        PresetField(
+            "user_email",
+            "Utilisateur Google à impersonner",
+            "connection",
+            required=True,
+            placeholder="robot-orbit@exemple.fr",
+        ),
+        PresetField(
+            "folder_ids", "Dossiers Drive (ID)", "scope", "list", help="Vide = tous les fichiers accessibles"
+        ),
         PresetField("drive_query", "Filtre Drive (syntaxe q)", "scope", placeholder="name contains 'ADR'"),
         PresetField("include_gmail", "Inclure Gmail", "scope", "bool", default=False),
-        PresetField("gmail_query", "Recherche Gmail", "scope", placeholder="label:orbit newer_than:30d", visible_if="include_gmail=true"),
+        PresetField(
+            "gmail_query",
+            "Recherche Gmail",
+            "scope",
+            placeholder="label:orbit newer_than:30d",
+            visible_if="include_gmail=true",
+        ),
     ),
     streams=(
         Stream(
@@ -806,14 +962,20 @@ GOOGLE = Preset(
                 }
             ),
             items=_drive_items,
-            next_pages=lambda payload, items, ctx: [ctx.state["next_token"]] if ctx.state.get("next_token") else [],
+            next_pages=lambda payload, items, ctx: (
+                [ctx.state["next_token"]] if ctx.state.get("next_token") else []
+            ),
             item_id=lambda item, ctx: str(item.get("id") or "") or None,
             item_updated=lambda item: as_datetime(item.get("modifiedTime")),
             read_tool="get_drive_file_content",
-            read_args=lambda item, ctx: {"user_google_email": str(ctx.config.get("user_email") or ""), "file_id": str(item.get("id"))},
+            read_args=lambda item, ctx: {
+                "user_google_email": str(ctx.config.get("user_email") or ""),
+                "file_id": str(item.get("id")),
+            },
             map=_map_drive,
             foreach="folder_ids",
             incremental="filter",
+            foreach_default="*",
         ),
         Stream(
             key="gmail",
@@ -836,10 +998,15 @@ GOOGLE = Preset(
                 }
             ),
             items=_gmail_items,
-            next_pages=lambda payload, items, ctx: [ctx.state["next_token"]] if ctx.state.get("next_token") else [],
+            next_pages=lambda payload, items, ctx: (
+                [ctx.state["next_token"]] if ctx.state.get("next_token") else []
+            ),
             item_id=lambda item, ctx: str(item.get("id") or "") or None,
             read_tool="get_gmail_message_content",
-            read_args=lambda item, ctx: {"message_id": str(item.get("id")), "user_google_email": str(ctx.config.get("user_email") or "")},
+            read_args=lambda item, ctx: {
+                "message_id": str(item.get("id")),
+                "user_google_email": str(ctx.config.get("user_email") or ""),
+            },
             map=_map_gmail,
             enabled=lambda config: _bool(config, "include_gmail"),
             incremental="filter",
@@ -898,7 +1065,9 @@ SLACK = Preset(
     id="slack",
     label="Slack",
     vendor="Slack · slack-mcp-server",
-    description="Historique et fils de discussion des canaux Slack choisis (un document par canal et par jour).",
+    description=(
+        "Historique et fils de discussion des canaux Slack choisis (un document par canal et par jour)."
+    ),
     icon="slack",
     source_kind="feedback",
     transport="stdio",
@@ -909,12 +1078,13 @@ SLACK = Preset(
     env=_slack_env,
     required_tools=("conversations_history", "conversations_replies"),
     probe=lambda config: ("channels_list", {"channel_types": "public_channel", "limit": 20}),
-    validate=lambda config, require_scope: (
-        None if not require_scope or config.get("channels") else (_ for _ in ()).throw(ValueError("Choisissez au moins un canal Slack"))
+    validate=lambda config, require_scope: _require(
+        not require_scope or config.get("channels"), "Choisissez au moins un canal Slack"
     ),
     docs_url="https://github.com/korotovsky/slack-mcp-server",
     credentials_help=(
-        "api.slack.com/apps → votre application → OAuth & Permissions : jeton utilisateur (xoxp-) ou bot (xoxb-, "
+        "api.slack.com/apps → votre application → OAuth & Permissions : jeton utilisateur (xoxp-) ou bot "
+        "(xoxb-, "
         "canaux où le bot est invité) avec channels:history, groups:history, channels:read, users:read."
     ),
     fields=(
@@ -933,13 +1103,17 @@ SLACK = Preset(
                     "channel_id": ctx.item,
                     "include_activity_messages": False,
                     "cursor": ctx.page,
-                    "limit": None if ctx.page else f"{_since_days(ctx, int(ctx.config.get('history_days') or 30))}d",
+                    "limit": None
+                    if ctx.page
+                    else f"{_since_days(ctx, int(ctx.config.get('history_days') or 30))}d",
                 }
             ),
             items=_slack_items,
-            next_pages=lambda payload, items, ctx: [ctx.state["next_cursor"]]
-            if ctx.state.get("next_cursor") and ctx.state.get("next_cursor") != ctx.page
-            else [],
+            next_pages=lambda payload, items, ctx: (
+                [ctx.state["next_cursor"]]
+                if ctx.state.get("next_cursor") and ctx.state.get("next_cursor") != ctx.page
+                else []
+            ),
             item_id=lambda item, ctx: str(first(item, "msgid", "ts") or "") or None,
             item_updated=_slack_time,
             read_tool="conversations_replies",
@@ -957,7 +1131,9 @@ SLACK = Preset(
             day_cursor=True,
         ),
     ),
-    suggested_task="Synthétiser les échanges récents des canaux Slack : décisions, questions ouvertes et irritants",
+    suggested_task=(
+        "Synthétiser les échanges récents des canaux Slack : décisions, questions ouvertes et irritants"
+    ),
 )
 
 
@@ -1004,7 +1180,11 @@ def _map_issue_like(kind: str) -> Callable[[dict[str, Any], Any, Ctx], Record | 
             author=text_of(first(item, "user.login", "author.login", "user", "author")) or None,
             updated_at=as_datetime(first(item, "updated_at", "updatedAt")),
             source_kind="ticket" if kind != "discussion" else "feedback",
-            metadata={"kind": f"github_{kind}", "repo": ctx.item, "state": text_of(item.get("state")) or None},
+            metadata={
+                "kind": f"github_{kind}",
+                "repo": ctx.item,
+                "state": text_of(item.get("state")) or None,
+            },
         )
 
     return mapper
@@ -1017,7 +1197,7 @@ def _docs_items(payload: Any, ctx: Ctx) -> list[dict[str, Any]]:
         for entry in entries:
             path = str(entry.get("path") or entry.get("name") or "")
             if entry.get("type") == "dir":
-                if ctx.state.get("depth", 0) < 2:
+                if path.count("/") < 3:
                     ctx.state.setdefault("dirs", []).append(path)
                 continue
             if PurePosixPath(path).suffix.lower() in (".md", ".mdx", ".markdown", ".txt", ".rst", ".adoc"):
@@ -1030,9 +1210,7 @@ def _docs_items(payload: Any, ctx: Ctx) -> list[dict[str, Any]]:
 
 
 def _docs_pages(payload: Any, items: list[dict[str, Any]], ctx: Ctx) -> list[Any]:
-    dirs = ctx.state.pop("dirs", [])
-    ctx.state["depth"] = ctx.state.get("depth", 0) + 1
-    return dirs
+    return ctx.state.pop("dirs", [])
 
 
 def _map_doc(item: dict[str, Any], content: Any, ctx: Ctx) -> Record | None:
@@ -1065,7 +1243,10 @@ GITHUB = Preset(
     id="github",
     label="GitHub",
     vendor="GitHub · github-mcp-server",
-    description="Issues, pull requests, discussions et documentation (README, docs/) des dépôts choisis via le serveur MCP officiel.",
+    description=(
+        "Issues, pull requests, discussions et documentation (README, docs/) des dépôts choisis via le "
+        "serveur MCP officiel."
+    ),
     icon="github",
     source_kind="ticket",
     transport="http",
@@ -1082,14 +1263,22 @@ GITHUB = Preset(
     version="github-mcp-server v1.14.0 (binaire) / serveur distant api.githubcopilot.com",
     required_tools=("list_issues", "issue_read", "list_pull_requests", "get_file_contents"),
     probe=lambda config: (
-        ("get_file_contents", {"owner": _list(config, "repos")[0].split("/")[0], "repo": _list(config, "repos")[0].split("/")[1], "path": "/"})
+        (
+            "get_file_contents",
+            {
+                "owner": _list(config, "repos")[0].split("/")[0],
+                "repo": _list(config, "repos")[0].split("/")[1],
+                "path": "/",
+            },
+        )
         if _list(config, "repos")
         else None
     ),
     validate=_github_validate,
     docs_url="https://github.com/github/github-mcp-server",
     credentials_help=(
-        "github.com → Settings → Developer settings → Fine-grained tokens : accès en lecture seule aux dépôts "
+        "github.com → Settings → Developer settings → Fine-grained tokens : accès en lecture seule aux "
+        "dépôts "
         "choisis (Contents, Issues, Pull requests, Discussions : Read-only)."
     ),
     fields=(
@@ -1100,13 +1289,22 @@ GITHUB = Preset(
             "connection",
             "select",
             default="remote",
-            options=(("remote", "Distant (api.githubcopilot.com)"), ("local", "Local (binaire dans le conteneur ORBIT)")),
+            options=(
+                ("remote", "Distant (api.githubcopilot.com)"),
+                ("local", "Local (binaire dans le conteneur ORBIT)"),
+            ),
         ),
         PresetField("repos", "Dépôts (owner/nom)", "scope", "list", True, placeholder="exemple/orbit"),
         PresetField("include_issues", "Issues", "scope", "bool", default=True),
         PresetField("include_pulls", "Pull requests", "scope", "bool", default=True),
         PresetField("include_discussions", "Discussions", "scope", "bool", default=False),
-        PresetField("docs_paths", "Documentation (fichiers ou dossiers)", "scope", "list", default=["README.md", "docs"]),
+        PresetField(
+            "docs_paths",
+            "Documentation (fichiers ou dossiers)",
+            "scope",
+            "list",
+            default=["README.md", "docs"],
+        ),
     ),
     streams=(
         Stream(
@@ -1139,6 +1337,7 @@ GITHUB = Preset(
             foreach="repos",
             enabled=lambda config: _bool(config, "include_issues", True),
             incremental="filter",
+            ascending=True,
         ),
         Stream(
             key="pulls",
@@ -1195,22 +1394,32 @@ GITHUB = Preset(
             key="docs",
             label="Documentation",
             list_tool="get_file_contents",
-            list_args=lambda ctx: {"owner": _repo(ctx)[0], "repo": _repo(ctx)[1], "path": str(ctx.page or "/")},
+            list_args=lambda ctx: {
+                "owner": _repo(ctx)[0],
+                "repo": _repo(ctx)[1],
+                "path": str(ctx.page or "/"),
+            },
             items=_docs_items,
             next_pages=_docs_pages,
-            item_id=lambda item, ctx: str(item.get("path") or "") or None,
+            item_id=lambda item, ctx: f"{ctx.item}:{item.get('path')}" if item.get("path") else None,
             read_tool="get_file_contents",
             read_args=lambda item, ctx: (
-                {} if item.get("_inline") is not None else {"owner": _repo(ctx)[0], "repo": _repo(ctx)[1], "path": str(item.get("path"))}
+                {}
+                if item.get("_inline") is not None
+                else {"owner": _repo(ctx)[0], "repo": _repo(ctx)[1], "path": str(item.get("path"))}
             ),
             map=_map_doc,
             foreach="repos",
             enabled=lambda config: bool(_list(config, "docs_paths") or config.get("docs_paths") is None),
             incremental="none",
             full_listing=True,
+            initial_pages=lambda ctx: _list(ctx.config, "docs_paths") or ["README.md", "docs"],
+            ignore_list_errors=True,
         ),
     ),
-    suggested_task="Faire le point sur les issues et pull requests récentes : décisions, blocages et prochaines étapes",
+    suggested_task=(
+        "Faire le point sur les issues et pull requests récentes : décisions, blocages et prochaines étapes"
+    ),
 )
 
 
@@ -1254,7 +1463,11 @@ def _map_linear_project(item: dict[str, Any], _: Any, ctx: Ctx) -> Record | None
         title=f"Projet Linear — {name}",
         content=markdown_sections(
             f"Projet Linear — {name}",
-            [("Statut", first(item, "status", "state")), ("Responsable", first(item, "lead")), ("Échéance", first(item, "targetDate"))],
+            [
+                ("Statut", first(item, "status", "state")),
+                ("Responsable", first(item, "lead")),
+                ("Échéance", first(item, "targetDate")),
+            ],
             text_of(first(item, "content", "description", "summary")),
         ),
         uri=text_of(item.get("url")) or None,
@@ -1268,7 +1481,9 @@ LINEAR = Preset(
     id="linear",
     label="Linear",
     vendor="Linear · serveur MCP officiel (distant)",
-    description="Tickets et projets Linear via le serveur MCP distant officiel (point d'accès en lecture seule).",
+    description=(
+        "Tickets et projets Linear via le serveur MCP distant officiel (point d'accès en lecture seule)."
+    ),
     icon="linear",
     source_kind="ticket",
     transport="http",
@@ -1284,7 +1499,13 @@ LINEAR = Preset(
     ),
     fields=(
         PresetField("api_key", "Clé d'API Linear (lecture seule)", "secret", "password", True),
-        PresetField("team", "Équipe (nom ou clé)", "scope", placeholder="ORB", help="Vide = toutes les équipes accessibles"),
+        PresetField(
+            "team",
+            "Équipe (nom ou clé)",
+            "scope",
+            placeholder="ORB",
+            help="Vide = toutes les équipes accessibles",
+        ),
         PresetField("project", "Projet (optionnel)", "scope"),
         PresetField("include_projects", "Inclure les projets", "scope", "bool", default=True),
     ),
@@ -1314,7 +1535,9 @@ LINEAR = Preset(
             key="projects",
             label="Projets Linear",
             list_tool="list_projects",
-            list_args=lambda ctx: _drop_empty({"team": ctx.config.get("team"), "limit": 50, "cursor": ctx.page}),
+            list_args=lambda ctx: _drop_empty(
+                {"team": ctx.config.get("team"), "limit": 50, "cursor": ctx.page}
+            ),
             items=lambda payload, ctx: find_list(payload, "projects"),
             next_pages=_graphql_pages,
             item_id=lambda item, ctx: text_of(first(item, "id", "name")) or None,
@@ -1348,7 +1571,9 @@ def _obsidian_items(payload: Any, ctx: Ctx) -> list[dict[str, Any]]:
 
 
 def _obsidian_args(ctx: Ctx) -> dict[str, Any]:
-    directory = ctx.page if ctx.page is not None else (ctx.item if ctx.item not in (None, "", "*", "/") else None)
+    directory = (
+        ctx.page if ctx.page is not None else (ctx.item if ctx.item not in (None, "", "*", "/") else None)
+    )
     if directory:
         ctx.state["root"] = str(directory)
         return {"dirpath": str(directory).strip("/")}
@@ -1392,28 +1617,44 @@ OBSIDIAN = Preset(
         "OBSIDIAN_HOST": str(config.get("host") or "127.0.0.1"),
         "OBSIDIAN_PORT": str(config.get("port") or 27124),
     },
-    endpoints=lambda config: [f"https://{config.get('host')}:{config.get('port') or 27124}"] if config.get("host") else [],
-    required_tools=("obsidian_list_files_in_vault", "obsidian_list_files_in_dir", "obsidian_get_file_contents"),
+    endpoints=lambda config: (
+        [f"https://{config.get('host')}:{config.get('port') or 27124}"] if config.get("host") else []
+    ),
+    required_tools=(
+        "obsidian_list_files_in_vault",
+        "obsidian_list_files_in_dir",
+        "obsidian_get_file_contents",
+    ),
     probe=lambda config: ("obsidian_list_files_in_vault", {}),
-    validate=lambda config, require_scope: (
-        None if config.get("host") else (_ for _ in ()).throw(ValueError("Champ requis : Hôte de l'API Local REST"))
+    validate=lambda config, require_scope: _require(
+        config.get("host"), "Champ requis : Hôte de l'API Local REST"
     ),
     docs_url="https://github.com/MarkusPfundstein/mcp-obsidian",
     credentials_help=(
-        "Dans Obsidian : installez le plugin communautaire « Local REST API », copiez la clé d'API affichée dans ses "
+        "Dans Obsidian : installez le plugin communautaire « Local REST API », copiez la clé d'API "
+        "affichée dans ses "
         "réglages et exposez l'API (HTTPS, port 27124) sur une adresse joignable par ORBIT."
     ),
     fields=(
         PresetField("api_key", "Clé de l'API Local REST", "secret", "password", True),
-        PresetField("host", "Hôte de l'API Local REST", "connection", required=True, placeholder="obsidian.exemple.fr"),
+        PresetField(
+            "host", "Hôte de l'API Local REST", "connection", required=True, placeholder="obsidian.exemple.fr"
+        ),
         PresetField("port", "Port", "connection", "number", default=27124),
-        PresetField("folders", "Dossiers du coffre", "scope", "list", placeholder="Projets/ORBIT", help="Vide = tout le coffre"),
+        PresetField(
+            "folders",
+            "Dossiers du coffre",
+            "scope",
+            "list",
+            placeholder="Projets/ORBIT",
+            help="Vide = tout le coffre",
+        ),
     ),
     streams=(
         Stream(
             key="notes",
             label="Notes",
-            list_tool="obsidian_list_files_in_dir",
+            list_tool=_obsidian_tool,
             list_args=_obsidian_args,
             items=_obsidian_items,
             next_pages=lambda payload, items, ctx: ctx.state.pop("dirs", []),
@@ -1424,6 +1665,7 @@ OBSIDIAN = Preset(
             foreach="folders",
             incremental="none",
             full_listing=True,
+            foreach_default="*",
         ),
     ),
     suggested_task="Résumer les notes récentes du coffre : décisions, idées à creuser et points ouverts",
@@ -1470,7 +1712,9 @@ CUSTOM = Preset(
     id="custom",
     label="Serveur MCP personnalisé",
     vendor="Administrateurs de la plateforme",
-    description="Serveur MCP arbitraire (commande stdio ou URL HTTPS) : ses ressources sont lues et ingérées.",
+    description=(
+        "Serveur MCP arbitraire (commande stdio ou URL HTTPS) : ses ressources sont lues et ingérées."
+    ),
     icon="plug",
     source_kind="document",
     transport="stdio",
@@ -1479,19 +1723,50 @@ CUSTOM = Preset(
     args=_custom_args,
     env=_custom_env,
     url=lambda config: str(config.get("url") or ""),
-    headers=lambda config, secrets: {"Authorization": f"Bearer {secrets['token']}"} if secrets.get("token") else {},
+    headers=lambda config, secrets: (
+        {"Authorization": f"Bearer {secrets['token']}"} if secrets.get("token") else {}
+    ),
     endpoints=lambda config: _https_endpoint(config.get("url")) if config.get("transport") == "http" else [],
     required_tools=(),
     admin_only=True,
     validate=lambda config, require_scope: _custom_validate(config),
-    credentials_help="Réservé aux administrateurs : la commande s'exécute dans le conteneur ORBIT avec ces variables.",
+    credentials_help=(
+        "Réservé aux administrateurs : la commande s'exécute dans le conteneur ORBIT avec ces variables."
+    ),
     fields=(
         PresetField("token", "Jeton Bearer (HTTP)", "secret", "password", visible_if="transport=http"),
-        PresetField("env", "Variables d'environnement (CLÉ=valeur, une par ligne)", "secret", "textarea", visible_if="transport=stdio"),
-        PresetField("transport", "Transport", "connection", "select", True, default="stdio", options=(("stdio", "stdio (commande)"), ("http", "HTTP streamable"))),
-        PresetField("command", "Commande", "connection", placeholder="/usr/local/bin/mon-serveur-mcp", visible_if="transport=stdio"),
+        PresetField(
+            "env",
+            "Variables d'environnement (CLÉ=valeur, une par ligne)",
+            "secret",
+            "textarea",
+            visible_if="transport=stdio",
+        ),
+        PresetField(
+            "transport",
+            "Transport",
+            "connection",
+            "select",
+            True,
+            default="stdio",
+            options=(("stdio", "stdio (commande)"), ("http", "HTTP streamable")),
+        ),
+        PresetField(
+            "command",
+            "Commande",
+            "connection",
+            placeholder="/usr/local/bin/mon-serveur-mcp",
+            visible_if="transport=stdio",
+        ),
         PresetField("args", "Arguments", "connection", "list", visible_if="transport=stdio"),
-        PresetField("url", "URL du serveur MCP", "connection", "url", placeholder="https://mcp.exemple.fr/mcp", visible_if="transport=http"),
+        PresetField(
+            "url",
+            "URL du serveur MCP",
+            "connection",
+            "url",
+            placeholder="https://mcp.exemple.fr/mcp",
+            visible_if="transport=http",
+        ),
     ),
     streams=(),  # resources-based plan (see connector)
 )
@@ -1506,7 +1781,9 @@ def _custom_validate(config: dict[str, Any]) -> None:
         raise ValueError("Champ requis : Commande")
 
 
-PRESETS: dict[str, Preset] = {p.id: p for p in (ATLASSIAN, MS365, GOOGLE, SLACK, GITHUB, LINEAR, OBSIDIAN, CUSTOM)}
+PRESETS: dict[str, Preset] = {
+    p.id: p for p in (ATLASSIAN, MS365, GOOGLE, SLACK, GITHUB, LINEAR, OBSIDIAN, CUSTOM)
+}
 
 
 def get_preset(preset_id: str | None) -> Preset:
@@ -1514,7 +1791,3 @@ def get_preset(preset_id: str | None) -> Preset:
         return PRESETS[str(preset_id or "")]
     except KeyError as exc:
         raise ValueError(f"Préréglage MCP inconnu : {preset_id or '(vide)'}") from exc
-
-
-#: Unused-import guard for helpers re-exported to tests.
-__all__ = ["CUSTOM", "PRESETS", "Ctx", "Preset", "PresetField", "Stream", "get_preset", "timedelta"]

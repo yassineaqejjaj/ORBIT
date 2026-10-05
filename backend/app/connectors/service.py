@@ -20,7 +20,7 @@ from app.connectors.base import BaseConnector
 from app.db import utcnow
 from app.deps import ProjectAccess
 from app.enums import ActorType, DocumentStatus, JobKind, JobStatus, Role
-from app.errors import validation_error
+from app.errors import ApiError, validation_error
 from app.features.feed import security
 from app.governance.acl import PROJECT_ALL
 from app.ingestion.pipeline import actor_payload
@@ -68,14 +68,50 @@ def validate_config(type_: str, config: dict[str, Any], *, require_scope: bool) 
 
 
 async def check_base_url(type_: str, config: dict[str, Any]) -> None:
-    """Anti-SSRF check of the user-provided base URL (HTTPS and public address outside development)."""
-    url = connector_class(type_).base_url(config)
-    if not url:
-        return
+    """Anti-SSRF check of the user-provided endpoints (HTTPS and public address outside development)."""
+    for url in connector_class(type_).base_urls(config):
+        try:
+            await security.check_destination(url)
+        except security.UnsafeUrlError as exc:
+            raise validation_error(str(exc).replace("du webhook", "du service")) from exc
+
+
+def normalize_secret(type_: str, config: dict[str, Any], secret: str) -> str:
+    """Secret as stored (MCP: JSON object of the preset's secret fields); 422 when a field is missing."""
     try:
-        await security.check_destination(url)
-    except security.UnsafeUrlError as exc:
-        raise validation_error(str(exc).replace("du webhook", "du service")) from exc
+        return connector_class(type_).normalize_secret(config, secret)
+    except ValueError as exc:
+        raise validation_error(str(exc)) from exc
+
+
+def secret_hint(type_: str, config: dict[str, Any], secret: str) -> str:
+    return connector_class(type_).secret_hint_of(config, secret)
+
+
+def check_mcp_allowed(type_: str, config: dict[str, Any], principal: Any) -> None:
+    """Custom MCP servers (arbitrary command/URL): ``ORBIT_MCP_ALLOW_CUSTOM`` and platform admins only."""
+    if type_ != "mcp":
+        return
+    from app.connectors.mcp import get_preset
+
+    try:
+        preset = get_preset(config.get("preset"))
+    except ValueError as exc:
+        raise validation_error(str(exc)) from exc
+    if not preset.admin_only:
+        return
+    if not settings.mcp_allow_custom:
+        raise ApiError(
+            403,
+            "Les serveurs MCP personnalisés sont désactivés (ORBIT_MCP_ALLOW_CUSTOM=false)",
+            code="mcp_custom_disabled",
+        )
+    if not getattr(principal, "is_admin", False) or not getattr(principal, "is_user", True):
+        raise ApiError(
+            403,
+            "Seuls les administrateurs de la plateforme peuvent configurer un serveur MCP personnalisé",
+            code="mcp_custom_forbidden",
+        )
 
 
 def acl_for(connector: Connector) -> list[str]:
@@ -95,9 +131,11 @@ def build(connector: Connector) -> BaseConnector:
     )
 
 
-def type_label(type_: str) -> str:
+def type_label(type_: str, config: dict[str, Any] | None = None) -> str:
     cls = REGISTRY.get(type_)
-    return cls.label if cls else type_
+    if cls is None:
+        return type_
+    return cls.display_label(dict(config or {})) if config is not None else cls.label
 
 
 def actor_for(connector: Connector) -> Actor:
@@ -138,6 +176,9 @@ def connector_access(project: Project, connector: Connector) -> ProjectAccess:
 async def ensure_source(session: AsyncSession, connector: Connector, actor: Actor) -> Source:
     """The connector's own source (created on first use); defaults follow the connector settings."""
     cls = connector_class(connector.type)
+    config = dict(connector.config or {})
+    label = cls.display_label(config)
+    kind = cls.kind_for(config)
     source = await session.get(Source, connector.source_id) if connector.source_id else None
     if source is not None and source.project_id == connector.project_id:
         source.default_classification = int(connector.default_classification)
@@ -145,9 +186,9 @@ async def ensure_source(session: AsyncSession, connector: Connector, actor: Acto
         return source
     source = Source(
         project_id=connector.project_id,
-        name=f"{cls.label} — {connector.name}"[:200],
-        kind=cls.source_kind,
-        description=f"Source alimentée par le connecteur {cls.label} « {connector.name} »",
+        name=f"{label} — {connector.name}"[:200],
+        kind=kind,
+        description=f"Source alimentée par le connecteur {label} « {connector.name} »",
         default_classification=int(connector.default_classification),
         default_acl=acl_for(connector),
         config={"connector_id": str(connector.id), "connector_type": connector.type},
@@ -163,7 +204,7 @@ async def ensure_source(session: AsyncSession, connector: Connector, actor: Acto
         "source",
         source.id,
         summary=f"Création de la source « {source.name} » (connecteur)",
-        details={"kind": cls.source_kind.value, "connector_id": str(connector.id)},
+        details={"kind": kind.value, "connector_id": str(connector.id)},
     )
     return source
 
@@ -302,6 +343,11 @@ def default_schedule() -> int:
 def suggested_task(connector: Connector) -> str:
     """Task proposed by the wizard's last step (« Votre premier contexte »)."""
     labels = [str(label) for label in (connector.config or {}).get("scope_labels") or []]
+    if connector.type == "mcp":
+        from app.connectors.mcp import PRESETS
+
+        preset = PRESETS.get(str((connector.config or {}).get("preset") or ""))
+        return preset.suggested_task if preset else "Résumer les décisions, risques et points ouverts récents"
     if connector.type == "jira":
         return (
             "Faire le point sur les tickets récents : décisions prises, blocages, "
