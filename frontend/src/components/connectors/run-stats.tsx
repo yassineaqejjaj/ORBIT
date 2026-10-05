@@ -1,6 +1,18 @@
 "use client";
 
-import { BookOpenText, FolderSync, Ticket } from "lucide-react";
+import {
+  BookOpenText,
+  Building2,
+  FolderSync,
+  GitBranch,
+  HardDrive,
+  ListTodo,
+  MessagesSquare,
+  NotebookPen,
+  Plug,
+  Ticket,
+  type LucideIcon,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -9,9 +21,61 @@ import { formatMs, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { RUN_STATUS_META } from "./connector-meta";
 
-export function ConnectorTypeIcon({ type, className }: { type: ConnectorType; className?: string }) {
-  const Icon = type === "jira" ? Ticket : type === "confluence" ? BookOpenText : FolderSync;
+/** Icons of the MCP presets (generic glyphs: no vendor logos). */
+const MCP_ICONS: Record<string, LucideIcon> = {
+  atlassian: BookOpenText,
+  microsoft: Building2,
+  google: HardDrive,
+  slack: MessagesSquare,
+  github: GitBranch,
+  linear: ListTodo,
+  obsidian: NotebookPen,
+  plug: Plug,
+};
+
+/** Preset id → icon key (saved connectors only carry the preset id). */
+const PRESET_ICONS: Record<string, string> = {
+  atlassian: "atlassian",
+  ms365: "microsoft",
+  google_workspace: "google",
+  slack: "slack",
+  github: "github",
+  linear: "linear",
+  obsidian: "obsidian",
+  custom: "plug",
+};
+
+export function ConnectorTypeIcon({
+  type,
+  icon,
+  preset,
+  className,
+}: {
+  type: ConnectorType;
+  /** MCP: icon key from ``/connectors/types``. */
+  icon?: string | null;
+  /** MCP: preset id of a saved connector. */
+  preset?: string | null;
+  className?: string;
+}) {
+  const Icon =
+    type === "mcp"
+      ? (MCP_ICONS[icon ?? PRESET_ICONS[preset ?? ""] ?? "plug"] ?? Plug)
+      : type === "jira"
+        ? Ticket
+        : type === "confluence"
+          ? BookOpenText
+          : FolderSync;
   return <Icon className={cn("size-4", className)} aria-hidden />;
+}
+
+/** « MCP » badge of the connectors served through a Model Context Protocol server (F6). */
+export function McpBadge({ className }: { className?: string }) {
+  return (
+    <Badge tone="violet" size="sm" className={className} title="Connecteur via un serveur MCP (Model Context Protocol)">
+      MCP
+    </Badge>
+  );
 }
 
 export function RunStatusBadge({ run }: { run: ConnectorRun }) {

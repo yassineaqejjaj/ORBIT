@@ -33,6 +33,7 @@ import {
   useConnectorRuns,
   useDeleteConnector,
   useSyncConnector,
+  useConnectorTypes,
   useTestSavedConnector,
   useUpdateConnector,
   type Connector,
@@ -43,13 +44,14 @@ import { CLASSIFICATION_META, CLASSIFICATIONS } from "@/lib/enums";
 import { formatDateTime, formatMs, formatNumber } from "@/lib/format";
 import {
   CONNECTOR_STATUS_META,
-  CONNECTOR_TYPES,
   RUN_TRIGGER_LABELS,
   SCHEDULE_OPTIONS,
   scheduleLabel,
+  scopeLabelFor,
   scopeSummary,
 } from "./connector-meta";
-import { ConnectorTypeIcon, RunProgress, RunStatusBadge } from "./run-stats";
+import { McpFieldInputs } from "./mcp-fields";
+import { ConnectorTypeIcon, McpBadge, RunProgress, RunStatusBadge } from "./run-stats";
 
 export function ConnectorStatusBadge({ connector }: { connector: Connector }) {
   const active = isRunActive(connector.last_run);
@@ -88,9 +90,10 @@ export function ConnectorDetailSheet({ id, onClose }: { id: string | null; onClo
     data &&
     test
       .mutateAsync({ id: data.id })
-      .then((result) =>
-        result.ok ? toast.success("Connexion réussie", { description: result.message }) : toast.error("Échec du test", { description: result.message }),
-      )
+      .then((result) => {
+        const description = result.tools.length ? `${result.message} (${result.tools.length} outils MCP)` : result.message;
+        return result.ok ? toast.success("Connexion réussie", { description }) : toast.error("Échec du test", { description });
+      })
       .catch(() => undefined);
   const togglePause = () =>
     data &&
@@ -116,10 +119,11 @@ export function ConnectorDetailSheet({ id, onClose }: { id: string | null; onClo
           <>
             <SheetHeader>
               <SheetTitle className="flex items-center gap-2">
-                <ConnectorTypeIcon type={data.type} className="size-5 text-primary" />
+                <ConnectorTypeIcon type={data.type} preset={data.preset} className="size-5 text-primary" />
                 {data.name}
               </SheetTitle>
               <SheetDescription className="flex flex-wrap items-center gap-2">
+                {data.via_mcp ? <McpBadge /> : null}
                 <span>{data.type_label}</span>
                 <ConnectorStatusBadge connector={data} />
               </SheetDescription>
@@ -165,7 +169,7 @@ export function ConnectorDetailSheet({ id, onClose }: { id: string | null; onClo
               {data.last_error ? <Alert tone={data.status === "error" ? "red" : "amber"}>{data.last_error}</Alert> : null}
 
               <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-                <Info label={CONNECTOR_TYPES[data.type].scopeLabel}>{scopeSummary(data.type, data.config)}</Info>
+                <Info label={scopeLabelFor(data.type)}>{scopeSummary(data.type, data.config)}</Info>
                 <Info label="Planification">{scheduleLabel(data.schedule_minutes)}</Info>
                 <Info label="Classification par défaut">
                   <ClassificationBadge level={data.default_classification} />
@@ -301,6 +305,11 @@ function EditConnectorDialog({ connector, open, onClose }: { connector: Connecto
   const [scope, setScope] = React.useState("");
   const [secret, setSecret] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+  const isMcp = connector.type === "mcp";
+  const types = useConnectorTypes(slug, open && isMcp);
+  const preset = types.data?.find((t) => t.via_mcp && t.preset === connector.preset) ?? null;
+  const [values, setValues] = React.useState<Record<string, unknown>>({});
+  const [mcpSecrets, setMcpSecrets] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
     if (!open) return;
@@ -313,6 +322,8 @@ function EditConnectorDialog({ connector, open, onClose }: { connector: Connecto
       connector.type === "jira" ? (c.jql ?? "") : connector.type === "confluence" ? (c.space_keys ?? []).join(", ") : (c.drive_ids ?? []).join(", "),
     );
     setSecret("");
+    setValues({ ...connector.config });
+    setMcpSecrets({});
     setError(null);
   }, [open, connector]);
 
@@ -332,13 +343,21 @@ function EditConnectorDialog({ connector, open, onClose }: { connector: Connecto
     if (connector.type === "sharepoint" && scope !== (c.drive_ids ?? []).join(", ")) {
       config = { ...c, drive_ids: splitList(scope), scope_labels: undefined };
     }
+    let secretValue = secret;
+    if (isMcp) {
+      const strip = (o: Record<string, unknown>) =>
+        JSON.stringify(Object.fromEntries(Object.entries(o).filter(([k]) => k !== "preset" && k !== "scope_labels")));
+      if (strip(values) !== strip(c)) config = { ...values } as ConnectorConfig;
+      const filled = Object.fromEntries(Object.entries(mcpSecrets).filter(([, v]) => v.trim() !== ""));
+      secretValue = Object.keys(filled).length ? JSON.stringify(filled) : "";
+    }
     const body: ConnectorPatch = {
       name: name.trim(),
       schedule_minutes: Number(schedule),
       default_classification: classification,
       restrict_to_editors: restrict,
       ...(config ? { config } : {}),
-      ...(secret ? { secret } : {}),
+      ...(secretValue ? { secret: secretValue } : {}),
     };
     update
       .mutateAsync({ id: connector.id, ...body })
@@ -349,7 +368,7 @@ function EditConnectorDialog({ connector, open, onClose }: { connector: Connecto
       .catch((err) => setError(errorMessage(err)));
   };
 
-  const scopeLabel = CONNECTOR_TYPES[connector.type].scopeLabel;
+  const scopeLabel = scopeLabelFor(connector.type);
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent size="lg">
@@ -364,6 +383,23 @@ function EditConnectorDialog({ connector, open, onClose }: { connector: Connecto
           <Field id="edit-name" label="Nom" required>
             <Input id="edit-name" maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
+          {isMcp ? (
+            preset ? (
+              <McpFieldInputs
+                fields={preset.fields}
+                groups={["connection", "scope"]}
+                values={values}
+                secrets={mcpSecrets}
+                onValue={(key, value) => setValues((v) => ({ ...v, [key]: value }))}
+                onSecret={() => undefined}
+                idPrefix="edit-mcp"
+              />
+            ) : types.isLoading ? (
+              <Skeleton className="h-24 rounded-lg" />
+            ) : (
+              <Alert tone="amber">Préréglage MCP « {connector.preset} » indisponible sur cette instance.</Alert>
+            )
+          ) : (
           <Field
             id="edit-scope"
             label={connector.type === "sharepoint" ? "Identifiants des bibliothèques" : scopeLabel}
@@ -371,6 +407,7 @@ function EditConnectorDialog({ connector, open, onClose }: { connector: Connecto
           >
             <Textarea id="edit-scope" rows={2} value={scope} onChange={(e) => setScope(e.target.value)} className="font-mono text-[13px]" />
           </Field>
+          )}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field id="edit-schedule" label="Synchronisation automatique">
               <SimpleSelect id="edit-schedule" value={schedule} onValueChange={setSchedule} options={scheduleOptions.map((o) => ({ value: o.value, label: o.label }))} />
@@ -391,9 +428,28 @@ function EditConnectorDialog({ connector, open, onClose }: { connector: Connecto
             <Switch id="edit-restrict" checked={restrict} onCheckedChange={setRestrict} />
             <Label htmlFor="edit-restrict">Restreindre aux éditeurs</Label>
           </div>
-          <Field id="edit-secret" label="Nouveau secret" hint={`Laisser vide pour conserver le secret actuel (${connector.secret_hint || "absent"}).`}>
-            <Input id="edit-secret" type="password" autoComplete="new-password" value={secret} onChange={(e) => setSecret(e.target.value)} />
-          </Field>
+          {isMcp && preset ? (
+            <div className="grid gap-1.5">
+              <p className="text-xs text-muted-foreground">
+                Nouveaux identifiants (tous les champs requis) — laisser vide pour conserver les actuels (
+                {connector.secret_hint || "absents"}).
+              </p>
+              <McpFieldInputs
+                fields={preset.fields}
+                groups={["secret"]}
+                values={values}
+                secrets={mcpSecrets}
+                onValue={() => undefined}
+                onSecret={(key, value) => setMcpSecrets((v) => ({ ...v, [key]: value }))}
+                idPrefix="edit-mcp"
+                optionalSecrets
+              />
+            </div>
+          ) : !isMcp ? (
+            <Field id="edit-secret" label="Nouveau secret" hint={`Laisser vide pour conserver le secret actuel (${connector.secret_hint || "absent"}).`}>
+              <Input id="edit-secret" type="password" autoComplete="new-password" value={secret} onChange={(e) => setSecret(e.target.value)} />
+            </Field>
+          ) : null}
           {error ? <Alert tone="red">{error}</Alert> : null}
           <DialogFooter>
             <Button type="button" variant="secondary" onClick={onClose}>

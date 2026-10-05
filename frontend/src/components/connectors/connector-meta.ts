@@ -5,6 +5,8 @@ import type {
   ConnectorRunTrigger,
   ConnectorStatus,
   ConnectorType,
+  NativeConnectorType,
+  PresetField,
 } from "@/lib/api/features-connectors";
 
 export interface CredentialField {
@@ -19,7 +21,7 @@ export interface CredentialField {
 }
 
 export interface ConnectorTypeMeta {
-  type: ConnectorType;
+  type: NativeConnectorType;
   label: string;
   tagline: string;
   description: string;
@@ -29,7 +31,7 @@ export interface ConnectorTypeMeta {
   scopeLabel: string;
 }
 
-export const CONNECTOR_TYPES: Record<ConnectorType, ConnectorTypeMeta> = {
+export const CONNECTOR_TYPES: Record<NativeConnectorType, ConnectorTypeMeta> = {
   sharepoint: {
     type: "sharepoint",
     label: "SharePoint / OneDrive",
@@ -75,7 +77,56 @@ export const CONNECTOR_TYPES: Record<ConnectorType, ConnectorTypeMeta> = {
   },
 };
 
-export const CONNECTOR_TYPE_ORDER: ConnectorType[] = ["sharepoint", "confluence", "jira"];
+export const CONNECTOR_TYPE_ORDER: NativeConnectorType[] = ["sharepoint", "confluence", "jira"];
+
+export function isNativeType(type: ConnectorType): type is NativeConnectorType {
+  return type !== "mcp";
+}
+
+/** Label of the scope row (detail sheet, edit dialog). */
+export function scopeLabelFor(type: ConnectorType): string {
+  return isNativeType(type) ? CONNECTOR_TYPES[type].scopeLabel : "Périmètre";
+}
+
+/* --- MCP presets (F6) ----------------------------------------------------------------------------------- */
+
+/** Scope keys of the MCP presets, summarised in lists and the detail sheet. */
+const MCP_SCOPE_KEYS = ["space_keys", "jql", "drive_ids", "folder_ids", "channels", "repos", "folders", "team", "project"];
+
+/** Whether a preset field is shown for the current values (``visible_if: "field=value"``). */
+export function presetFieldVisible(field: PresetField, values: Record<string, unknown>): boolean {
+  if (!field.visible_if) return true;
+  const [key = "", expected = ""] = field.visible_if.split("=");
+  return String(values[key] ?? "") === expected;
+}
+
+/** Initial values of a preset's non-secret fields (defaults from the API). */
+export function presetDefaults(fields: PresetField[]): Record<string, unknown> {
+  const values: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (field.group === "secret") continue;
+    if (field.default !== null && field.default !== undefined) values[field.key] = field.default;
+    else if (field.kind === "bool") values[field.key] = false;
+    else if (field.kind === "list") values[field.key] = [];
+  }
+  return values;
+}
+
+/** Whether every visible required field of ``groups`` is filled. */
+export function presetFieldsFilled(
+  fields: PresetField[],
+  groups: PresetField["group"][],
+  values: Record<string, unknown>,
+  secrets: Record<string, string>,
+): boolean {
+  return fields
+    .filter((f) => groups.includes(f.group) && f.required && presetFieldVisible(f, values))
+    .every((f) => {
+      const value = f.group === "secret" ? secrets[f.key] : values[f.key];
+      if (Array.isArray(value)) return value.length > 0;
+      return value !== undefined && value !== null && String(value).trim() !== "";
+    });
+}
 
 export const CONNECTOR_STATUS_META: Record<ConnectorStatus, { label: string; tone: Tone }> = {
   idle: { label: "Jamais synchronisé", tone: "neutral" },
@@ -117,6 +168,14 @@ export function scheduleLabel(minutes: number): string {
 /** Human summary of the configured scope. */
 export function scopeSummary(type: ConnectorType, config: ConnectorConfig): string {
   if (config.scope_labels?.length) return config.scope_labels.join(", ");
+  if (type === "mcp") {
+    const parts = MCP_SCOPE_KEYS.flatMap((key) => {
+      const value = config[key];
+      if (Array.isArray(value)) return value.map(String);
+      return typeof value === "string" && value ? [value] : [];
+    });
+    return parts.length ? parts.slice(0, 6).join(", ") + (parts.length > 6 ? "…" : "") : "Tout le contenu accessible";
+  }
   if (type === "jira") return config.jql ?? "—";
   if (type === "confluence") return (config.space_keys ?? []).join(", ") || "—";
   const count = (config.drive_ids?.length ?? 0) || (config.site_ids?.length ?? 0);

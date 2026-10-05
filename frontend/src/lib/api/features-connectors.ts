@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * F5 (connecteurs SharePoint, Confluence, Jira + assistant de démarrage): types, endpoint functions and
+ * F5 (connecteurs SharePoint, Confluence, Jira + assistant de démarrage) and F6 (connecteurs MCP : préréglages
+ * Atlassian, Microsoft 365, Google Workspace, Slack, GitHub, Linear, Obsidian): types, endpoint functions and
  * TanStack Query hooks — see docs/FEATURES.md. Secrets are write-only: the API only returns a masked hint.
  */
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -14,7 +15,9 @@ import type { ISODateString, Page, UUID } from "./types";
 /* Types                                                                      */
 /* -------------------------------------------------------------------------- */
 
-export type ConnectorType = "sharepoint" | "confluence" | "jira";
+export type ConnectorType = "sharepoint" | "confluence" | "jira" | "mcp";
+/** Native (F5) connector types, with a dedicated client in ORBIT. */
+export type NativeConnectorType = Exclude<ConnectorType, "mcp">;
 export type ConnectorStatus = "idle" | "syncing" | "ok" | "error" | "paused";
 export type ConnectorRunStatus = "queued" | "running" | "succeeded" | "partial" | "failed";
 export type ConnectorRunTrigger = "manual" | "schedule" | "initial";
@@ -34,6 +37,43 @@ export interface ConnectorConfig {
   jql?: string;
   /** Display names of the chosen scope (sites, libraries, spaces). */
   scope_labels?: string[];
+  /** MCP connectors: preset id; the other keys follow the preset's fields. */
+  preset?: string;
+  [key: string]: unknown;
+}
+
+/** Field of an MCP preset, rendered dynamically by the wizard (``group`` = where it goes). */
+export interface PresetField {
+  key: string;
+  label: string;
+  group: "secret" | "connection" | "scope";
+  kind: "text" | "password" | "textarea" | "list" | "select" | "bool" | "number" | "url";
+  required: boolean;
+  help: string;
+  placeholder: string;
+  default: unknown;
+  options: { value: string; label: string }[];
+  /** ``"field=value"``: shown only when that field has this value. */
+  visible_if: string | null;
+}
+
+/** Entry of ``GET /connectors/types``: a native type, or one MCP preset (``via_mcp``). */
+export interface ConnectorTypeInfo {
+  type: ConnectorType;
+  label: string;
+  source_kind: string;
+  preset: string | null;
+  via_mcp: boolean;
+  description: string;
+  vendor: string;
+  icon: string;
+  transport: "stdio" | "http" | null;
+  version: string;
+  docs_url: string;
+  credentials_help: string;
+  required_tools: string[];
+  fields: PresetField[];
+  admin_only: boolean;
 }
 
 export interface ConnectorRun {
@@ -61,6 +101,9 @@ export interface Connector {
   id: UUID;
   type: ConnectorType;
   type_label: string;
+  /** MCP preset id (``type === "mcp"``). */
+  preset: string | null;
+  via_mcp: boolean;
   name: string;
   config: ConnectorConfig;
   has_secret: boolean;
@@ -115,6 +158,8 @@ export interface ConnectorTestResult {
   message: string;
   account: string | null;
   scope_options: ScopeOption[];
+  /** Tools discovered on the MCP server (MCP connectors). */
+  tools: string[];
   duration_ms: number;
 }
 
@@ -140,6 +185,7 @@ const c = (slug: string) => `/projects/${e(slug)}/connectors`;
 
 export const featuresConnectorsApi = {
   list: (slug: string, opts: Opts = {}) => http.get<Connector[]>(c(slug), opts),
+  types: (slug: string, opts: Opts = {}) => http.get<ConnectorTypeInfo[]>(`${c(slug)}/types`, opts),
   get: (slug: string, id: UUID, opts: Opts = {}) => http.get<Connector>(`${c(slug)}/${e(id)}`, opts),
   create: (slug: string, body: ConnectorIn) => http.post<Connector>(c(slug), body),
   update: (slug: string, id: UUID, body: ConnectorPatch) => http.patch<Connector>(`${c(slug)}/${e(id)}`, body),
@@ -163,6 +209,7 @@ const root = (slug: string) => [...queryKeys.project.all(slug), "features-connec
 export const featuresConnectorsKeys = {
   all: root,
   list: (slug: string) => [...root(slug), "list"] as const,
+  types: (slug: string) => [...root(slug), "types"] as const,
   detail: (slug: string, id: UUID) => [...root(slug), "detail", id] as const,
   runs: (slug: string, id: UUID, page: number) => [...root(slug), "runs", id, page] as const,
   run: (slug: string, id: UUID, runId: UUID) => [...root(slug), "run", id, runId] as const,
@@ -170,6 +217,16 @@ export const featuresConnectorsKeys = {
 
 const POLL_ACTIVE_MS = 2_000;
 const POLL_IDLE_MS = 60_000;
+
+/** Connector types and MCP presets (static per deployment: cached for the session). */
+export function useConnectorTypes(slug: string, enabled = true) {
+  return useQuery<ConnectorTypeInfo[], ApiError>({
+    queryKey: featuresConnectorsKeys.types(slug),
+    queryFn: ({ signal }) => featuresConnectorsApi.types(slug, { signal }),
+    staleTime: 10 * 60_000,
+    enabled: enabled && Boolean(slug),
+  });
+}
 
 export function useConnectors(slug: string) {
   return useQuery<Connector[], ApiError>({
