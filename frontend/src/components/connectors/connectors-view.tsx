@@ -15,12 +15,12 @@ import { ErrorState } from "@/components/ui/error-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCurrentProject } from "@/hooks/use-current-project";
-import { isRunActive, useConnectors, useSyncConnector, type Connector, type ConnectorType } from "@/lib/api/features-connectors";
+import { isRunActive, useConnectors, useSyncConnector, type Connector, type NativeConnectorType } from "@/lib/api/features-connectors";
 import { formatNumber } from "@/lib/format";
 import { ConnectorDetailSheet, ConnectorStatusBadge } from "./connector-detail";
 import { CONNECTOR_TYPE_ORDER, CONNECTOR_TYPES, scheduleLabel, scopeSummary } from "./connector-meta";
 import { ConnectorWizard } from "./connector-wizard";
-import { ConnectorTypeIcon } from "./run-stats";
+import { ConnectorTypeIcon, McpBadge } from "./run-stats";
 
 const WIZARD_TYPES = new Set<string>(CONNECTOR_TYPE_ORDER);
 
@@ -33,9 +33,9 @@ export function ConnectorsView() {
   const selected = get("connector");
   const wizardParam = get("wizard");
   const wizardOpen = wizardParam !== null && isOwner;
-  const wizardType = wizardParam && WIZARD_TYPES.has(wizardParam) ? (wizardParam as ConnectorType) : null;
+  const wizardType = wizardParam && WIZARD_TYPES.has(wizardParam) ? (wizardParam as NativeConnectorType) : null;
 
-  const openWizard = (type?: ConnectorType) => set({ wizard: type ?? "1", connector: null });
+  const openWizard = (type?: NativeConnectorType) => set({ wizard: type ?? "1", connector: null });
   const runSync = (connector: Connector) =>
     sync
       .mutateAsync(connector.id)
@@ -99,7 +99,7 @@ export function ConnectorsView() {
                 <Card className="grid h-full gap-3 p-4">
                   <div className="flex items-start gap-3">
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                      <ConnectorTypeIcon type={connector.type} className="size-5" />
+                      <ConnectorTypeIcon type={connector.type} preset={connector.preset} className="size-5" />
                     </span>
                     <div className="grid min-w-0 flex-1 gap-0.5">
                       <button
@@ -109,8 +109,11 @@ export function ConnectorsView() {
                       >
                         {connector.name}
                       </button>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {connector.type_label} · {scopeSummary(connector.type, connector.config)}
+                      <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                        {connector.via_mcp ? <McpBadge /> : null}
+                        <span className="truncate">
+                          {connector.type_label} · {scopeSummary(connector.type, connector.config)}
+                        </span>
                       </span>
                     </div>
                     <ConnectorStatusBadge connector={connector} />

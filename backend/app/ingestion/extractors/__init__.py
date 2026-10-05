@@ -102,6 +102,10 @@ def detect_mime_type(filename: str | None, content_type: str | None = None, data
     extension = PurePosixPath((filename or "").lower()).suffix
     if extension in MIME_BY_EXTENSION:
         return MIME_BY_EXTENSION[extension]
+    from app.ingestion.extractors.markitdown import CONVERTIBLE_BY_EXTENSION
+
+    if extension in CONVERTIBLE_BY_EXTENSION:  # converted by MarkItDown (MCP) when available
+        return CONVERTIBLE_BY_EXTENSION[extension]
     declared = _canonical(content_type)
     if declared in SUPPORTED_MIME_TYPES:
         return declared
@@ -115,8 +119,22 @@ def detect_mime_type(filename: str | None, content_type: str | None = None, data
     return declared or guessed or "application/octet-stream"
 
 
-def is_supported(mime_type: str | None) -> bool:
+def is_supported(mime_type: str | None, filename: str | None = None) -> bool:
+    """Native format, or a format converted by the MarkItDown MCP fallback when it is available."""
+    from app.ingestion.extractors import markitdown
+
+    if markitdown.is_convertible(mime_type, filename):
+        return markitdown.available()
     return _canonical(mime_type) in SUPPORTED_MIME_TYPES
+
+
+def needs_conversion(mime_type: str | None, filename: str | None = None, data: bytes | None = None) -> bool:
+    """Not parsed natively but convertible by MarkItDown (``.xls`` labelled as CSV, OLE files…)."""
+    from app.ingestion.extractors import markitdown
+
+    if markitdown.is_convertible(mime_type, filename):
+        return True
+    return bool(data) and data[:4] == b"\xd0\xcf\x11\xe0" and _canonical(mime_type) == CSV
 
 
 def decode_text(data: bytes) -> str:
@@ -150,7 +168,7 @@ def _extractors() -> dict[str, Callable[[bytes, str | None], ExtractedDocument]]
 def extract(data: bytes, mime_type: str, filename: str | None = None) -> ExtractedDocument:
     """Extract and normalise the text of ``data``. Raises :class:`ExtractionError` (FR message)."""
     canonical = _canonical(mime_type) or detect_mime_type(filename, None, data)
-    extractor = _extractors().get(canonical)
+    extractor = None if needs_conversion(mime_type, filename, data) else _extractors().get(canonical)
     if extractor is None:
         raise UnsupportedFormatError(
             f"Format non pris en charge ({mime_type or 'inconnu'}) — "
@@ -204,4 +222,5 @@ __all__ = [
     "extract",
     "extract_text_content",
     "is_supported",
+    "needs_conversion",
 ]

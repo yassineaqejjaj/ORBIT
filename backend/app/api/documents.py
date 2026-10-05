@@ -177,9 +177,14 @@ async def upload_documents(
         name = upload.filename or "fichier"
         data = await _read_upload(upload)
         mime_type = detect_mime_type(upload.filename, upload.content_type, data)
-        if not is_supported(mime_type):
+        if not is_supported(mime_type, upload.filename):
+            from app.ingestion.extractors import markitdown
+
+            accepted = SUPPORTED_FORMATS_LABEL + (
+                f", {markitdown.CONVERTIBLE_LABEL} (via MarkItDown)" if markitdown.available() else ""
+            )
             raise validation_error(
-                f"Format non pris en charge pour « {name} » (formats acceptés : {SUPPORTED_FORMATS_LABEL})"
+                f"Format non pris en charge pour « {name} » (formats acceptés : {accepted})"
             )
         contents.append(
             ContentIn(

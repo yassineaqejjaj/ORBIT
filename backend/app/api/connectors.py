@@ -1,4 +1,4 @@
-"""Router `connectors` — SharePoint/OneDrive, Confluence and Jira connectors (docs/FEATURES.md F5).
+"""Router `connectors` — SharePoint/OneDrive, Confluence, Jira (F5) and MCP (F6) connectors.
 
 Roles: members read the list, details and runs; editors trigger manual syncs; owners create, test,
 edit and delete connectors. Secrets are Fernet-encrypted (``ORBIT_ENCRYPTION_KEY``, 503
@@ -17,8 +17,10 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.connectors import REGISTRY, secrets, service
 from app.connectors.base import BaseConnector, ConnectorError
+from app.connectors.mcp import PRESETS
 from app.connectors.schemas import (
     ConnectorIn,
     ConnectorOut,
@@ -28,6 +30,7 @@ from app.connectors.schemas import (
     ConnectorTestIn,
     ConnectorTestOut,
     ConnectorTypeOut,
+    PresetFieldOut,
     ScopeOptionOut,
 )
 from app.deps import EditorAccess, OwnerAccess, ProjectAccess, SessionDep, ViewerAccess
@@ -61,7 +64,9 @@ async def _serialize(session: AsyncSession, connectors: Sequence[Connector]) -> 
             ConnectorOut(
                 id=connector.id,
                 type=connector.type,  # type: ignore[arg-type]
-                type_label=service.type_label(connector.type),
+                type_label=service.type_label(connector.type, dict(connector.config or {})),
+                preset=(connector.config or {}).get("preset") if connector.type == "mcp" else None,
+                via_mcp=connector.type == "mcp",
                 name=connector.name,
                 config=dict(connector.config or {}),
                 has_secret=bool(connector.secret_ciphertext),
@@ -99,6 +104,7 @@ async def _run_test(impl: BaseConnector) -> ConnectorTestOut:
             message=result.message,
             account=result.account,
             scope_options=[ScopeOptionOut.model_validate(option) for option in result.scope_options],
+            tools=list(result.tools),
             duration_ms=0,
         )
     except ConnectorError as exc:
@@ -111,10 +117,49 @@ async def _run_test(impl: BaseConnector) -> ConnectorTestOut:
 
 @router.get("/types", response_model=list[ConnectorTypeOut], summary="Types de connecteurs disponibles")
 async def list_types(access: ViewerAccess) -> list[ConnectorTypeOut]:
-    return [
+    out = [
         ConnectorTypeOut(type=cls.type, label=cls.label, source_kind=cls.source_kind.value)  # type: ignore[arg-type]
         for cls in REGISTRY.values()
+        if cls.type != "mcp"
     ]
+    custom_allowed = settings.mcp_allow_custom and access.principal.is_admin
+    for preset in PRESETS.values():
+        if preset.admin_only and not custom_allowed:
+            continue
+        out.append(
+            ConnectorTypeOut(
+                type="mcp",
+                label=preset.label,
+                source_kind=preset.source_kind,
+                preset=preset.id,
+                via_mcp=True,
+                description=preset.description,
+                vendor=preset.vendor,
+                icon=preset.icon,
+                transport=preset.transport,
+                version=preset.version,
+                docs_url=preset.docs_url,
+                credentials_help=preset.credentials_help,
+                required_tools=list(preset.required_tools),
+                admin_only=preset.admin_only,
+                fields=[
+                    PresetFieldOut(
+                        key=f.key,
+                        label=f.label,
+                        group=f.group,
+                        kind=f.kind,
+                        required=f.required,
+                        help=f.help,
+                        placeholder=f.placeholder,
+                        default=f.default,
+                        options=[{"value": v, "label": label} for v, label in f.options],
+                        visible_if=f.visible_if,
+                    )
+                    for f in preset.fields
+                ],
+            )
+        )
+    return out
 
 
 @router.get("", response_model=list[ConnectorOut], summary="Connecteurs du projet")
@@ -129,9 +174,11 @@ async def list_connectors(access: ViewerAccess, session: SessionDep) -> list[Con
 async def test_credentials(
     body: ConnectorTestIn, access: OwnerAccess, session: SessionDep
 ) -> ConnectorTestOut:
+    service.check_mcp_allowed(body.type, body.config, access.principal)
     config = service.validate_config(body.type, body.config, require_scope=False)
     await service.check_base_url(body.type, config)
-    result = await _run_test(service.instantiate(body.type, config, body.secret))
+    secret = service.normalize_secret(body.type, config, body.secret)
+    result = await _run_test(service.instantiate(body.type, config, secret))
     await audit.record(
         session,
         access.project_id,
@@ -140,7 +187,8 @@ async def test_credentials(
         "connector",
         None,
         summary=(
-            f"Test des identifiants {service.type_label(body.type)} : {'réussi' if result.ok else 'échec'}"
+            f"Test des identifiants {service.type_label(body.type, config)} : "
+            f"{'réussi' if result.ok else 'échec'}"
         ),
         details={"type": body.type, "ok": result.ok},
     )
@@ -153,8 +201,10 @@ async def test_credentials(
 )
 async def create_connector(body: ConnectorIn, access: OwnerAccess, session: SessionDep) -> ConnectorOut:
     secrets.require_encryption()  # 503 encryption_key_missing
+    service.check_mcp_allowed(body.type, body.config, access.principal)
     config = service.validate_config(body.type, body.config, require_scope=True)
     await service.check_base_url(body.type, config)
+    secret = service.normalize_secret(body.type, config, body.secret)
     count = await session.scalar(
         select(func.count()).select_from(Connector).where(Connector.project_id == access.project_id)
     )
@@ -165,8 +215,8 @@ async def create_connector(body: ConnectorIn, access: OwnerAccess, session: Sess
         type=body.type,
         name=body.name,
         config=config,
-        secret_ciphertext=secrets.encrypt(body.secret),
-        secret_hint=secrets.hint(body.secret),
+        secret_ciphertext=secrets.encrypt(secret),
+        secret_hint=service.secret_hint(body.type, config, secret),
         schedule_minutes=service.default_schedule()
         if body.schedule_minutes is None
         else body.schedule_minutes,
@@ -187,7 +237,7 @@ async def create_connector(body: ConnectorIn, access: OwnerAccess, session: Sess
         service.Action.create,
         "connector",
         connector.id,
-        summary=f"Connecteur {service.type_label(body.type)} « {body.name} » créé",
+        summary=f"Connecteur {service.type_label(body.type, config)} « {body.name} » créé",
         details={
             "type": body.type,
             "default_classification": body.default_classification,
@@ -216,14 +266,19 @@ async def update_connector(
     if not changes:
         raise validation_error("Aucune modification fournie")
     if body.config is not None:
+        if connector.type == "mcp":
+            body.config = {**body.config, "preset": (connector.config or {}).get("preset")}
+        service.check_mcp_allowed(connector.type, body.config, access.principal)
         config = service.validate_config(connector.type, body.config, require_scope=True)
         await service.check_base_url(connector.type, config)
         if config != connector.config:
             connector.config = config
             connector.cursor = {}  # new scope or endpoint: next sync re-lists everything
     if body.secret is not None:
-        connector.secret_ciphertext = secrets.encrypt(body.secret)
-        connector.secret_hint = secrets.hint(body.secret)
+        current = dict(connector.config or {})
+        secret = service.normalize_secret(connector.type, current, body.secret)
+        connector.secret_ciphertext = secrets.encrypt(secret)
+        connector.secret_hint = service.secret_hint(connector.type, current, secret)
     if body.name is not None:
         connector.name = body.name
     if body.schedule_minutes is not None:
@@ -282,14 +337,19 @@ async def test_connector(
 ) -> ConnectorTestOut:
     connector = await _load(session, access, connector_id)
     body = body or ConnectorRetestIn()
+    if body.config is not None and connector.type == "mcp":
+        body.config = {**body.config, "preset": (connector.config or {}).get("preset")}
     config = (
         service.validate_config(connector.type, body.config, require_scope=False)
         if body.config is not None
         else dict(connector.config or {})
     )
+    service.check_mcp_allowed(connector.type, config, access.principal)
     await service.check_base_url(connector.type, config)
     if body.secret is not None:
-        impl = service.instantiate(connector.type, config, body.secret)
+        impl = service.instantiate(
+            connector.type, config, service.normalize_secret(connector.type, config, body.secret)
+        )
     else:
         if not connector.secret_ciphertext:
             raise validation_error("Secret du connecteur absent : ressaisissez-le")

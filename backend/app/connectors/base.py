@@ -207,6 +207,8 @@ class CredentialCheck:
     message: str
     account: str | None = None
     scope_options: list[ScopeOption] = field(default_factory=list)
+    #: Tools discovered on an MCP server (F6).
+    tools: list[str] = field(default_factory=list)
 
 
 def parse_datetime(value: Any) -> datetime | None:
@@ -267,6 +269,31 @@ class BaseConnector:
     def base_url(cls, config: dict[str, Any]) -> str | None:
         """User-provided base URL (checked against SSRF), ``None`` for fixed cloud endpoints."""
         return None
+
+    @classmethod
+    def base_urls(cls, config: dict[str, Any]) -> list[str]:
+        """Every user-provided endpoint reached by the connector (anti-SSRF check)."""
+        url = cls.base_url(config)
+        return [url] if url else []
+
+    @classmethod
+    def normalize_secret(cls, config: dict[str, Any], secret: str) -> str:
+        """Secret as stored (MCP presets: JSON object of their secret fields); ``ValueError`` if invalid."""
+        return secret
+
+    @classmethod
+    def secret_hint_of(cls, config: dict[str, Any], secret: str) -> str:
+        from app.connectors.secrets import hint
+
+        return hint(secret)
+
+    @classmethod
+    def display_label(cls, config: dict[str, Any]) -> str:
+        return cls.label
+
+    @classmethod
+    def kind_for(cls, config: dict[str, Any]) -> SourceKind:
+        return cls.source_kind
 
 
 # --- Config helpers -------------------------------------------------------------------------------------

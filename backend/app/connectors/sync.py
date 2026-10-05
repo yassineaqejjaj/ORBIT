@@ -157,7 +157,7 @@ async def _fail(session: AsyncSession, connector: Connector, run: ConnectorRun, 
 
 
 async def _audit_run(session: AsyncSession, connector: Connector, run: ConnectorRun, actor: Actor) -> None:
-    label = service.type_label(connector.type)
+    label = service.type_label(connector.type, dict(connector.config or {}))
     if run.status == "failed":
         summary = f"Échec de la synchronisation {label} « {connector.name} » : {run.error}"
     else:

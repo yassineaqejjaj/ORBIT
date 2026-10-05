@@ -52,7 +52,14 @@ from app.enums import (
 )
 from app.ingestion import classifier
 from app.ingestion.chunker import chunk_text
-from app.ingestion.extractors import ExtractedDocument, ExtractionError, extract, extract_text_content
+from app.ingestion.extractors import (
+    ExtractedDocument,
+    ExtractionError,
+    extract,
+    extract_text_content,
+    markitdown,
+    needs_conversion,
+)
 from app.ingestion.pii import PiiEntity, analyze, entities_in_span, redact
 from app.ingestion.queue import PermanentJobError, enqueue_job, track_step
 from app.models import Chunk, Document, DocumentVersion, IngestionJob, Relation, Source, Tombstone
@@ -78,6 +85,7 @@ FORMAT_LABELS = {
     "html": "HTML",
     "json": "JSON",
     "csv": "CSV",
+    "markitdown": "converti via MarkItDown (MCP)",
 }
 
 
@@ -283,6 +291,12 @@ async def _extract(document: Document, version: DocumentVersion) -> ExtractedDoc
         except ObjectStoreError as exc:
             raise PermanentJobError(f"Stockage d'objets inaccessible : {exc}") from exc
         filename = str((version.metadata_ or {}).get("filename") or document.title)
+        if needs_conversion(document.mime_type, filename, data):
+            # Fallback converter (F6): MarkItDown MCP server, or a clear French status reason.
+            try:
+                return await markitdown.convert(data, document.mime_type, filename)
+            except ExtractionError as exc:
+                raise PermanentJobError(str(exc)) from exc
         try:
             return await asyncio.to_thread(extract, data, document.mime_type, filename)
         except ExtractionError as exc:
@@ -316,6 +330,8 @@ async def _ingest(
         if extracted.author and not document.author:
             document.author = extracted.author[:300]
         detail = f"{FORMAT_LABELS.get(extracted.format, extracted.format)} · {len(text)} caractères"
+        if extracted.metadata.get("source_format"):
+            detail += f" · format source {extracted.metadata['source_format']}"
         if extracted.metadata.get("page_count"):
             detail += f" · {extracted.metadata['page_count']} page(s)"
         step.detail = detail

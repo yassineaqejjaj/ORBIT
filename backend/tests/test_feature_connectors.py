@@ -169,7 +169,8 @@ async def test_crud_secret_masking_roles_and_ssrf(
 ) -> None:
     base = _base(project)
     types = (await admin_client.get(f"{base}/types")).json()
-    assert {t["type"] for t in types} == {"sharepoint", "confluence", "jira"}
+    assert {t["type"] for t in types if not t["via_mcp"]} == {"sharepoint", "confluence", "jira"}
+    assert {t["preset"] for t in types if t["via_mcp"]} >= {"atlassian", "github", "slack"}
 
     created = await admin_client.post(
         base, json=_jira_body(restrict_to_editors=True, default_classification=2)

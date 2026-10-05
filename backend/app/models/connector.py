@@ -38,7 +38,7 @@ __all__ = [
     "ConnectorRun",
 ]
 
-CONNECTOR_TYPES = ("sharepoint", "confluence", "jira")
+CONNECTOR_TYPES = ("sharepoint", "confluence", "jira", "mcp")
 #: ``idle`` never synced, ``syncing`` run queued/running, ``ok`` last run fine, ``error`` last run failed,
 #: ``paused`` scheduled syncs disabled (manual syncs still allowed).
 CONNECTOR_STATUSES = ("idle", "syncing", "ok", "error", "paused")

@@ -89,10 +89,40 @@ déterministe ; compteur Prometheus `orbit_llm_guardrail_skips_total{reason}`. S
   + classification/ACL, 4) première synchronisation avec progression en direct, 5) « Votre premier contexte » : lance l'Explorateur avec une tâche suggérée.
   La Vue projet d'un projet vide affiche « Connectez vos 2 premières sources ».
 
+## F6 — Connecteurs MCP (`type = "mcp"`) + convertisseur MarkItDown
+
+- Type de connecteur générique `mcp` (préréglage dans `config.preset`, migration `f004` : valeur ajoutée au CHECK du type) qui
+  réutilise tout F5 (runs, planification, `POST …/test`, `…/sync`, événements de changement, audit, classification/ACL par défaut).
+  Préréglages (`app/connectors/mcp/presets.py`, versions épinglées, détail et identifiants : `docs/integrations/mcp-servers.md`) :
+  **Confluence & Jira** (mcp-atlassian), **Microsoft 365** (ms-365-mcp-server : SharePoint/OneDrive, Outlook, Teams),
+  **Google Workspace** (workspace-mcp : Drive/Docs/Sheets, Gmail en option), **Slack** (slack-mcp-server), **GitHub** (serveur
+  officiel distant ou binaire local), **Linear** (serveur distant officiel), **Obsidian** (mcp-obsidian + Local REST API) et un
+  serveur **personnalisé** (ressources MCP) réservé aux administrateurs de la plateforme si `ORBIT_MCP_ALLOW_CUSTOM=true`.
+- `GET /connectors/types` liste chaque préréglage (`via_mcp`, icône, description, champs `secret`/`connection`/`scope` avec
+  libellés FR, aide « obtenir les identifiants », lien doc, outils requis). Secret = objet JSON des champs secrets, chiffré
+  Fernet, indice masqué. Test = `initialize` + `list_tools` (outils requis présents) + un appel léger authentifié ; la réponse
+  inclut `tools` (outils découverts).
+- Client MCP (`app/connectors/mcp/client.py`, SDK 2.2) : stdio (commandes des préréglages uniquement, environnement minimal +
+  secrets du connecteur, `HOME` temporaire) ou HTTP streamable (Bearer) ; délai par appel `ORBIT_MCP_TIMEOUT_SECONDS` avec arrêt
+  du processus, `stderr` joint aux erreurs après caviardage. Limites `ORBIT_MCP_MAX_ITEMS`, `ORBIT_MCP_MAX_CONTENT_BYTES`,
+  `ORBIT_MCP_SYNC_TIMEOUT_SECONDS`. URL saisies (Atlassian, Obsidian, serveur personnalisé) soumises à l'anti-SSRF.
+- Incrémental : curseur par flux et par élément de périmètre (date de mise à jour max) quand l'outil filtre ou trie, sinon
+  relecture + déduplication par empreinte ; suppressions détectées seulement sur les listings complets (Obsidian, docs GitHub,
+  ressources) ou via le delta Graph, jamais sur un passage tronqué ou après changement de périmètre.
+- **MarkItDown** (`app/ingestion/extractors/markitdown.py`) : extracteur de repli pour pptx, xlsx, xls, msg, eml, epub, odt/ods/odp,
+  rtf, images via `markitdown-mcp` (`convert_to_markdown` sur un `file://` temporaire), `ORBIT_MARKITDOWN_MCP=auto|off`, motif FR
+  si indisponible, étape `extract` « converti via MarkItDown (MCP) ».
+- Images Docker : Node.js 24 et serveurs MCP épinglés installés au build (pas de téléchargement à l'exécution), utilisateur non-root.
+- UI : préréglages « Via MCP » dans l'assistant (champs dynamiques, aide identifiants, outils découverts au test, canaux Slack
+  proposés), badge « MCP » sur la liste et la fiche, édition des champs du préréglage.
+- Sécurité/flux : les serveurs stdio s'exécutent dans le conteneur ORBIT avec les identifiants du connecteur ; un serveur distant
+  (GitHub distant, Linear) fait transiter les données par l'éditeur ; utilisez des comptes de service en lecture seule et relevez
+  la classification par défaut (C2/C3) pour les contenus sensibles.
+
 ## Migrations & fichiers
 
 Chaîne : `0001` → `f001` (F1/F2 : `change_events`, `subscriptions`, `webhooks`, `webhook_deliveries`, statut relation résolue)
-→ `f002` (F3/F4 : colonnes de fiche mémoire, `ask_conversations`, `ask_messages`, `integrations`) → `f003` (F5 : `connectors`, `connector_runs`).
+→ `f002` (F3/F4 : colonnes de fiche mémoire, `ask_conversations`, `ask_messages`, `integrations`) → `f003` (F5 : `connectors`, `connector_runs`) → `f004` (F6 : type de connecteur `mcp`).
 Routeurs pré-enregistrés : `api/{inbox,feed,webhooks,ask,teams,connectors}.py`. Modèles : `models/{features_feed,features_ask,connector}.py`.
 Pages pré-créées : `projects/[slug]/{inbox,changes,ask,connectors}/page.tsx` ; navigation déjà ajoutée (`components/layout/nav.ts`).
 Le seed démo doit continuer de fonctionner et peut être enrichi (ex. 1 conflit ouvert, quelques changements, une conversation d'exemple).

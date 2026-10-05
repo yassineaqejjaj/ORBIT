@@ -22,23 +22,31 @@ import { errorMessage } from "@/lib/api/client";
 import {
   isRunActive,
   useConnectorRun,
+  useConnectorTypes,
   useCreateConnector,
   useTestConnectorCredentials,
   type Connector,
   type ConnectorConfig,
   type ConnectorTestResult,
-  type ConnectorType,
+  type ConnectorTypeInfo,
+  type NativeConnectorType,
   type ScopeOption,
 } from "@/lib/api/features-connectors";
 import { CLASSIFICATION_META, CLASSIFICATIONS } from "@/lib/enums";
 import { cn } from "@/lib/utils";
-import { CONNECTOR_TYPE_ORDER, CONNECTOR_TYPES, SCHEDULE_OPTIONS } from "./connector-meta";
-import { ConnectorTypeIcon, RunProgress } from "./run-stats";
+import { CONNECTOR_TYPE_ORDER, CONNECTOR_TYPES, presetDefaults, presetFieldsFilled, SCHEDULE_OPTIONS } from "./connector-meta";
+import { McpFieldInputs, McpPresetHelp, McpToolsList } from "./mcp-fields";
+import { ConnectorTypeIcon, McpBadge, RunProgress } from "./run-stats";
 
 const STEPS = ["Type", "Identifiants", "Périmètre", "Synchronisation", "Premier contexte"] as const;
 
 interface WizardState {
-  type: ConnectorType | null;
+  /** Native type, or ``null`` with ``preset`` set for an MCP connector (F6). */
+  type: NativeConnectorType | null;
+  preset: ConnectorTypeInfo | null;
+  /** MCP: non-secret field values (connection + scope) and secret fields. */
+  values: Record<string, unknown>;
+  secrets: Record<string, string>;
   name: string;
   config: ConnectorConfig;
   secret: string;
@@ -53,6 +61,9 @@ interface WizardState {
 
 const INITIAL: WizardState = {
   type: null,
+  preset: null,
+  values: {},
+  secrets: {},
   name: "",
   config: { deployment: "cloud" },
   secret: "",
@@ -75,7 +86,7 @@ export function ConnectorWizard({
   slug: string;
   open: boolean;
   onClose: () => void;
-  initialType?: ConnectorType | null;
+  initialType?: NativeConnectorType | null;
 }) {
   const [step, setStep] = React.useState(0);
   const [state, setState] = React.useState<WizardState>(INITIAL);
@@ -84,6 +95,8 @@ export function ConnectorWizard({
   const testCredentials = useTestConnectorCredentials(slug);
   const create = useCreateConnector(slug);
   const run = useConnectorRun(slug, connector?.id ?? null, connector?.last_run?.id ?? null);
+  const types = useConnectorTypes(slug, open);
+  const presets = (types.data ?? []).filter((t) => t.via_mcp);
 
   React.useEffect(() => {
     if (!open) return;
@@ -97,12 +110,32 @@ export function ConnectorWizard({
   const patchConfig = (next: Partial<ConnectorConfig>) =>
     setState((s) => ({ ...s, config: { ...s.config, ...next }, test: null }));
   const meta = state.type ? CONNECTOR_TYPES[state.type] : null;
+  const preset = state.preset;
+  const patchValue = (key: string, value: unknown) =>
+    setState((s) => ({
+      ...s,
+      values: { ...s.values, [key]: value },
+      test: s.preset?.fields.find((f) => f.key === key)?.group === "scope" ? s.test : null,
+    }));
+  const patchSecret = (key: string, value: string) =>
+    setState((s) => ({ ...s, secrets: { ...s.secrets, [key]: value }, test: null }));
+  const mcpConfig = (): ConnectorConfig => ({ ...state.values, preset: preset?.preset ?? undefined });
+  const mcpSecret = () =>
+    JSON.stringify(Object.fromEntries(Object.entries(state.secrets).filter(([, v]) => v.trim() !== "")));
+
+  const choosePreset = (info: ConnectorTypeInfo) => {
+    patch({ type: null, preset: info, name: info.label, values: presetDefaults(info.fields), secrets: {}, test: null, selected: [] });
+    setStep(1);
+  };
 
   const runTest = () => {
-    if (!state.type) return;
+    if (!state.type && !preset) return;
     setError(null);
+    const body = preset
+      ? { type: "mcp" as const, config: mcpConfig(), secret: mcpSecret() }
+      : { type: state.type!, config: state.config, secret: state.secret };
     testCredentials
-      .mutateAsync({ type: state.type, config: state.config, secret: state.secret })
+      .mutateAsync(body)
       .then((result) => {
         const jqlDefault = result.scope_options.find((o) => o.kind === "project");
         patch({ test: result, jql: state.jql || (jqlDefault ? `project = ${jqlDefault.id}` : "") });
@@ -125,20 +158,21 @@ export function ConnectorWizard({
   };
 
   const scopeValid = (() => {
+    if (preset) return presetFieldsFilled(preset.fields, ["scope"], state.values, state.secrets);
     if (state.type === "jira") return state.jql.trim().length > 0;
     if (state.type === "confluence") return state.selected.length > 0 || state.manualKeys.trim().length > 0;
     return state.selected.length > 0;
   })();
 
   const startSync = () => {
-    if (!state.type) return;
+    if (!state.type && !preset) return;
     setError(null);
     create
       .mutateAsync({
-        type: state.type,
-        name: state.name.trim() || CONNECTOR_TYPES[state.type].label,
-        config: scopeConfig(),
-        secret: state.secret,
+        type: preset ? "mcp" : state.type!,
+        name: state.name.trim() || (preset ? preset.label : CONNECTOR_TYPES[state.type!].label),
+        config: preset ? mcpConfig() : scopeConfig(),
+        secret: preset ? mcpSecret() : state.secret,
         schedule_minutes: Number(state.schedule),
         default_classification: state.classification,
         restrict_to_editors: state.restrict,
@@ -153,15 +187,17 @@ export function ConnectorWizard({
 
   const currentRun = run.data ?? connector?.last_run ?? null;
   const runDone = Boolean(currentRun && !isRunActive(currentRun));
-  const credentialsFilled = Boolean(
-    meta &&
-      meta.fields.every((f) => {
-        if (!f.required) return true;
-        if (f.deployment && f.deployment !== state.config.deployment) return true;
-        const value = f.key === "secret" ? state.secret : (state.config[f.key] as string | undefined);
-        return Boolean(value && String(value).trim());
-      }),
-  );
+  const credentialsFilled = preset
+    ? presetFieldsFilled(preset.fields, ["secret", "connection"], state.values, state.secrets)
+    : Boolean(
+        meta &&
+          meta.fields.every((f) => {
+            if (!f.required) return true;
+            if (f.deployment && f.deployment !== state.config.deployment) return true;
+            const value = f.key === "secret" ? state.secret : (state.config[f.key] as string | undefined);
+            return Boolean(value && String(value).trim());
+          }),
+      );
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -208,7 +244,7 @@ export function ConnectorWizard({
                     key={type}
                     type="button"
                     onClick={() => {
-                      patch({ type, name: item.label, config: { deployment: "cloud" }, test: null, selected: [] });
+                      patch({ type, preset: null, name: item.label, config: { deployment: "cloud" }, test: null, selected: [] });
                       setStep(1);
                     }}
                     className={cn(
@@ -224,6 +260,85 @@ export function ConnectorWizard({
                   </button>
                 );
               })}
+              <div className="grid gap-2 pt-2 sm:col-span-3">
+                <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium">
+                  Via MCP <McpBadge />
+                  <span className="font-normal text-muted-foreground">
+                    serveurs Model Context Protocol éprouvés, exécutés par ORBIT avec vos identifiants
+                  </span>
+                </p>
+                {types.isLoading ? (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {[0, 1, 2].map((i) => (
+                      <Skeleton key={i} className="h-24 rounded-lg" />
+                    ))}
+                  </div>
+                ) : types.isError ? (
+                  <Alert tone="red">{errorMessage(types.error)}</Alert>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {presets.map((info) => (
+                      <button
+                        key={info.preset}
+                        type="button"
+                        onClick={() => choosePreset(info)}
+                        className={cn(
+                          "grid content-start gap-2 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-primary hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          preset?.preset === info.preset && "border-primary",
+                        )}
+                      >
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="flex size-9 items-center justify-center rounded-md bg-primary/10 text-primary">
+                            <ConnectorTypeIcon type="mcp" icon={info.icon} className="size-5" />
+                          </span>
+                          <McpBadge />
+                        </span>
+                        <span className="font-medium">{info.label}</span>
+                        <span className="text-xs text-muted-foreground">{info.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {step === 1 && preset ? (
+            <div className="grid gap-4">
+              <p className="text-sm text-muted-foreground">{preset.description}</p>
+              <McpPresetHelp info={preset} />
+              <Field id="wizard-name" label="Nom du connecteur" required>
+                <Input id="wizard-name" maxLength={120} value={state.name} onChange={(e) => patch({ name: e.target.value })} />
+              </Field>
+              <McpFieldInputs
+                fields={preset.fields}
+                groups={["secret", "connection"]}
+                values={state.values}
+                secrets={state.secrets}
+                onValue={patchValue}
+                onSecret={patchSecret}
+                idPrefix="wizard-mcp"
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" variant="secondary" onClick={runTest} loading={testCredentials.isPending} disabled={!credentialsFilled}>
+                  <PlugZap aria-hidden />
+                  Tester la connexion
+                </Button>
+                {testCredentials.isPending ? (
+                  <span className="text-xs text-muted-foreground" aria-live="polite">
+                    Démarrage du serveur MCP et découverte des outils…
+                  </span>
+                ) : null}
+              </div>
+              {state.test ? (
+                <div className="grid gap-3" aria-live="polite">
+                  <Alert tone={state.test.ok ? "green" : "red"} title={state.test.ok ? "Connexion réussie" : "Échec du test"}>
+                    {state.test.message}
+                    {state.test.account ? <span className="block text-xs opacity-80">Serveur : {state.test.account}</span> : null}
+                  </Alert>
+                  <McpToolsList tools={state.test.tools} required={preset.required_tools} />
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -289,9 +404,9 @@ export function ConnectorWizard({
             </div>
           ) : null}
 
-          {step === 2 && meta ? (
+          {step === 2 && (meta || preset) ? (
             <div className="grid gap-5">
-              <ScopePicker state={state} patch={patch} />
+              {preset ? <McpScope state={state} preset={preset} onValue={patchValue} /> : <ScopePicker state={state} patch={patch} />}
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field id="wizard-classification" label="Classification par défaut" hint="Jamais abaissée par la suite.">
                   <SimpleSelect
@@ -415,6 +530,44 @@ export function ConnectorWizard({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** MCP scope step: the preset's scope fields, plus the options returned by the test (Slack channels). */
+function McpScope({
+  state,
+  preset,
+  onValue,
+}: {
+  state: WizardState;
+  preset: ConnectorTypeInfo;
+  onValue: (key: string, value: unknown) => void;
+}) {
+  const channelOptions = (state.test?.scope_options ?? []).filter((o) => o.kind === "channel");
+  const channels = Array.isArray(state.values.channels) ? (state.values.channels as string[]) : [];
+  const toggle = (id: string) => onValue("channels", channels.includes(id) ? channels.filter((c) => c !== id) : [...channels, id]);
+  return (
+    <div className="grid gap-3">
+      <McpFieldInputs
+        fields={preset.fields}
+        groups={["scope"]}
+        values={state.values}
+        secrets={state.secrets}
+        onValue={onValue}
+        onSecret={() => undefined}
+        idPrefix="wizard-mcp"
+      />
+      {channelOptions.length ? (
+        <fieldset className="grid gap-2">
+          <legend className="mb-1 text-[13px] font-medium">Canaux proposés par le serveur</legend>
+          <div className="grid max-h-48 gap-1.5 overflow-y-auto rounded-lg border border-border p-3 sm:grid-cols-2">
+            {channelOptions.map((o) => (
+              <ScopeCheckbox key={o.id} option={o} checked={channels.includes(o.id)} onToggle={() => toggle(o.id)} />
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
+    </div>
   );
 }
 

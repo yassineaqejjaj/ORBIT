@@ -88,6 +88,21 @@ class Settings(BaseSettings):
     webhook_timeout_seconds: float = 10.0
     webhook_max_failures: int = 20
     connector_default_schedule_minutes: int = 60
+    # --- MCP connectors (docs/FEATURES.md F6) ---
+    #: Allow custom MCP servers (arbitrary command or URL) — platform admins only.
+    mcp_allow_custom: bool = False
+    #: Timeout of one MCP call (start-up, tool call), seconds; the server process is killed on timeout.
+    mcp_timeout_seconds: float = 60.0
+    #: Maximum items ingested per synchronisation of an MCP connector.
+    mcp_max_items: int = 500
+    #: Maximum size of one item's content (bytes); larger items are skipped.
+    mcp_max_content_bytes: int = 5_000_000
+    #: Overall duration budget of one MCP synchronisation, seconds.
+    mcp_sync_timeout_seconds: float = 1800.0
+    #: MarkItDown MCP fallback extractor (pptx, xlsx, msg, epub…): ``auto`` (if installed) or ``off``.
+    markitdown_mcp: Literal["auto", "off"] = "auto"
+    #: Command of the MarkItDown MCP server (stdio).
+    markitdown_mcp_command: str = "markitdown-mcp"
 
     # --- Observability ---------------------------------------------------------------------------
     otlp_endpoint: str = ""
