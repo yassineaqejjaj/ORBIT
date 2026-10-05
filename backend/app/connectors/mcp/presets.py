@@ -676,7 +676,7 @@ MS365 = Preset(
     probe=lambda config: (
         ("get-drive-root-item", {"driveId": _list(config, "drive_ids")[0]})
         if _list(config, "drive_ids")
-        else None
+        else ("get-current-user", {})
     ),
     validate=lambda config, require_scope: _require(
         not require_scope
@@ -1272,7 +1272,7 @@ GITHUB = Preset(
             },
         )
         if _list(config, "repos")
-        else None
+        else ("search_repositories", {"query": "org:github", "perPage": 1})
     ),
     validate=_github_validate,
     docs_url="https://github.com/github/github-mcp-server",

@@ -238,6 +238,17 @@ class McpConnector(BaseConnector):
             client, self.client = self.client, None
             await client.aclose()
 
+    def required_tools(self) -> list[str]:
+        """Required tools of the streams enabled by the configuration (Confluence-only, Jira-only…)."""
+        needed: set[str] = set()
+        for stream in self.preset.streams:
+            if stream.enabled(self.config):
+                if isinstance(stream.list_tool, str):
+                    needed.add(stream.list_tool)
+                if stream.read_tool:
+                    needed.add(stream.read_tool)
+        return [t for t in self.preset.required_tools if t in needed]
+
     async def _tools(self) -> list[str]:
         client = await self._open()
         self.tools = sorted(t.name for t in await client.list_tools())
@@ -249,7 +260,7 @@ class McpConnector(BaseConnector):
         client = await self._open()
         tools = await self._tools()
         account = " ".join(p for p in (client.server_name, client.server_version) if p) or None
-        missing = [t for t in self.preset.required_tools if t not in tools]
+        missing = [t for t in self.required_tools() if t not in tools]
         if missing:
             return CredentialCheck(
                 ok=False,
@@ -274,7 +285,7 @@ class McpConnector(BaseConnector):
             ok=True,
             message=(
                 f"Connexion MCP établie : {len(tools)} outil(s) disponible(s), "
-                f"{len(self.preset.required_tools)} requis présent(s)"
+                f"{len(self.required_tools())} requis présent(s)"
             ),
             account=account,
             scope_options=options,
@@ -371,7 +382,7 @@ class McpConnector(BaseConnector):
         self._budget = int(settings.mcp_max_items)
         client = await self._open()
         tools = await self._tools()
-        missing = [t for t in self.preset.required_tools if t not in tools]
+        missing = [t for t in self.required_tools() if t not in tools]
         if missing:
             raise ConnectorError(f"Outils MCP requis absents du serveur : {', '.join(missing)}")
         if self.preset.id == "custom":
