@@ -209,7 +209,7 @@ class SharePointConnector(BaseConnector):
             },
         )
         size = int(item.get("size") or 0)
-        if not is_supported(mime):
+        if not is_supported(mime, name):
             change.skip_reason = f"Format non pris en charge ({name})"
             return change
         if size > settings.max_upload_bytes:

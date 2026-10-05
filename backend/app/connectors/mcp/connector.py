@@ -334,7 +334,7 @@ class McpConnector(BaseConnector):
             skip = None
             if len(record.data) > max_bytes:
                 skip = f"Fichier trop volumineux ({len(record.data)} octets)"
-            elif not is_supported(mime):
+            elif not is_supported(mime, record.filename or title):
                 skip = f"Format non pris en charge ({mime})"
             return Change(
                 external_id=external_id,

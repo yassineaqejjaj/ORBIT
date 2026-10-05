@@ -31,6 +31,8 @@ from typing import Any
 
 from app.connectors.base import ConnectorError
 
+#: Test hook: ``httpx2`` transport used by the streamable HTTP client (e.g. an ASGI app in tests).
+http_transport_override: Any = None
 #: Test hook: maps a target onto another one (e.g. a preset command onto a fake server script) or onto
 #: an in-process ``MCPServer`` instance. Returning ``None`` keeps the target.
 target_override: Callable[[Any], Any] | None = None
@@ -200,6 +202,7 @@ class McpClient:
                 headers={"User-Agent": "ORBIT-MCP/1.0", **target.headers},
                 timeout=httpx2.Timeout(self.timeout, read=max(self.timeout, 60.0)),
                 follow_redirects=False,
+                **({"transport": http_transport_override} if http_transport_override is not None else {}),
             )
             return streamable_http_client(target.url, http_client=client)
         return target  # in-process server (tests) or transport

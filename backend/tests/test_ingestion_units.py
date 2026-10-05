@@ -189,7 +189,10 @@ def test_chunker_empty() -> None:
 # --- extractors ----------------------------------------------------------------------------------------
 
 
-def test_detect_mime_types() -> None:
+def test_detect_mime_types(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "markitdown_mcp", "off")  # images only via the MarkItDown fallback
     assert detect_mime_type("cr.pdf") == PDF
     assert detect_mime_type("spec.docx") == DOCX
     assert detect_mime_type("notes.md") == MARKDOWN
