@@ -274,7 +274,7 @@ sans eux, ORBIT fonctionne en mode déterministe (règles, extraction, heuristiq
 | Sujet | Description |
 |---|---|
 | Graphe de connaissances | Spike : relations mémoire ↔ documents exploitées au classement (parcours multi-sauts) |
-| Connecteurs | Synchronisation continue Jira, Confluence, SharePoint, Teams, CRM (aujourd'hui : import JSON/CSV, upload, texte) |
+| Connecteurs | Natifs SharePoint/OneDrive, Confluence, Jira (F5) et via MCP : Confluence & Jira, Microsoft 365, Google Workspace, Slack, GitHub, Linear, Obsidian + MarkItDown pour pptx/xlsx/msg… (F6, [docs/integrations/mcp-servers.md](docs/integrations/mcp-servers.md)) ; à venir : CRM |
 | Stockage objets | Backend S3 / compatible S3 derrière l'abstraction `ObjectStore` (aujourd'hui : volume local) |
 | Identité d'entreprise | Keycloak / OIDC pour les utilisateurs (option entreprise) |
 | Autorisation externalisée | OpenFGA (ReBAC) pour les ACL, OPA pour les politiques de classification et de fraîcheur |
