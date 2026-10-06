@@ -36,16 +36,20 @@ export function ProjectCard({ project }: { project: ProjectSummary }) {
           {project.name.trim().charAt(0) || "P"}
         </span>
         <div className="grid min-w-0 flex-1 gap-0.5">
-          <div className="flex items-center gap-2">
-            <h2 className="truncate text-[15px] font-semibold tracking-tight text-foreground">{project.name}</h2>
+          <div className="flex min-w-0 items-start gap-2">
+            <h2 className="line-clamp-2 min-w-0 break-words text-[15px] font-semibold leading-snug tracking-tight text-foreground">
+              {project.name}
+            </h2>
             <ArrowUpRight
-              className="size-4 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100"
+              className="mt-0.5 size-4 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100"
               aria-hidden
             />
           </div>
-          <p className="truncate font-mono text-xs text-subtle-foreground">{project.slug}</p>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="min-w-0 truncate font-mono text-xs text-subtle-foreground">{project.slug}</p>
+            <RoleBadge value={project.role} />
+          </div>
         </div>
-        <RoleBadge value={project.role} />
       </div>
 
       <p className="mt-3 line-clamp-2 min-h-[2.5rem] text-[13px] leading-relaxed text-muted-foreground">
