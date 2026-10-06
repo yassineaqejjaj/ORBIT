@@ -86,6 +86,9 @@ class ChunkView(ApiModel):
     injection_reasons: list[dict[str, Any]] = []
     quarantined: bool = False
     quarantine_released_at: datetime | None = None
+    #: Contextual-retrieval preamble indexed with the chunk (§B1) and its origin (llm / deterministic).
+    context_preamble: str | None = None
+    context_source: str | None = None
 
 
 class QuarantinedChunk(ApiModel):

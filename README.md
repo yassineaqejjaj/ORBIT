@@ -261,6 +261,13 @@ Variables d'environnement préfixées `ORBIT_` (voir [`.env.example`](.env.examp
 | `ORBIT_SPOTLIGHTING` | `true` | Balise tout contenu servi aux agents (contexte, MCP, *Demander à ORBIT*) comme donnée non fiable |
 | `ORBIT_TRUST_RANKING_PENALTY` | `0.15` | Pénalité de classement des sources de confiance faible (moyenne : la moitié) ; `0` la désactive |
 | `ORBIT_POISONING_ALERT_THRESHOLD` / `ORBIT_POISONING_WINDOW_HOURS` | `8` / `24` | Alerte d'empoisonnement : N propositions/faits d'une même source récente ou d'un agent dans la fenêtre |
+| `ORBIT_CONTEXTUAL_RETRIEVAL` | `auto` | Préambule contextuel par fragment, indexé avec lui (§B1) : `auto` (LLM si le garde-fou l'autorise, sinon déterministe : titre, section, date, source, entités), `deterministic` ou `off` |
+| `ORBIT_CONTEXTUAL_LLM_MAX_CHUNKS` / `ORBIT_CONTEXTUAL_REINDEX_BATCH` | `64` / `200` | Fragments contextualisés par LLM par document ; taille des lots de la réindexation progressive des projets existants (job planifié par le worker) |
+| `ORBIT_QUERY_REWRITE` | `auto` | Réécriture de requête (§B3) : multi-requêtes, décomposition, HyDE avec le LLM si autorisé ; sinon expansion par synonymes et entités du projet (`deterministic`) ; `off` |
+| `ORBIT_QUERY_REWRITE_HYDE` / `ORBIT_QUERY_REWRITE_MAX_QUERIES` | `true` / `4` | Réponse hypothétique (HyDE) ; nombre maximal de requêtes supplémentaires |
+| `ORBIT_RETRIEVAL_MAX_ROUNDS` | `3` | Recherche itérative (§B4) : tours (1 à 3) relançant une recherche ciblée sur les sous-sujets non couverts ; tours visibles dans les timings et l'Explorateur |
+| `ORBIT_VISUAL_EXTRACTION` / `ORBIT_VISUAL_LLM` | `auto` / `true` | Documents visuels (§B5) : images des PDF/PPTX décrites (LLM vision si autorisé, sinon OCR si installé, sinon texte alternatif) et indexées comme fragments |
+| `ORBIT_VISUAL_MAX_IMAGES` / `ORBIT_VISUAL_MIN_SIZE` | `20` / `96` | Images décrites par document ; taille minimale (px, plus petit côté) |
 | `ORBIT_ENCRYPTION_KEY` | vide | Clé Fernet chiffrant les secrets des connecteurs, webhooks et Teams ; **requise** pour les créer |
 | `ORBIT_CONNECTOR_DEFAULT_SCHEDULE_MINUTES` | `60` | Fréquence de synchronisation par défaut des connecteurs |
 | `ORBIT_MCP_ALLOW_CUSTOM` | `false` | Autorise des serveurs MCP hors presets (administrateurs uniquement) |

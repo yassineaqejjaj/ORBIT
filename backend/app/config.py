@@ -118,6 +118,32 @@ class Settings(BaseSettings):
     poisoning_alert_threshold: int = Field(default=8, ge=1)
     poisoning_window_hours: int = Field(default=24, ge=1)
 
+    # --- Retrieval (docs/AI_CONTEXT_ENGINEERING.md §B) -------------------------------------------
+    #: Contextual-retrieval preamble per chunk: ``auto`` (LLM when the guardrail allows, else
+    #: deterministic), ``deterministic`` (never an LLM) or ``off``.
+    contextual_retrieval: Literal["auto", "deterministic", "off"] = "auto"
+    #: Maximum chunks of one document contextualised by the LLM (the rest is deterministic).
+    contextual_llm_max_chunks: int = Field(default=64, ge=0, le=2000)
+    #: Chunks processed per progressive re-index job (existing projects without preamble).
+    contextual_reindex_batch: int = Field(default=200, ge=10, le=5000)
+    #: Query rewriting: ``auto`` (multi-query, decomposition, HyDE with the LLM when allowed, else
+    #: deterministic expansion from synonyms and project entities), ``deterministic`` or ``off``.
+    query_rewrite: Literal["auto", "deterministic", "off"] = "auto"
+    #: HyDE (hypothetical answer embedded as an extra query) when the LLM is used for rewriting.
+    query_rewrite_hyde: bool = True
+    #: Maximum extra queries per context request (rewrites, sub-questions, expansions).
+    query_rewrite_max_queries: int = Field(default=4, ge=0, le=8)
+    #: Iterative retrieval: rounds (1 = single pass; ≤ 3) re-searching uncovered sub-topics.
+    retrieval_max_rounds: int = Field(default=3, ge=1, le=3)
+    #: Visual documents: images of PDF/PPTX described and indexed (``auto``: vision LLM when the
+    #: guardrail allows, else OCR when installed, else alternative text) or ``off``.
+    visual_extraction: Literal["auto", "off"] = "auto"
+    #: Vision LLM for image descriptions (requires a multimodal ``ORBIT_LLM_MODEL``).
+    visual_llm: bool = True
+    visual_max_images: int = Field(default=20, ge=0, le=200)
+    #: Images smaller than this (pixels on the shorter side) are ignored (logos, icons, bullets).
+    visual_min_size: int = Field(default=96, ge=1)
+
     # --- Observability ---------------------------------------------------------------------------
     otlp_endpoint: str = ""
     otlp_headers: str = ""  # "key1=value1,key2=value2" (e.g. Langfuse basic auth)

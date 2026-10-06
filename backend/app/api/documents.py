@@ -353,6 +353,8 @@ def _chunk_view(chunk: Chunk, *, can_see_pii: bool) -> ChunkView:
         injection_reasons=list(chunk.injection_reasons or []),
         quarantined=bool(chunk.quarantined),
         quarantine_released_at=chunk.quarantine_released_at,
+        context_preamble=chunk.context_preamble,
+        context_source=chunk.context_source,
     )
 
 

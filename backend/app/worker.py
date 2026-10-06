@@ -234,6 +234,14 @@ class Worker:
         except Exception:
             logger.exception("Connector maintenance failed")
 
+    async def _contextual_maintenance(self) -> None:
+        try:
+            queued = await _contextual_maintenance_once()
+            if queued:
+                logger.info("Contextual re-index: %d project job(s) queued", queued)
+        except Exception:
+            logger.exception("Contextual re-index scheduling failed")
+
     async def _heartbeat(self) -> None:
         while not self.stop_event.is_set():
             await self._sleep(settings.worker_heartbeat_seconds)
@@ -280,7 +288,18 @@ class Worker:
                 logger.exception("Memory maintenance failed")
             await self._feed_maintenance()
             await self._connector_maintenance()
+            await self._contextual_maintenance()
             await self._sleep(settings.worker_maintenance_interval_seconds)
+
+
+async def _contextual_maintenance_once() -> int:
+    """Progressive contextual re-index (docs/AI_CONTEXT_ENGINEERING.md §B1) of existing projects."""
+    from app.ingestion.pipeline import schedule_contextual_reindex
+
+    async with get_sessionmaker()() as session:
+        queued = await schedule_contextual_reindex(session)
+        await session.commit()
+    return queued
 
 
 async def _feed_maintenance_once() -> dict[str, int]:

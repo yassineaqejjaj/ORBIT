@@ -19,7 +19,7 @@ async def test_ready_reports_dependencies(client: httpx.AsyncClient) -> None:
     assert set(body["checks"]) == {"postgres", "opensearch", "valkey", "model"}
     assert body["checks"]["postgres"]["status"] == "ok"
     assert (
-        body["checks"]["postgres"]["info"]["migration"] == "h001"
+        body["checks"]["postgres"]["info"]["migration"] == "h002"
     )  # head of the migration chain (AI security)
     assert body["checks"]["valkey"]["status"] == "ok"
     assert body["checks"]["opensearch"]["status"] == "ok"

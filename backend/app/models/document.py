@@ -6,7 +6,18 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, SmallInteger, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    Text,
+)
 from sqlalchemy import text as sql_text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -115,6 +126,14 @@ class Chunk(UUIDPkMixin, CreatedAtMixin, Base):
         Index("ix_chunks_document_id_version", "document_id", "version"),
         Index("ix_chunks_project_id_status", "project_id", "status"),
         Index("ix_chunks_project_id_quarantined", "project_id", postgresql_where=sql_text("quarantined")),
+        CheckConstraint(
+            "context_source IS NULL OR context_source IN ('llm', 'deterministic')", name="context_source"
+        ),
+        Index(
+            "ix_chunks_missing_context",
+            "project_id",
+            postgresql_where=sql_text("context_preamble IS NULL AND status = 'active'"),
+        ),
     )
 
     project_id: Mapped[uuid.UUID] = mapped_column(
@@ -165,3 +184,7 @@ class Chunk(UUIDPkMixin, CreatedAtMixin, Base):
     quarantine_released_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    #: Contextual-retrieval preamble (§B1) indexed with the chunk; ``None`` until computed.
+    context_preamble: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: ``llm`` or ``deterministic``.
+    context_source: Mapped[str | None] = mapped_column(Text, nullable=True)

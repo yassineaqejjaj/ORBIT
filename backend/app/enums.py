@@ -217,7 +217,9 @@ class JobStepStatus(StrEnum):
 
 
 #: Names of the ``ingest`` pipeline steps, in order (``JobStep.name``; other names are allowed).
-PIPELINE_STEPS: tuple[str, ...] = ("extract", "pii", "classify", "chunk", "embed", "index", "extract_memory")
+PIPELINE_STEPS: tuple[str, ...] = (
+    "extract", "pii", "classify", "visual", "chunk", "contextualize", "embed", "index", "extract_memory"
+)  # fmt: skip
 
 
 class PiiType(StrEnum):

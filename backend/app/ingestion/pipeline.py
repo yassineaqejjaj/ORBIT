@@ -33,7 +33,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,17 +41,19 @@ from app.config import settings
 from app.db import utcnow
 from app.enums import (
     PII_LABELS,
+    SOURCE_KIND_LABELS,
     ActorType,
     ChunkStatus,
     DocumentStatus,
     JobKind,
+    JobStatus,
     RelationNodeType,
     RelationType,
     TombstoneTarget,
     classification_code,
     classification_label,
 )
-from app.ingestion import classifier
+from app.ingestion import classifier, contextual
 from app.ingestion.chunker import chunk_text
 from app.ingestion.extractors import (
     ExtractedDocument,
@@ -153,10 +155,28 @@ def pii_summary(entities: Sequence[PiiEntity]) -> str:
     return f"{len(entities)} {noun} : {', '.join(parts)}"
 
 
-def embedding_input(title: str, section: str | None, text: str) -> str:
-    """Text embedded for a chunk: document title and section give context to short passages."""
+def embedding_input(title: str, section: str | None, text: str, preamble: str | None = None) -> str:
+    """Text embedded for a chunk: its contextual preamble (§B1) — or, without one, the document title
+    and section — gives context to short passages."""
+    if preamble:
+        return f"{preamble}\n{text}"
     header = title if not section else f"{title} — {section}"
     return f"{header}\n{text}"
+
+
+def document_context(document: Document, source: Source | None, text: str) -> contextual.DocumentContext:
+    label = None
+    if source is not None:
+        kind = SOURCE_KIND_LABELS.get(source.kind, source.kind.value)
+        label = f"{source.name} ({kind})" if source.name else kind
+    return contextual.DocumentContext(
+        title=document.title,
+        source_label=label,
+        date=document.source_updated_at or document.created_at,
+        tags=list(document.tags or []),
+        classification=int(document.classification),
+        text=text,
+    )
 
 
 def chunk_index_doc(
@@ -174,6 +194,7 @@ def chunk_index_doc(
         "text": chunk.text,
         "text_redacted": chunk.text_redacted,
         "section": chunk.section,
+        "context": chunk.context_preamble,
         "embedding": list(embedding),
         "classification": int(chunk.classification),
         "acl_principals": list(chunk.acl_principals),
@@ -251,6 +272,8 @@ class _PreparedChunk:
     token_count: int
     pii: list[dict[str, Any]]
     injection: InjectionResult | None = None
+    context_preamble: str | None = None
+    context_source: str | None = None
 
 
 async def handle_ingest(session: AsyncSession, job: IngestionJob) -> None:
@@ -431,11 +454,38 @@ async def _ingest(
         if flagged:
             step.detail += f" · {summarize_injection([c.injection for c in flagged])}"  # type: ignore[misc]
 
+    # 4b. contextualize (contextual-retrieval preamble, §B1) ----------------------------------------------
+    async with track_step(session, job, "contextualize", commit=True) as step:
+        doc_context = document_context(document, source, text)
+        doc_context.classification = max(int(document.classification), level)
+        preambles = await contextual.build_preambles(
+            [
+                contextual.PreambleInput(
+                    text=c.text,
+                    text_redacted=c.text_redacted,
+                    section=c.section,
+                    quarantined=c.injection is not None and c.injection.quarantined,
+                )
+                for c in prepared
+            ],
+            doc_context,
+        )
+        for item, (preamble, origin) in zip(prepared, preambles, strict=True):
+            item.context_preamble, item.context_source = preamble, origin
+        if settings.contextual_retrieval == "off":
+            step.skip("Préambules contextuels désactivés (ORBIT_CONTEXTUAL_RETRIEVAL=off)")
+        else:
+            step.detail = contextual.summarize(preambles)
+            if settings.contextual_retrieval == "auto" and not contextual.llm_allowed(
+                doc_context.classification
+            ):
+                step.detail += " · LLM non utilisé (désactivé ou garde-fou de classification)"
+
     # 5. embed ------------------------------------------------------------------------------------------
     async with track_step(session, job, "embed", commit=True) as step:
         try:
             vectors = await embed_texts(
-                [embedding_input(document.title, c.section, c.text) for c in prepared]
+                [embedding_input(document.title, c.section, c.text, c.context_preamble) for c in prepared]
             )
         except EmbeddingDimensionError as exc:
             raise PermanentJobError(str(exc)) from exc
@@ -554,6 +604,8 @@ async def _upsert_chunks(
         row.char_start = item.char_start
         row.char_end = item.char_end
         row.pii = item.pii
+        row.context_preamble = item.context_preamble
+        row.context_source = item.context_source
         row.classification = int(document.classification)
         row.acl_principals = list(document.acl_principals)
         row.status = ChunkStatus.active
@@ -660,8 +712,11 @@ async def _record_ingest_failure(
 async def handle_reindex(session: AsyncSession, job: IngestionJob) -> None:
     payload = job.payload or {}
     mode = str(payload.get("mode") or "metadata")
-    if mode not in {"metadata", "full"}:
+    if mode not in {"metadata", "full", "contextual"}:
         raise PermanentJobError(f"Mode de réindexation inconnu : {mode}")
+    if mode == "contextual":
+        await _reindex_contextual(session, job)
+        return
     if job.document_id is not None:
         document = await _load_document(session, job)
         documents = [document]
@@ -717,7 +772,10 @@ async def handle_reindex(session: AsyncSession, job: IngestionJob) -> None:
                 continue
             try:
                 vectors = await embed_texts(
-                    [embedding_input(document.title, c.section, c.text) for c in chunk_rows]
+                    [
+                        embedding_input(document.title, c.section, c.text, c.context_preamble)
+                        for c in chunk_rows
+                    ]
                 )
             except EmbeddingDimensionError as exc:
                 raise PermanentJobError(str(exc)) from exc
@@ -734,6 +792,132 @@ async def handle_reindex(session: AsyncSession, job: IngestionJob) -> None:
             )
         await opensearch.refresh("chunks")
         step.detail = f"{total} fragment(s) réindexés"
+
+
+# --- progressive contextual re-index (§B1) ------------------------------------------------------------
+
+_MISSING_CONTEXT = (Chunk.context_preamble.is_(None), Chunk.status == ChunkStatus.active)
+
+
+async def _reindex_contextual(session: AsyncSession, job: IngestionJob) -> None:
+    """Compute the preamble of up to ``ORBIT_CONTEXTUAL_REINDEX_BATCH`` chunks of the project that have
+    none yet, re-embed and re-index them, then queue the next batch while some remain."""
+    if settings.contextual_retrieval == "off":
+        async with track_step(session, job, "contextualize") as step:
+            step.skip("Préambules contextuels désactivés (ORBIT_CONTEXTUAL_RETRIEVAL=off)")
+        return
+    rows = list(
+        (
+            await session.execute(
+                select(Chunk, Document)
+                .join(Document, Document.id == Chunk.document_id)
+                .where(
+                    Chunk.project_id == job.project_id,
+                    *_MISSING_CONTEXT,
+                    Document.status == DocumentStatus.indexed,
+                )
+                .order_by(Chunk.document_id, Chunk.version, Chunk.ordinal)
+                .limit(settings.contextual_reindex_batch)
+            )
+        ).all()
+    )
+    if not rows:
+        async with track_step(session, job, "contextualize") as step:
+            step.skip("Tous les fragments ont déjà un préambule contextuel")
+        return
+    groups: dict[uuid.UUID, tuple[Document, list[Chunk]]] = {}
+    for chunk, document in rows:
+        groups.setdefault(document.id, (document, []))[1].append(chunk)
+    results: list[tuple[str | None, str | None]] = []
+    batches: list[tuple[Document, Source | None, list[Chunk]]] = []
+    async with track_step(session, job, "contextualize", commit=True) as step:
+        for document, chunks in groups.values():
+            source = await session.get(Source, document.source_id)
+            version = await session.scalar(
+                select(DocumentVersion).where(
+                    DocumentVersion.document_id == document.id,
+                    DocumentVersion.version == document.current_version,
+                )
+            )
+            doc_context = document_context(
+                document, source, (version.extracted_text if version else "") or ""
+            )
+            preambles = await contextual.build_preambles(
+                [
+                    contextual.PreambleInput(
+                        text=c.text,
+                        text_redacted=c.text_redacted,
+                        section=c.section,
+                        quarantined=c.quarantined,
+                    )
+                    for c in chunks
+                ],
+                doc_context,
+            )
+            for chunk, (preamble, origin) in zip(chunks, preambles, strict=True):
+                chunk.context_preamble, chunk.context_source = preamble, origin
+            results.extend(preambles)
+            batches.append((document, source, chunks))
+        step.detail = f"{contextual.summarize(results)} ({len(groups)} document(s))"
+    async with track_step(session, job, "index", commit=True) as step:
+        total = 0
+        for document, source, chunks in batches:
+            try:
+                vectors = await embed_texts(
+                    [embedding_input(document.title, c.section, c.text, c.context_preamble) for c in chunks]
+                )
+            except EmbeddingDimensionError as exc:
+                raise PermanentJobError(str(exc)) from exc
+            await opensearch.index_chunks(
+                [chunk_index_doc(c, document, source, v) for c, v in zip(chunks, vectors, strict=True)]
+            )
+            total += len(chunks)
+        await opensearch.refresh("chunks")
+        remaining = await session.scalar(
+            select(func.count())
+            .select_from(Chunk)
+            .join(Document, Document.id == Chunk.document_id)
+            .where(
+                Chunk.project_id == job.project_id,
+                *_MISSING_CONTEXT,
+                Document.status == DocumentStatus.indexed,
+            )
+        )
+        step.detail = f"{total} fragment(s) réindexés avec leur préambule"
+        if remaining:
+            await enqueue_job(session, job.project_id, JobKind.reindex, payload={"mode": "contextual"})
+            step.detail += f" · {remaining} restant(s) : lot suivant planifié"
+
+
+async def schedule_contextual_reindex(session: AsyncSession) -> int:
+    """Queue one progressive contextual re-index job per project with chunks lacking a preamble (and no
+    such job pending). Called by the worker maintenance loop; returns the number of jobs queued."""
+    if settings.contextual_retrieval == "off":
+        return 0
+    projects = set(
+        await session.scalars(
+            select(Chunk.project_id)
+            .join(Document, Document.id == Chunk.document_id)
+            .where(*_MISSING_CONTEXT, Document.status == DocumentStatus.indexed)
+            .distinct()
+        )
+    )
+    if not projects:
+        return 0
+    pending = set(
+        await session.scalars(
+            select(IngestionJob.project_id).where(
+                IngestionJob.kind == JobKind.reindex,
+                IngestionJob.status.in_([JobStatus.queued, JobStatus.running]),
+                IngestionJob.payload["mode"].astext == "contextual",
+            )
+        )
+    )
+    queued = 0
+    for project_id in sorted(projects - pending):
+        await enqueue_job(session, project_id, JobKind.reindex, payload={"mode": "contextual"})
+        queued += 1
+    return queued
 
 
 # --- forget -----------------------------------------------------------------------------------------

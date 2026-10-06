@@ -180,6 +180,8 @@ def chunk_mapping() -> dict[str, Any]:
             "version": {"type": "integer"},
             "source_kind": {"type": "keyword"},
             "section": {"type": "text", "analyzer": "french", "fields": {"raw": {"type": "keyword"}}},
+            # Contextual-retrieval preamble (§B1): searched by BM25, never served.
+            "context": {"type": "text", "analyzer": "french"},
             "source_id": {"type": "keyword"},
             "ordinal": {"type": "integer"},
             "token_count": {"type": "integer"},
@@ -626,7 +628,9 @@ async def bm25_search(
                 "must": {
                     "multi_match": {
                         "query": text[:4000],
-                        "fields": ["title^2", "text"],
+                        "fields": ["title^2", "text", "context^0.7"]
+                        if kind == "chunks"
+                        else ["title^2", "text"],
                         "type": "best_fields",
                         "tie_breaker": 0.3,
                         "analyzer": "french",
