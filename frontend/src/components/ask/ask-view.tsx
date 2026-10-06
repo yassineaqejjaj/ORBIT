@@ -112,12 +112,12 @@ export function AskView() {
 
         <section aria-label="Conversation" className="flex min-h-[60vh] flex-col gap-4">
           {empty ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-5 rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center">
-              <div className="flex size-11 items-center justify-center rounded-full bg-brand-soft text-primary">
+            <div className="flex flex-1 flex-col items-center justify-center gap-5 rounded-4xl border border-border bg-hero px-6 py-12 text-center shadow-panel">
+              <div className="flex size-11 items-center justify-center rounded-full bg-accent-soft text-accent-text">
                 <Sparkles className="size-5" aria-hidden />
               </div>
               <div className="space-y-1.5">
-                <h2 className="text-base font-semibold">Que voulez-vous savoir sur ce projet ?</h2>
+                <h2 className="text-2xl font-semibold tracking-tight">Que voulez-vous savoir sur ce projet&nbsp;?</h2>
                 <p className="mx-auto max-w-md text-[13px] text-muted-foreground">
                   ORBIT répond uniquement à partir des décisions, besoins et documents que vous avez le droit de voir. Sans
                   source pertinente, il le dit.
@@ -129,7 +129,7 @@ export function AskView() {
                     key={q}
                     type="button"
                     onClick={() => void submit(q)}
-                    className="rounded-full border border-border bg-card px-3.5 py-1.5 text-[13px] shadow-xs transition-colors hover:border-primary/40 hover:bg-brand-soft/50"
+                    className="rounded-full border border-border bg-surface px-3.5 py-1.5 text-[13px] transition-colors duration-150 hover:border-accent-coral/35 hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
                     {q}
                   </button>
@@ -220,7 +220,7 @@ export function AskView() {
 function UserQuestion({ text, user }: { text: string; user: User | undefined }) {
   return (
     <div className="flex items-start justify-end gap-3">
-      <p className="max-w-[80%] whitespace-pre-wrap rounded-xl rounded-tr-sm bg-primary px-3.5 py-2 text-[13.5px] text-primary-foreground shadow-xs">
+      <p className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-tr-md bg-surface-3 px-4 py-2.5 text-[14px] text-foreground">
         {text}
       </p>
       <UserAvatar user={user} size="sm" />

@@ -274,7 +274,7 @@ export function TaskComposer({
   ];
 
   return (
-    <Card>
+    <Card className="overflow-hidden rounded-composer">
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -311,7 +311,7 @@ export function TaskComposer({
               maxLength={TASK_MAX_LENGTH}
               invalid={Boolean(errors.task)}
               aria-describedby={errors.task ? "explorer-task-error" : "explorer-task-hint"}
-              className="min-h-36 text-[15px] leading-relaxed"
+              className="min-h-36 rounded-2xl px-4 py-3 text-[15px] leading-relaxed"
             />
             <div className="flex items-start justify-between gap-3 text-xs">
               {errors.task ? (
@@ -320,7 +320,7 @@ export function TaskComposer({
                 </p>
               ) : (
                 <p id="explorer-task-hint" className="text-muted-foreground">
-                  Décrivez ce que l&apos;agent doit produire : ORBIT sélectionne, gouverne et cite le contexte utile.
+                  Décrivez ce que l’agent doit produire&nbsp;: ORBIT sélectionne, gouverne et cite le contexte utile.
                 </p>
               )}
               <span className="shrink-0 tabular-nums text-subtle-foreground">
@@ -592,7 +592,7 @@ export function TaskComposer({
           </div>
         </div>
 
-        <div className="flex flex-col-reverse gap-3 border-t border-border bg-muted/30 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col-reverse gap-3 border-t border-border bg-surface-2/50 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-1">
             <Button type="button" variant="ghost" size="sm" leftIcon={<RotateCcw aria-hidden />} onClick={onReset} disabled={submitting}>
               Réinitialiser
@@ -603,7 +603,7 @@ export function TaskComposer({
               <Kbd>{mod}</Kbd>
               <Kbd>Entrée</Kbd>
             </span>
-            <Button type="submit" loading={submitting} leftIcon={<Sparkles aria-hidden />} className="flex-1 sm:flex-none">
+            <Button type="submit" loading={submitting} leftIcon={<Sparkles aria-hidden />} className="flex-1 rounded-full sm:flex-none">
               Assembler le contexte
             </Button>
           </div>
