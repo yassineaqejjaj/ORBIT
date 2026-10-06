@@ -231,6 +231,9 @@ export interface ChunkView {
   injection_reasons?: InjectionReason[];
   quarantined?: boolean;
   quarantine_released_at?: ISODateString | null;
+  /** Contextual-retrieval preamble indexed with the chunk (AI_CONTEXT_ENGINEERING §B1). */
+  context_preamble?: string | null;
+  context_source?: "llm" | "deterministic" | null;
 }
 
 /** Known pipeline step names; unknown names are allowed (`string`). */
@@ -238,7 +241,9 @@ export type JobStepNameValue =
   | "extract"
   | "pii"
   | "classify"
+  | "visual"
   | "chunk"
+  | "contextualize"
   | "embed"
   | "index"
   | "extract_memory"
@@ -776,8 +781,25 @@ export interface ExcludedItem {
   related_citation?: string | null;
 }
 
+export type RetrievalQueryKind = "task" | "multi" | "hyde" | "expansion" | "subtopic" | (string & {});
+
+export interface RetrievalQuery {
+  text: string;
+  kind: RetrievalQueryKind;
+}
+
+/** One round of iterative retrieval (AI_CONTEXT_ENGINEERING §B4). */
+export interface RetrievalRound {
+  round: number;
+  queries: RetrievalQuery[];
+  new_items: number;
+  uncovered: string[];
+  ms: number;
+}
+
 export interface ContextTimings {
   understand: number;
+  rewrite?: number;
   retrieve: number;
   fuse: number;
   rerank: number;
@@ -786,6 +808,7 @@ export interface ContextTimings {
   compress: number;
   package: number;
   total: number;
+  rounds?: RetrievalRound[];
 }
 
 export interface ContextConfig {

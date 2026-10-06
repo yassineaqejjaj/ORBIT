@@ -25,6 +25,7 @@ import { ExcludedList } from "./excluded-list";
 import { ExclusionSummary } from "./exclusion-summary";
 import { FeedbackWidget } from "./feedback-widget";
 import { ResultSummary, type ResultActor } from "./result-summary";
+import { RetrievalRounds } from "./retrieval-rounds";
 import { StageWaterfall } from "./stage-waterfall";
 
 type ColumnKey = "retained" | "excluded" | "context";
@@ -188,6 +189,7 @@ export function ContextResult({ pkg, slug, feedback, actor, minRelevance, onReus
           </CardHeader>
           <CardContent>
             <StageWaterfall timings={pkg.timings} />
+            <RetrievalRounds rounds={pkg.timings.rounds} className="mt-4 border-t border-border pt-4" />
           </CardContent>
         </Card>
         <Card className="lg:col-span-2">

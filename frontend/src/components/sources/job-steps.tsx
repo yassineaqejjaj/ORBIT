@@ -5,7 +5,7 @@ import { CircleCheck, CircleDashed, CircleMinus, CircleX, LoaderCircle } from "l
 
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import type { Job, JobStep } from "@/lib/api/types";
-import { getMeta, JOB_STEP_META, JOB_STEP_NAMES, type EnumMeta } from "@/lib/enums";
+import { getMeta, JOB_STEP_META, JOB_STEP_NAMES, OPTIONAL_JOB_STEPS, type EnumMeta } from "@/lib/enums";
 import { formatMs } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +39,9 @@ export function displaySteps(job: Pick<Job, "kind" | "status" | "steps">): Displ
   const active = job.status === "queued" || job.status === "running";
   if (!active || !PIPELINE_KINDS.has(job.kind)) return recorded;
   const done = new Set(job.steps.map((s) => s.name));
-  const remaining = JOB_STEP_NAMES.filter((n) => !done.has(n) && !(job.kind === "reindex" && n === "extract_memory"));
+  const remaining = JOB_STEP_NAMES.filter(
+    (n) => !done.has(n) && !OPTIONAL_JOB_STEPS.has(n) && !(job.kind === "reindex" && n === "extract_memory"),
+  );
   return [
     ...recorded,
     ...remaining.map<DisplayStep>((name, i) => ({

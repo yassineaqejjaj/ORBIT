@@ -199,14 +199,28 @@ export const JOB_STATUS_META: Record<JobStatus, EnumMeta> = {
 };
 
 /** Canonical ingestion pipeline steps (ARCHITECTURE §7). */
-export const JOB_STEP_NAMES = ["extract", "pii", "classify", "chunk", "embed", "index", "extract_memory"] as const;
+export const JOB_STEP_NAMES = [
+  "extract",
+  "pii",
+  "classify",
+  "visual",
+  "chunk",
+  "contextualize",
+  "embed",
+  "index",
+  "extract_memory",
+] as const;
+/** Steps recorded only for some documents (images present). */
+export const OPTIONAL_JOB_STEPS: ReadonlySet<string> = new Set(["visual"]);
 export type JobStepName = (typeof JOB_STEP_NAMES)[number];
 
 export const JOB_STEP_META: Record<JobStepName, EnumMeta> = {
   extract: { label: "Extraction", tone: "blue", description: "Extraction et normalisation du texte" },
   pii: { label: "Données personnelles", tone: "pink", description: "Détection et caviardage des données personnelles" },
   classify: { label: "Classification", tone: "amber", description: "Niveau de classification C0–C3" },
+  visual: { label: "Éléments visuels", tone: "orange", description: "Images des PDF/PPTX décrites (LLM vision, OCR ou texte alternatif)" },
   chunk: { label: "Découpage", tone: "sky", description: "Découpage structurel en extraits" },
+  contextualize: { label: "Contextualisation", tone: "teal", description: "Préambule contextuel de chaque extrait (LLM ou déterministe)" },
   embed: { label: "Vectorisation", tone: "violet", description: "Calcul des embeddings" },
   index: { label: "Indexation", tone: "teal", description: "Indexation OpenSearch (BM25 + k-NN)" },
   extract_memory: { label: "Extraction mémoire", tone: "green", description: "Décisions, besoins, contraintes, risques, faits" },
@@ -467,6 +481,7 @@ export const REASON_CODE_ORDER: readonly ReasonCode[] = [
 /** Context assembly stages, in execution order (ARCHITECTURE §9). */
 export const CONTEXT_STAGES = [
   "understand",
+  "rewrite",
   "retrieve",
   "fuse",
   "rerank",
@@ -479,7 +494,8 @@ export type ContextStage = (typeof CONTEXT_STAGES)[number];
 
 export const CONTEXT_STAGE_META: Record<ContextStage, EnumMeta> = {
   understand: { label: "Compréhension", tone: "sky", description: "Normalisation, intention, termes clés, embedding" },
-  retrieve: { label: "Recherche", tone: "blue", description: "BM25 + k-NN sources et mémoire, session, snapshot" },
+  rewrite: { label: "Réécriture", tone: "violet", description: "Multi-requêtes, décomposition, HyDE ou expansion par synonymes et entités" },
+  retrieve: { label: "Recherche", tone: "blue", description: "BM25 + k-NN sources et mémoire, session, snapshot — en 1 à 3 tours" },
   fuse: { label: "Fusion", tone: "violet", description: "Reciprocal Rank Fusion (k=60)" },
   rerank: { label: "Reclassement", tone: "pink", description: "Score combiné pertinence / fraîcheur / type" },
   govern: { label: "Gouvernance", tone: "red", description: "Oubli, ACL, classification, périmètre, fraîcheur…" },
