@@ -29,15 +29,8 @@
   --glow: rgb(248 72 94 / 0.3);
 
   /* Legacy semantic names (shadcn-style), fed with NOVA values */
-  --foreground: var(--text);
   --surface-raised: #ffffff;
-  --card: var(--surface);
-  --card-foreground: var(--text);
-  --popover: var(--surface);
-  --popover-foreground: var(--text);
 
-  --brand: var(--accent-text);
-  --brand-soft: var(--accent-soft);
   --primary: #cc2840; /* white text on it: 5.3:1 */
   --primary-hover: #b51f35;
   --primary-foreground: #ffffff;
@@ -47,35 +40,20 @@
   --orbit: #cf208f;
   --forge: #7a5af8;
 
-  --secondary: var(--surface-2);
-  --secondary-foreground: var(--text);
-  --muted: var(--surface-2);
-  --muted-foreground: var(--text-muted);
-  --subtle-foreground: var(--text-subtle);
   /* `accent` stays the neutral hover background used by menus/ghost buttons (not the NOVA coral). */
-  --accent: var(--surface-2);
-  --accent-foreground: var(--text);
   --border: rgb(30 20 18 / 0.07);
   --border-strong: rgb(30 20 18 / 0.12);
   --input: rgb(30 20 18 / 0.16);
-  --ring: var(--accent-coral);
 
   /* Feedback (text-safe on their 12 % tints) */
   --destructive: #c81e1e;
   --destructive-hover: #a91b1b;
   --destructive-foreground: #ffffff;
-  --danger: var(--destructive);
   --success: #137a3a;
   --warning: #a34b06;
   --info: #175cd3;
 
   /* Sidebar */
-  --sidebar: var(--surface);
-  --sidebar-foreground: var(--text-muted);
-  --sidebar-muted: var(--text-subtle);
-  --sidebar-border: var(--border);
-  --sidebar-accent: var(--surface-2);
-  --sidebar-accent-foreground: var(--text);
 
   /* Charts — categorical slots harmonised with the coral accent, fixed order (≥ 3:1 on surface except 4) */
   --chart-1: #e8344b; /* coral */
@@ -85,7 +63,6 @@
   --chart-5: #b3359a; /* magenta */
   --chart-6: #6f6865; /* warm grey */
   --chart-grid: #eee8e6;
-  --chart-axis: var(--text-subtle);
 
   /* Status (reserved — never for series identity; always with icon + label) */
   --status-good: #16a34a;
@@ -107,6 +84,33 @@
   --shadow-elevated-value: 0 18px 50px -30px rgb(0 0 0 / 0.3), 0 0 0 1px var(--border);
   --shadow-color: 15 25% 10%;
   --scrollbar-thumb: rgb(30 20 18 / 0.16);
+}
+
+/* Aliases resolved per element, so a `.dark` subtree (e.g. the sign-in brand panel) re-maps them too. */
+:root, .dark {
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface);
+  --popover-foreground: var(--text);
+  --brand: var(--accent-text);
+  --brand-soft: var(--accent-soft);
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--text-muted);
+  --subtle-foreground: var(--text-subtle);
+  --accent: var(--surface-2);
+  --accent-foreground: var(--text);
+  --ring: var(--accent-coral);
+  --danger: var(--destructive);
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--text-muted);
+  --sidebar-muted: var(--text-subtle);
+  --sidebar-border: var(--border);
+  --sidebar-accent: var(--surface-2);
+  --sidebar-accent-foreground: var(--text);
+  --chart-axis: var(--text-subtle);
 }
 
 /* -------------------------------------------------------------------------- */

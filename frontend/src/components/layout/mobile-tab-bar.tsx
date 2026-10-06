@@ -52,7 +52,7 @@ export function MobileTabBar({ slug }: { slug?: string }) {
                 aria-current={isActive ? "page" : undefined}
                 aria-label={count ? `${item.label} (${count} à revoir)` : item.label}
                 className={cn(
-                  "flex h-full flex-col items-center justify-center gap-1 px-1 text-[10.5px] font-medium leading-none transition-colors duration-150",
+                  "flex h-full flex-col items-center justify-center gap-1 px-0.5 text-[10px] font-medium leading-none transition-colors duration-150",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
                   isActive ? "text-accent-text" : "text-muted-foreground hover:text-foreground",
                 )}
@@ -68,7 +68,7 @@ export function MobileTabBar({ slug }: { slug?: string }) {
                     </span>
                   ) : null}
                 </span>
-                <span className="max-w-full truncate">{short ?? item.label}</span>
+                <span className="line-clamp-2 max-w-full text-center leading-[1.15]">{short ?? item.label}</span>
               </Link>
             </li>
           );

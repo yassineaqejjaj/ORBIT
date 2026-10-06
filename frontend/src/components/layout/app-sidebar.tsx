@@ -392,7 +392,7 @@ export function AppSidebar({ slug }: { slug?: string }) {
   return (
     <aside
       className={cn(
-        "sticky top-0 hidden h-dvh shrink-0 border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-out motion-reduce:transition-none lg:block",
+        "sticky top-0 hidden h-dvh shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-out motion-reduce:transition-none lg:block",
         sidebarCollapsed ? "w-16" : "w-56",
       )}
       data-collapsed={sidebarCollapsed || undefined}

@@ -7,7 +7,11 @@
 import { readFileSync } from "node:fs";
 
 const css = readFileSync(new URL("../src/app/globals.css", import.meta.url), "utf8");
-const block = (selector) => css.slice(css.indexOf(`${selector} {`), css.indexOf("}", css.indexOf(`${selector} {`)));
+/** Body of the rule whose line starts with `selector {` (skips the shared `:root, .dark` alias rule). */
+const block = (selector) => {
+  const start = css.indexOf(`\n${selector} {`);
+  return css.slice(start, css.indexOf("}", start));
+};
 const hexTokens = (text) =>
   Object.fromEntries([...text.matchAll(/--([\w-]+):\s*(#[0-9a-f]{6})\b/gi)].map((m) => [m[1], m[2]]));
 
