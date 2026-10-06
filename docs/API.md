@@ -240,6 +240,9 @@ SnapshotItem = { key /* "chunk:<id>" | "memory:<lineage_id>" */, citation, candi
 | GET | `/projects/{slug}/metrics` | viewer | `days=14` | `Metrics` |
 | GET | `/projects/{slug}/audit` | viewer | `action?, page` | `Page<AuditEvent>` |
 | GET | `/projects/{slug}/traces/export` | owner | `days=30` | NDJSON (une ligne par requête : requête, décisions, timings, feedback) |
+| GET | `/projects/{slug}/compliance/report` | owner | `format=json\|html`, `request_id`, `memory_id`, `from`, `to` | Rapport de traçabilité IA (AI Act) : contexte, sources, décisions, modèle, garde-fous ; audité |
+| GET | `/projects/{slug}/documents/quarantine` | owner | — | Fragments en quarantaine (score, signaux) |
+| POST | `/projects/{slug}/documents/{id}/chunks/{chunk_id}/release` | owner | — | Libère un fragment de la quarantaine (audité, ré-extraction mémoire) |
 
 ```ts
 Metrics = {

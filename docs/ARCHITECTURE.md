@@ -159,7 +159,7 @@ Intent            = general | specification | design | engineering | research | 
 ReasonCode        = INCLUDED_RELEVANT | INCLUDED_PINNED
                   | EXCLUDED_ACL | EXCLUDED_CLASSIFICATION | EXCLUDED_SCOPE | EXCLUDED_STALE | EXCLUDED_EXPIRED
                   | EXCLUDED_SUPERSEDED | EXCLUDED_CONFLICT | EXCLUDED_DUPLICATE | EXCLUDED_LOW_SCORE
-                  | EXCLUDED_BUDGET | EXCLUDED_FORGOTTEN
+                  | EXCLUDED_BUDGET | EXCLUDED_FORGOTTEN | EXCLUDED_QUARANTINE
 AgentKind         = product | design | engineering | research | custom
 ```
 
@@ -179,6 +179,7 @@ Libellés FR des codes de raison (UI) :
 | `EXCLUDED_LOW_SCORE` | Exclu — pertinence insuffisante | « score 0,21 < seuil 0,35 » |
 | `EXCLUDED_BUDGET` | Exclu — budget de tokens atteint | « 380 tokens, budget restant 120 » |
 | `EXCLUDED_FORGOTTEN` | Exclu — oubli sélectif | « oublié le … par … » |
+| `EXCLUDED_QUARANTINE` | Exclu — quarantaine (injection suspectée) | « injection de prompt suspectée (score 0,88) » — évalué après ACL/classification (AI_CONTEXT_ENGINEERING.md §A1) |
 
 ---
 
