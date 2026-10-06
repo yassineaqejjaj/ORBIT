@@ -4,142 +4,172 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* -------------------------------------------------------------------------- */
-/* Design tokens — light                                                      */
+/* Design tokens — NOVA (docs/DESIGN_SYSTEM.md), light                        */
+/* Existing names are kept and fed with NOVA values; NOVA names are added.    */
+/* Text tokens are AA (≥ 4.5:1) on background, surface and surface-2.         */
 /* -------------------------------------------------------------------------- */
 :root {
   color-scheme: light;
 
-  /* Surfaces */
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --surface: #f7f9fa; /* app canvas behind cards, sidebar */
-  --surface-raised: #ffffff;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --popover: #ffffff;
-  --popover-foreground: #0f172a;
+  /* NOVA surfaces & text */
+  --background: #faf8f7;
+  --surface: #ffffff;
+  --surface-2: #f6f2f1;
+  --surface-3: #efe9e7;
+  --text: #191716;
+  --text-muted: #5f5856;
+  --text-subtle: #736a67; /* NOVA #9A918E nudged darker for AA (4.7:1 on background) */
 
-  /* Brand — ORBIT teal (#0E9384). `--primary` is one step darker for AA text contrast. */
-  --brand: #0e9384;
-  --brand-soft: #e6f6f4;
-  --primary: #107569;
-  --primary-hover: #125d56;
+  /* NOVA accent — "Red Poppy". #F8485E is kept for fills/rings/dots; text-bearing coral is darker for AA. */
+  --accent-coral: #f8485e;
+  --accent-strong: #e8344b;
+  --accent-soft: #feedef;
+  --accent-fg: #ffffff;
+  --accent-text: #cc2840; /* coral text on background / surface / accent-soft (≥ 4.7:1) */
+  --glow: rgb(248 72 94 / 0.3);
+
+  /* Legacy semantic names (shadcn-style), fed with NOVA values */
+  --surface-raised: #ffffff;
+
+  --primary: #cc2840; /* white text on it: 5.3:1 */
+  --primary-hover: #b51f35;
   --primary-foreground: #ffffff;
 
-  /* NOVA constellation accents (subtle use only) */
-  --nova: #d92d20; /* NOVA Core */
-  --orbit: #0e9384; /* ORBIT */
-  --forge: #7a5af8; /* FORGE */
+  /* NOVA programme constellation (brand use only) */
+  --nova: #f8485e;
+  --orbit: #cf208f;
+  --forge: #7a5af8;
 
-  /* Neutrals */
-  --secondary: #f1f4f6;
-  --secondary-foreground: #1e293b;
-  --muted: #f1f4f6;
-  --muted-foreground: #5b6b7f;
-  --subtle-foreground: #8593a3;
-  --accent: #eef2f5;
-  --accent-foreground: #0f172a;
-  --border: #e3e8ee;
-  --border-strong: #cfd7e0;
-  --input: #d5dde5;
-  --ring: #0e9384;
+  /* `accent` stays the neutral hover background used by menus/ghost buttons (not the NOVA coral). */
+  --border: rgb(30 20 18 / 0.07);
+  --border-strong: rgb(30 20 18 / 0.12);
+  --input: rgb(30 20 18 / 0.16);
 
-  /* Feedback */
-  --destructive: #c4320a;
-  --destructive-hover: #a3290a;
+  /* Feedback (text-safe on their 12 % tints) */
+  --destructive: #c81e1e;
+  --destructive-hover: #a91b1b;
   --destructive-foreground: #ffffff;
-  --success: #067647;
-  --warning: #b54708;
+  --success: #137a3a;
+  --warning: #a34b06;
   --info: #175cd3;
 
   /* Sidebar */
-  --sidebar: #f7f9fa;
-  --sidebar-foreground: #334155;
-  --sidebar-muted: #64748b;
-  --sidebar-border: #e6ebf0;
-  --sidebar-accent: #e9eef2;
-  --sidebar-accent-foreground: #0f172a;
 
-  /* Charts — categorical slots (validated: CVD-adjacent ΔE ≥ 10, normal ≥ 25), fixed order */
-  --chart-1: #0e9384; /* teal */
-  --chart-2: #eb6834; /* orange */
-  --chart-3: #2a78d6; /* blue */
-  --chart-4: #eda100; /* yellow — < 3:1 on light: pair with labels */
-  --chart-5: #7a5af8; /* violet */
-  --chart-6: #e87ba4; /* magenta — < 3:1 on light: pair with labels */
-  --chart-grid: #e8edf2;
-  --chart-axis: #8593a3;
+  /* Charts — categorical slots harmonised with the coral accent, fixed order (≥ 3:1 on surface except 4) */
+  --chart-1: #e8344b; /* coral */
+  --chart-2: #5b4bdb; /* indigo (logo gradient end) */
+  --chart-3: #1f7fc4; /* sky */
+  --chart-4: #d08a00; /* amber — < 3:1 on light: pair with labels */
+  --chart-5: #b3359a; /* magenta */
+  --chart-6: #6f6865; /* warm grey */
+  --chart-grid: #eee8e6;
 
   /* Status (reserved — never for series identity; always with icon + label) */
-  --status-good: #0ca30c;
-  --status-warning: #fab219;
-  --status-serious: #ec835a;
-  --status-critical: #d03b3b;
+  --status-good: #16a34a;
+  --status-warning: #d97706;
+  --status-serious: #ea580c;
+  --status-critical: #dc2626;
 
-  --shadow-color: 220 40% 15%;
+  /* Agent identity colors (NOVA) */
+  --agent-product: #f8485e;
+  --agent-project: #f59e0b;
+  --agent-design: #a78bfa;
+  --agent-engineering: #38bdf8;
+  --agent-research: #14b8a6;
+  --agent-custom: #22c55e;
+  --agent-text-mix: black 35%; /* identity colors are darkened for text in light mode */
+
+  /* Depth */
+  --shadow-panel-value: 0 1px 2px rgb(30 20 18 / 0.04), 0 10px 30px -12px rgb(30 20 18 / 0.12);
+  --shadow-elevated-value: 0 18px 50px -30px rgb(0 0 0 / 0.3), 0 0 0 1px var(--border);
+  --shadow-color: 15 25% 10%;
+  --scrollbar-thumb: rgb(30 20 18 / 0.16);
+}
+
+/* Aliases resolved per element, so a `.dark` subtree (e.g. the sign-in brand panel) re-maps them too. */
+:root, .dark {
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface);
+  --popover-foreground: var(--text);
+  --brand: var(--accent-text);
+  --brand-soft: var(--accent-soft);
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--text-muted);
+  --subtle-foreground: var(--text-subtle);
+  --accent: var(--surface-2);
+  --accent-foreground: var(--text);
+  --ring: var(--accent-coral);
+  --danger: var(--destructive);
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--text-muted);
+  --sidebar-muted: var(--text-subtle);
+  --sidebar-border: var(--border);
+  --sidebar-accent: var(--surface-2);
+  --sidebar-accent-foreground: var(--text);
+  --chart-axis: var(--text-subtle);
 }
 
 /* -------------------------------------------------------------------------- */
-/* Design tokens — dark                                                       */
+/* Design tokens — NOVA, dark                                                 */
 /* -------------------------------------------------------------------------- */
 .dark {
   color-scheme: dark;
 
-  --background: #0a0e13;
-  --foreground: #e6edf3;
-  --surface: #0d1218;
-  --surface-raised: #121820;
-  --card: #10161d;
-  --card-foreground: #e6edf3;
-  --popover: #121920;
-  --popover-foreground: #e6edf3;
+  --background: #0d0c0d;
+  --surface: #151314;
+  --surface-2: #1b1819;
+  --surface-3: #231f20;
+  --text: #f1eeed;
+  --text-muted: #aaa3a1;
+  --text-subtle: #8c8583; /* NOVA #736C6A lifted for AA (4.9:1 on surface-2) */
 
-  --brand: #2ed3b7;
-  --brand-soft: #0d2a27;
-  --primary: #15b79e;
-  --primary-hover: #2ed3b7;
-  --primary-foreground: #03201b;
+  --accent-coral: #f8485e;
+  --accent-strong: #ff6276;
+  --accent-soft: rgb(248 72 94 / 0.14);
+  --accent-fg: #ffffff;
+  --accent-text: #ff6276;
+  --glow: rgb(248 72 94 / 0.22);
 
-  --nova: #f97066;
-  --orbit: #2ed3b7;
+  --surface-raised: var(--surface-2);
+  --popover: var(--surface-2);
+
+  /* Coral fill with near-black text: white on #F8485E is only 3.4:1. */
+  --primary: #f8485e;
+  --primary-hover: #ff6276;
+  --primary-foreground: #140b0c;
+
+  --orbit: #e0479f;
   --forge: #9b8afb;
 
-  --secondary: #18212b;
-  --secondary-foreground: #d7e0ea;
-  --muted: #151d26;
-  --muted-foreground: #93a3b5;
-  --subtle-foreground: #6b7c8f;
-  --accent: #1a2430;
-  --accent-foreground: #e6edf3;
-  --border: #1e2934;
-  --border-strong: #2b3846;
-  --input: #2a3643;
-  --ring: #2ed3b7;
+  --border: rgb(255 255 255 / 0.07);
+  --border-strong: rgb(255 255 255 / 0.12);
+  --input: rgb(255 255 255 / 0.14);
 
-  --destructive: #f04438;
-  --destructive-hover: #f97066;
-  --destructive-foreground: #ffffff;
-  --success: #47cd89;
-  --warning: #fdb022;
-  --info: #53b1fd;
+  --destructive: #ef6661; /* oklch(0.68 0.17 25) */
+  --destructive-hover: #f47f7a;
+  --destructive-foreground: #140b0c;
+  --success: #65c98c; /* oklch(0.76 0.13 155) */
+  --warning: #eeb154; /* oklch(0.80 0.13 75) */
+  --info: #6cb4f7;
 
-  --sidebar: #0c1117;
-  --sidebar-foreground: #c4d0dc;
-  --sidebar-muted: #7d8da0;
-  --sidebar-border: #19222c;
-  --sidebar-accent: #17202a;
-  --sidebar-accent-foreground: #f1f5f9;
+  --chart-1: #f8485e;
+  --chart-2: #8b7cf6;
+  --chart-3: #38a6eb;
+  --chart-4: #e3a21a;
+  --chart-5: #d061bd;
+  --chart-6: #9a928f;
+  --chart-grid: #221e1f;
 
-  --chart-1: #12a594;
-  --chart-2: #d95926;
-  --chart-3: #3987e5;
-  --chart-4: #c98500;
-  --chart-5: #9085e9;
-  --chart-6: #d55181;
-  --chart-grid: #1c2631;
-  --chart-axis: #6b7c8f;
+  --agent-text-mix: white 20%;
 
-  --shadow-color: 220 60% 2%;
+  --shadow-panel-value: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 12px 32px -12px rgb(0 0 0 / 0.6);
+  --shadow-elevated-value: 0 18px 50px -30px rgb(0 0 0 / 0.7), 0 0 0 1px var(--border-strong);
+  --shadow-color: 0 0% 0%;
+  --scrollbar-thumb: rgb(255 255 255 / 0.14);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -149,13 +179,24 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
   --color-surface-raised: var(--surface-raised);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-brand: var(--brand);
   --color-brand-soft: var(--brand-soft);
+  --color-accent-coral: var(--accent-coral);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-text: var(--accent-text);
+  --color-glow: var(--glow);
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
@@ -176,6 +217,7 @@
   --color-destructive: var(--destructive);
   --color-destructive-hover: var(--destructive-hover);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-danger: var(--danger);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-info: var(--info);
@@ -200,18 +242,27 @@
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-brand: var(--font-montserrat), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 
-  --radius-sm: 0.3rem;
-  --radius-md: 0.45rem;
-  --radius-lg: 0.6rem;
-  --radius-xl: 0.8rem;
-  --radius-2xl: 1rem;
+  /* NOVA radii: 6 badges/kbd · 8 small · 10 buttons/inputs/nav · 12 menus · 14 cards · 18 panels · 22 feature · 26 composer · 28 hero */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-menu: 12px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
+  --radius-3xl: 22px;
+  --radius-composer: 26px;
+  --radius-4xl: 28px;
 
+  --shadow-panel: var(--shadow-panel-value);
+  --shadow-elevated: var(--shadow-elevated-value);
   --shadow-xs: 0 1px 2px 0 hsl(var(--shadow-color) / 0.05);
   --shadow-sm: 0 1px 2px 0 hsl(var(--shadow-color) / 0.06), 0 1px 3px 0 hsl(var(--shadow-color) / 0.08);
   --shadow-md: 0 4px 8px -2px hsl(var(--shadow-color) / 0.08), 0 2px 4px -2px hsl(var(--shadow-color) / 0.05);
-  --shadow-lg: 0 12px 16px -4px hsl(var(--shadow-color) / 0.1), 0 4px 6px -2px hsl(var(--shadow-color) / 0.04);
-  --shadow-xl: 0 20px 24px -4px hsl(var(--shadow-color) / 0.12), 0 8px 8px -4px hsl(var(--shadow-color) / 0.04);
+  --shadow-lg: var(--shadow-elevated-value);
+  --shadow-xl: var(--shadow-elevated-value);
 
   --animate-fade-in: fade-in 160ms ease-out;
   --animate-fade-out: fade-out 120ms ease-in;
@@ -230,6 +281,10 @@
   --animate-orbit-slow: orbit 32s linear infinite;
   --animate-orbit-reverse: orbit-reverse 24s linear infinite;
   --animate-float: float 6s ease-in-out infinite;
+  --animate-breathe: breathe 5s ease-in-out infinite;
+  --animate-breathe-fast: breathe 1.6s ease-in-out infinite;
+  --animate-attention: attention 2.4s ease-in-out infinite;
+  --animate-text-shimmer: text-shimmer 2.4s linear infinite;
 }
 
 @keyframes fade-in {
@@ -293,6 +348,18 @@
   from { transform: rotate(360deg); }
   to { transform: rotate(0deg); }
 }
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+@keyframes attention {
+  0%, 100% { box-shadow: 0 0 0 0 var(--glow); }
+  50% { box-shadow: 0 0 0 4px transparent; }
+}
+@keyframes text-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
@@ -314,6 +381,7 @@
   }
 
   body {
+    font-size: 13px;
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
@@ -323,7 +391,19 @@
   }
 
   ::selection {
-    background-color: color-mix(in oklab, var(--brand) 28%, transparent);
+    background-color: var(--accent-soft);
+    color: inherit;
+  }
+  .dark ::selection {
+    background-color: rgb(248 72 94 / 0.28);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 600;
+    letter-spacing: -0.015em;
   }
 
   :focus-visible {
@@ -341,7 +421,20 @@
   /* Thin, theme-aware scrollbars */
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--color-border-strong) transparent;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
   }
 
   button:not(:disabled),
@@ -360,11 +453,58 @@
   .skeleton-shimmer {
     background-image: linear-gradient(
       90deg,
-      var(--color-muted) 0%,
-      color-mix(in oklab, var(--color-muted) 55%, var(--color-background)) 50%,
-      var(--color-muted) 100%
+      var(--surface-3) 0%,
+      color-mix(in oklab, var(--surface-3) 55%, var(--surface)) 50%,
+      var(--surface-3) 100%
     );
     background-size: 200% 100%;
+  }
+  /* NOVA group label: 11px semibold uppercase, wide tracking, text-subtle. */
+  .group-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-subtle);
+  }
+  /* NOVA hero background (radius applied by the consumer). */
+  .bg-hero {
+    background:
+      radial-gradient(120% 140% at 85% 10%, rgb(248 72 94 / 0.16), transparent 55%),
+      linear-gradient(180deg, var(--surface), var(--surface-2));
+  }
+  .dark .bg-hero {
+    background:
+      radial-gradient(120% 140% at 85% 10%, rgb(248 72 94 / 0.12), transparent 55%),
+      linear-gradient(180deg, var(--surface), var(--surface-2));
+  }
+  /* Live activity: a shimmer sweeps across the text while work is running (off under reduced motion). */
+  .text-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      currentColor 0%,
+      currentColor 40%,
+      var(--accent-text) 50%,
+      currentColor 60%,
+      currentColor 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: var(--animate-text-shimmer);
+  }
+  /* Agent identity: set --agent-color on the element (see lib/agent-colors.ts). */
+  .agent-avatar {
+    background-color: color-mix(in oklab, var(--agent-color) 14%, transparent);
+    border: 1px solid color-mix(in oklab, var(--agent-color) 35%, transparent);
+    color: color-mix(in oklab, var(--agent-color), var(--agent-text-mix));
+  }
+  .agent-text {
+    color: color-mix(in oklab, var(--agent-color), var(--agent-text-mix));
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
   }
   .bg-grid {
     background-image:
@@ -389,5 +529,10 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  .text-shimmer {
+    animation: none !important;
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
   }
 }

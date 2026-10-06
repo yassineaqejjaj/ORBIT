@@ -18,7 +18,7 @@ export function AppHeader() {
   React.useEffect(() => setMod(modKeyLabel()), []);
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/85 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/70 sm:px-4 lg:px-6">
+    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/85 px-3 backdrop-blur-md supports-[backdrop-filter]:bg-background/70 sm:px-4 lg:px-6">
       <Button
         variant="ghost"
         size="icon-sm"
@@ -35,15 +35,14 @@ export function AppHeader() {
         <button
           type="button"
           onClick={openCommandPalette}
-          className="hidden h-8 w-64 items-center gap-2 rounded-md border border-border bg-muted/50 px-2.5 text-[13px] text-subtle-foreground shadow-xs transition-colors hover:border-border-strong hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:flex xl:w-72"
+          className="hidden h-8 w-64 items-center gap-2 rounded-full border border-border bg-surface-2/80 pl-3 pr-1.5 text-[13px] text-subtle-foreground transition-colors duration-150 hover:border-border-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 md:flex xl:w-72"
           aria-label="Rechercher (raccourci ⌘K ou Ctrl+K)"
           aria-keyshortcuts="Meta+K Control+K"
         >
           <Search className="size-3.5" aria-hidden />
-          <span className="flex-1 text-left">Rechercher…</span>
+          <span className="flex-1 text-left">Rechercher</span>
           <span className="flex items-center gap-0.5" aria-hidden>
-            <Kbd>{mod}</Kbd>
-            <Kbd>K</Kbd>
+            <Kbd className="rounded-full px-1.5">{mod === "⌘" ? "⌘K" : `${mod}+K`}</Kbd>
           </span>
         </button>
         <Button
@@ -56,7 +55,10 @@ export function AppHeader() {
           <Search aria-hidden />
         </Button>
         <ThemeToggle />
-        <UserMenu />
+        {/* ≥ lg the account menu sits at the bottom of the sidebar. */}
+        <div className="lg:hidden">
+          <UserMenu />
+        </div>
       </div>
     </header>
   );

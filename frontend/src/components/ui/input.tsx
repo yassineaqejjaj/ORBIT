@@ -3,11 +3,11 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 export const inputBaseClasses = [
-  "flex w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs",
-  "placeholder:text-subtle-foreground transition-[border-color,box-shadow] duration-150",
-  "focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/20",
-  "disabled:cursor-not-allowed disabled:opacity-60",
-  "aria-invalid:border-destructive aria-invalid:focus-visible:ring-destructive/20",
+  "flex w-full min-w-0 rounded-lg border border-border bg-surface-2 px-3 text-[13px] text-foreground",
+  "placeholder:text-subtle-foreground transition-[border-color,box-shadow,background-color] duration-150",
+  "focus-visible:border-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+  "disabled:cursor-not-allowed disabled:opacity-50",
+  "aria-invalid:border-danger aria-invalid:focus-visible:ring-danger/30",
 ].join(" ");
 
 export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "size"> {
@@ -21,7 +21,7 @@ export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElem
   invalid?: boolean;
 }
 
-const sizeClasses = { sm: "h-8 text-[13px]", md: "h-9", lg: "h-10 text-[15px]" } as const;
+const sizeClasses = { sm: "h-8 text-[13px]", md: "h-9", lg: "h-11 text-sm" } as const;
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, size = "md", leftIcon, rightSlot, invalid, type = "text", ...props }, ref) => {

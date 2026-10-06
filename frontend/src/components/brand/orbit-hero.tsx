@@ -28,8 +28,8 @@ interface OrbitDef {
 }
 
 const ORBITS: OrbitDef[] = [
-  { rx: 104, ry: 46, color: "#2ED3B7", duration: 16, begin: -3, r: 6, opacity: 0.55 },
-  { rx: 158, ry: 70, color: "#F97066", duration: 26, begin: -11, r: 4.5, dashed: true, opacity: 0.35 },
+  { rx: 104, ry: 46, color: "#F8485E", duration: 16, begin: -3, r: 6, opacity: 0.55 },
+  { rx: 158, ry: 70, color: "#CF208F", duration: 26, begin: -11, r: 4.5, dashed: true, opacity: 0.35 },
   { rx: 212, ry: 94, color: "#9B8AFB", duration: 38, begin: -24, r: 4.5, opacity: 0.25 },
 ];
 
@@ -52,13 +52,13 @@ export function OrbitHero({ className }: { className?: string }) {
     <svg viewBox="0 0 520 360" className={cn("h-auto w-full", className)} aria-hidden>
       <defs>
         <radialGradient id={`glow-${uid}`} cx="50%" cy="50%" r="50%">
-          <stop offset="0" stopColor="#2ED3B7" stopOpacity="0.28" />
-          <stop offset="1" stopColor="#2ED3B7" stopOpacity="0" />
+          <stop offset="0" stopColor="#F8485E" stopOpacity="0.26" />
+          <stop offset="1" stopColor="#F8485E" stopOpacity="0" />
         </radialGradient>
         <radialGradient id={`planet-${uid}`} cx="38%" cy="32%" r="75%">
-          <stop offset="0" stopColor="#7CF2DD" />
-          <stop offset="0.45" stopColor="#15B79E" />
-          <stop offset="1" stopColor="#0B4F48" />
+          <stop offset="0" stopColor="#FD5051" />
+          <stop offset="0.45" stopColor="#CF208F" />
+          <stop offset="1" stopColor="#3A01D3" />
         </radialGradient>
         <filter id={`blur-${uid}`} x="-100%" y="-100%" width="300%" height="300%">
           <feGaussianBlur stdDeviation="3" />
@@ -66,7 +66,7 @@ export function OrbitHero({ className }: { className?: string }) {
       </defs>
 
       {STARS.map(([x, y, r], i) => (
-        <circle key={i} cx={x} cy={y} r={r} fill="#E2E8F0" opacity={0.25 + (i % 4) * 0.1} />
+        <circle key={i} cx={x} cy={y} r={r} fill="#EFE9E7" opacity={0.25 + (i % 4) * 0.1} />
       ))}
 
       <circle cx="260" cy="180" r="150" fill={`url(#glow-${uid})`} />
@@ -78,7 +78,7 @@ export function OrbitHero({ className }: { className?: string }) {
             rx={o.rx}
             ry={o.ry}
             fill="none"
-            stroke={i === 0 ? "#2ED3B7" : "#CBD5E1"}
+            stroke={i === 0 ? "#F8485E" : "#D6CFCD"}
             strokeOpacity={o.opacity}
             strokeWidth={i === 0 ? 1.4 : 1}
             strokeDasharray={o.dashed ? "3 6" : undefined}

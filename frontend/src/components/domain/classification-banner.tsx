@@ -64,8 +64,8 @@ export function ClassificationBanner({
         "flex items-start gap-3 rounded-lg border text-[13px]",
         compact ? "px-3 py-2" : "px-4 py-3",
         secret
-          ? "border-red-300 bg-red-50 text-red-950 dark:border-red-400/35 dark:bg-red-500/10 dark:text-red-100"
-          : "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-400/35 dark:bg-amber-400/10 dark:text-amber-100",
+          ? "border-danger/30 bg-danger/10 text-foreground"
+          : "border-warning/30 bg-warning/10 text-foreground",
         className,
       )}
     >
@@ -73,7 +73,7 @@ export function ClassificationBanner({
         className={cn(
           "mt-px flex shrink-0 items-center justify-center rounded-md",
           compact ? "size-5" : "size-6",
-          secret ? "bg-red-600 text-white dark:bg-red-500" : "bg-amber-500 text-amber-950 dark:bg-amber-400",
+          secret ? "bg-destructive text-destructive-foreground" : "bg-status-warning text-black",
         )}
         aria-hidden
       >
@@ -82,8 +82,8 @@ export function ClassificationBanner({
       <p className="min-w-0 leading-relaxed">
         <strong className="font-semibold">
           Contenu classifié {meta.code} — {meta.label}
-        </strong>{" "}
-        : {CONTEXT_TEXT[context]} ; {LEVEL_TEXT[lvl as 2 | 3]}
+        </strong>
+        {"\u00a0"}: {CONTEXT_TEXT[context]} ; {LEVEL_TEXT[lvl as 2 | 3]}
         {message ? <> {message}</> : null}
       </p>
     </div>

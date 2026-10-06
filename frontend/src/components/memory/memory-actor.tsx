@@ -41,7 +41,7 @@ export function MemoryActor({ type, id, label, members, size = "sm", showName = 
           "flex shrink-0 items-center justify-center rounded-full ring-1 ring-inset",
           box,
           type === "agent"
-            ? "bg-teal-50 text-teal-700 ring-teal-600/20 dark:bg-teal-400/10 dark:text-teal-300 dark:ring-teal-400/25"
+            ? "bg-accent-soft text-accent-text ring-accent-coral/20"
             : "bg-slate-100 text-slate-600 ring-slate-500/15 dark:bg-slate-400/10 dark:text-slate-300 dark:ring-slate-400/20",
         )}
         aria-hidden

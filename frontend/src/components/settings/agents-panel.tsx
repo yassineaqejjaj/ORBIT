@@ -47,7 +47,7 @@ import {
   type Classification,
 } from "@/lib/enums";
 import { formatDate, formatDateTime, plural } from "@/lib/format";
-import { toneClasses } from "@/lib/tones";
+import { agentColorStyle } from "@/lib/agent-colors";
 import { cn } from "@/lib/utils";
 import { AgentKeyDialog } from "./agent-key-dialog";
 import { maskedKey } from "./mcp-snippets";
@@ -66,9 +66,10 @@ function AgentIcon({ kind, active }: { kind: AgentKind; active: boolean }) {
   return (
     <span
       className={cn(
-        "flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset [&_svg]:size-4",
-        active ? toneClasses(meta.tone).soft : "bg-muted text-muted-foreground ring-border",
+        "flex size-8 shrink-0 items-center justify-center rounded-full [&_svg]:size-4",
+        active ? "agent-avatar" : "bg-surface-3 text-muted-foreground ring-1 ring-inset ring-border",
       )}
+      style={active ? agentColorStyle(kind) : undefined}
       aria-hidden
     >
       <EnumIcon name={meta.icon} />

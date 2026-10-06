@@ -11,7 +11,7 @@ import type { Tone } from "@/lib/enums";
  */
 const TONE_FILLS: Record<Tone, { light: string; dark: string }> = {
   neutral: { light: "#64748b", dark: "#94a3b8" },
-  teal: { light: "#0d9488", dark: "#2dd4bf" },
+  teal: { light: "#e8344b", dark: "#f8485e" } /* coral accent */,
   green: { light: "#059669", dark: "#34d399" },
   amber: { light: "#f59e0b", dark: "#fbbf24" },
   red: { light: "#dc2626", dark: "#f87171" },

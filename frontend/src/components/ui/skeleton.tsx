@@ -2,12 +2,12 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-/** Loading placeholder with a subtle shimmer. */
+/** Loading placeholder: surface-3 with a pulse (NOVA). */
 export function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       aria-hidden
-      className={cn("skeleton-shimmer animate-shimmer rounded-md bg-muted", className)}
+      className={cn("animate-pulse rounded-md bg-surface-3", className)}
       {...props}
     />
   );

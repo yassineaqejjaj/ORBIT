@@ -1,11 +1,11 @@
 import * as React from "react";
 
-import type { Tone } from "@/lib/enums";
-import { toneClasses } from "@/lib/tones";
+import { toneClasses, type AnyTone } from "@/lib/tones";
 import { cn } from "@/lib/utils";
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  tone?: Tone;
+  /** Historical palette tone or NOVA tone (neutral · accent · success · warning · danger). */
+  tone?: AnyTone;
   variant?: "soft" | "outline" | "solid";
   size?: "sm" | "md";
   /** Leading colored dot. */
@@ -28,8 +28,8 @@ export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
       <span
         ref={ref}
         className={cn(
-          "inline-flex max-w-full shrink-0 items-center gap-1 whitespace-nowrap rounded-md font-medium ring-1 ring-inset",
-          size === "sm" ? "h-5 px-1.5 text-[11px] leading-none" : "h-6 px-2 text-xs",
+          "inline-flex max-w-full shrink-0 items-center gap-1 whitespace-nowrap rounded-sm font-medium ring-1 ring-inset",
+          size === "sm" ? "h-5 px-1.5 text-[11px] leading-none" : "h-6 px-2 text-[12px]",
           variant === "soft" && t.soft,
           variant === "outline" && t.outline,
           variant === "solid" && t.solid,

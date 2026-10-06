@@ -57,11 +57,11 @@ export function AnswerMessage({
     <article aria-label="Réponse d'ORBIT" className="flex gap-3">
       <div
         aria-hidden
-        className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-soft text-primary"
+        className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-text"
       >
         <Sparkles className="size-3.5" />
       </div>
-      <div className="min-w-0 flex-1 space-y-3 rounded-xl border border-border bg-card p-4 shadow-xs">
+      <div className="min-w-0 flex-1 space-y-3 rounded-2xl border border-border bg-card p-5 shadow-panel">
         <AnswerMarkdown
           markdown={message.content}
           citationTitles={titles}

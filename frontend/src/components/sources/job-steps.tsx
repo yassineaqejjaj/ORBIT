@@ -168,7 +168,7 @@ export function JobStepsTimeline({ job, className }: { job: Pick<Job, "kind" | "
                   <span
                     className={cn(
                       "absolute inset-y-0 left-0 rounded-full",
-                      step.status === "failed" ? "bg-red-500 dark:bg-red-400" : "bg-teal-500 dark:bg-teal-400",
+                      step.status === "failed" ? "bg-red-500 dark:bg-red-400" : "bg-accent-coral",
                     )}
                     style={{ width: `${Math.max(2, (step.durationMs / max) * 100)}%` }}
                   />

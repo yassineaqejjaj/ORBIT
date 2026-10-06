@@ -43,7 +43,7 @@ function CitationBadge({
       onClick={() => onClick?.(citation)}
       className={cn(
         "mx-0.5 inline-flex h-[1.15rem] -translate-y-px items-center rounded px-1 align-middle font-mono text-[10.5px] font-semibold leading-none ring-1 ring-inset transition-colors",
-        "bg-teal-50 text-teal-800 ring-teal-600/25 hover:bg-teal-100 dark:bg-teal-400/10 dark:text-teal-300 dark:ring-teal-400/30 dark:hover:bg-teal-400/20",
+        "bg-accent-soft text-accent-text ring-accent-coral/25 hover:bg-accent-coral/20",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         item?.forgotten && "bg-red-50 text-red-700 ring-red-600/25 line-through dark:bg-red-400/10 dark:text-red-300",
       )}

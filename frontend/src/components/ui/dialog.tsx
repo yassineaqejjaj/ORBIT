@@ -43,7 +43,7 @@ export const DialogContent = React.forwardRef<React.ElementRef<typeof DialogPrim
         ref={ref}
         className={cn(
           "fixed left-1/2 top-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto",
-          "rounded-xl border border-border bg-popover p-6 text-popover-foreground shadow-xl",
+          "rounded-2xl border border-border bg-popover p-6 text-popover-foreground shadow-xl",
           "data-[state=open]:animate-scale-in data-[state=closed]:animate-scale-out focus:outline-none",
           sizes[size],
           className,
