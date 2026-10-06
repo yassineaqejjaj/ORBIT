@@ -25,6 +25,7 @@ from mcp.client.streamable_http import streamable_http_client
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.context import spotlight
 from app.enums import (
     ActorType,
     CandidateType,
@@ -563,7 +564,7 @@ async def test_search_sources_filters_rights_and_redacts(
 
     assert [hit["chunk_id"] for hit in hits] == [str(rows["visible"].id)]
     hit = hits[0]
-    assert hit["text"] == "Le pilote couvre 650 postes. Contact : [EMAIL]"
+    assert hit["text"] == spotlight.wrap("Le pilote couvre 650 postes. Contact : [EMAIL]")  # §A2
     assert hit["document_title"] == "Spécification fonctionnelle Atlas"
     assert hit["source_kind"] == "document" and hit["bm25"] == 11.0 and hit["dense"] == 0.93
     filters = json.dumps(seen_filters[0])
@@ -724,7 +725,7 @@ async def test_get_snapshot_hides_restricted_items(
         missing = await mcp.call_tool("get_snapshot", {"name": "design-atlas"})
 
     assert latest["version"] == 2 and latest["parent_version"] == 1 and latest["restricted_items"] == 0
-    assert latest["content"] == "[S1] 650 postes" and latest["created_by_label"] == "Agent Produit"
+    assert latest["content"] == spotlight.wrap("[S1] 650 postes") and latest["created_by_label"] == "Agent Produit"
     assert first["restricted_items"] == 1 and first["items_count"] == 1
     assert [i["citation"] for i in first["items"]] == ["S1"]
     assert "480" not in first["content"] and "Budget" not in json.dumps(first)

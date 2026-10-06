@@ -45,6 +45,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config import settings
+from app.context import spotlight
 from app.db import get_sessionmaker
 from app.deps import Principal, ProjectAccess, authenticate_agent_key
 from app.enums import (
@@ -333,7 +334,13 @@ def context_result(package: ContextPackage) -> dict[str, Any]:
         "tokens_used": data["tokens_used"],
         "token_budget": data["token_budget"],
         "warnings": data["warnings"],
+        **_untrusted_notice(),
     }
+
+
+def _untrusted_notice() -> dict[str, str]:
+    """§A2: every MCP result carrying source content says it is untrusted data."""
+    return {"untrusted_content_notice": spotlight.MCP_NOTICE} if spotlight.enabled() else {}
 
 
 # --- Tools --------------------------------------------------------------------------------------------
@@ -420,7 +427,7 @@ async def search_sources(
     """Hybrid search (BM25 + k-NN) over the project's indexed chunks, restricted to the agent's rights."""
     async with agent_scope(ctx) as scope:
         hits = await hybrid_chunk_search(scope, query.strip(), limit)
-        return [hit.model_dump(mode="json") for hit in hits]
+        return [{**hit.model_dump(mode="json"), **_untrusted_notice()} for hit in hits]
 
 
 async def propose_memory(
@@ -599,6 +606,7 @@ async def hybrid_chunk_search(scope: AgentScope, query: str, limit: int) -> list
         chunk, document, kind = entry
         if (
             chunk.status != ChunkStatus.active
+            or chunk.quarantined  # §A1: never served while in quarantine
             or document.status == DocumentStatus.forgotten
             or not visibility.allows(chunk.acl_principals, chunk.classification)
         ):
@@ -609,7 +617,7 @@ async def hybrid_chunk_search(scope: AgentScope, query: str, limit: int) -> list
                 document_id=document.id,
                 document_title=document.title,
                 source_kind=kind,
-                text=chunk.text_redacted,
+                text=spotlight.wrap(chunk.text_redacted),  # §A2: untrusted data
                 score=round(hit.rrf_norm, 4),
                 bm25=hit.bm25_score,
                 dense=hit.dense_score,
@@ -723,7 +731,10 @@ async def snapshot_view(
         items=visible,
         request_id=snapshot.request_id,
     )
-    return {**view.model_dump(mode="json"), "restricted_items": restricted}
+    data = view.model_dump(mode="json")
+    if spotlight.enabled() and data.get("content") and not spotlight.is_wrapped(data["content"]):
+        data["content"] = spotlight.wrap(data["content"])
+    return {**data, "restricted_items": restricted, **_untrusted_notice()}
 
 
 # --- Server & ASGI app --------------------------------------------------------------------------------

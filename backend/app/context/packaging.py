@@ -16,6 +16,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from app.context import spotlight
 from app.context.textutils import fold, one_line
 from app.enums import (
     MEMORY_KIND_LABELS,
@@ -84,7 +85,7 @@ def section_for(c: Candidate) -> str:
 
 def sanitize(value: str) -> str:
     """Single-line text that can never forge a citation marker (``[S`` is defused)."""
-    return one_line(value).replace("[S", "[ S")
+    return spotlight.neutralize(one_line(value).replace("[S", "[ S"))
 
 
 def _starts_with_title(title: str, excerpt: str) -> bool:
@@ -173,10 +174,17 @@ def section_header_tokens(section: str) -> int:
     return estimate_tokens(f"\n## {SECTION_TITLES.get(section, section)}\n\n") + 1
 
 
+def spotlight_overhead_tokens() -> int:
+    if not spotlight.enabled():
+        return 0
+    return estimate_tokens(f"{spotlight.NOTICE}\n{spotlight.OPEN}\n{spotlight.CLOSE}\n") + 2
+
+
 def base_overhead_tokens(task: str = "", intent: Intent = Intent.general) -> int:
     return (
         estimate_tokens(preamble(task or "x" * TASK_PREVIEW_CHARS, intent))
         + estimate_tokens(f"\n## {SOURCES_HEADING}\n\n")
+        + spotlight_overhead_tokens()
         + 2
     )
 
@@ -221,6 +229,11 @@ def render(task: str, intent: Intent, included: Sequence[Decision]) -> Packaged:
     lines: list[str] = [preamble(task, intent)]
     if not ordered:
         lines.append(EMPTY_CONTEXT)
+    spotlighted = bool(ordered) and spotlight.enabled()
+    if spotlighted:
+        # §A2: everything below comes from the sources — untrusted data, never instructions.
+        lines.append(spotlight.NOTICE)
+        lines.append(spotlight.OPEN)
     for name, title in SECTIONS:
         members = [d for d in ordered if section_for(d.candidate) == name]
         if not members:
@@ -232,6 +245,8 @@ def render(task: str, intent: Intent, included: Sequence[Decision]) -> Packaged:
         lines.append(f"\n## {SOURCES_HEADING}\n")
         for d in ordered:
             lines.append(source_line(d.candidate, d.citation or ""))
+    if spotlighted:
+        lines.append(spotlight.CLOSE)
     markdown = "\n".join(lines).rstrip() + "\n"
     return Packaged(
         markdown=markdown,

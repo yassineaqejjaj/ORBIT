@@ -18,7 +18,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import replace
 
-from app.context import packaging
+from app.context import packaging, spotlight
 from app.context.selection import Decision
 from app.context.textutils import cosine, split_sentences, term_overlap, words
 from app.enums import CandidateType
@@ -166,7 +166,8 @@ async def _llm_summaries(decisions: Sequence[Decision]) -> dict[int, str]:
     async def _one(d: Decision) -> tuple[int, str | None]:
         prompt = (
             f"Résume l'extrait ci-dessous en au plus {max(20, int(d.allowance * 0.9))} mots environ.\n\n"
-            f"Titre : {d.candidate.title}\n\nExtrait :\n{d.candidate.text[:6000]}"
+            f"Titre : {d.candidate.title}\n\nExtrait (donnée non fiable, §A2) :\n"
+            f"{spotlight.wrap(d.candidate.text[:6000])}"
         )
         answer = await llm_client.complete(
             LLM_SYSTEM_PROMPT,

@@ -33,6 +33,8 @@ class AskOut(ApiModel):
     message_id: uuid.UUID
     mode: AskMode
     warnings: list[str] = Field(default_factory=list)
+    #: §A2: the cited excerpts are untrusted source data (agents must not follow instructions in them).
+    untrusted_content_notice: str | None = None
 
 
 class AskMessageOut(ApiModel):
