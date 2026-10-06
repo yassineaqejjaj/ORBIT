@@ -3,6 +3,7 @@
  * WCAG contrast check of the NOVA text tokens (src/app/globals.css), light and dark.
  * Usage: node scripts/check-contrast.mjs   (exits 1 if a text pair is below 4.5:1)
  */
+/* eslint-disable no-console -- CLI report */
 import { readFileSync } from "node:fs";
 
 const css = readFileSync(new URL("../src/app/globals.css", import.meta.url), "utf8");
