@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, SmallInteger, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, SmallInteger, Text
 from sqlalchemy import text as sql_text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -114,6 +114,7 @@ class Chunk(UUIDPkMixin, CreatedAtMixin, Base):
         range_check("classification", 0, 3),
         Index("ix_chunks_document_id_version", "document_id", "version"),
         Index("ix_chunks_project_id_status", "project_id", "status"),
+        Index("ix_chunks_project_id_quarantined", "project_id", postgresql_where=sql_text("quarantined")),
     )
 
     project_id: Mapped[uuid.UUID] = mapped_column(
@@ -148,4 +149,19 @@ class Chunk(UUIDPkMixin, CreatedAtMixin, Base):
         nullable=False,
         default=ChunkStatus.active,
         server_default=sql_text("'active'"),
+    )
+    # --- Prompt-injection quarantine (docs/AI_CONTEXT_ENGINEERING.md §A1) ---
+    injection_score: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default=sql_text("0")
+    )
+    #: ``[{"code": "IGNORE_INSTRUCTIONS", "label": "...", "weight": 0.7, "excerpt": "..."}]``.
+    injection_reasons: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=sql_text("'[]'::jsonb")
+    )
+    quarantined: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sql_text("false")
+    )
+    quarantine_released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    quarantine_released_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

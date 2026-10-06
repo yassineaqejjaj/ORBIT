@@ -99,6 +99,8 @@ class ScoreBreakdown:
     type_boost: float = 0.0
     term_overlap: float = 0.0
     final: float = 0.0
+    #: Trust multiplier applied to the final score (1.0 = high trust).
+    trust: float = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +162,11 @@ class Candidate:
     provenance_kinds: tuple[SourceKind, ...] = ()
     #: Chunk ids a memory item was extracted from (conflict propagation to source extracts).
     provenance_chunk_ids: frozenset[str] = frozenset()
+    #: Prompt-injection quarantine (§A1): never served until an owner releases the chunk.
+    quarantined: bool = False
+    injection_score: float = 0.0
+    #: Trust of the originating source (§A3): ``high`` / ``medium`` / ``low``.
+    trust: str = "high"
     tokens: int = 0
     scores: ScoreBreakdown = field(default_factory=ScoreBreakdown)
     retrieved_by: set[str] = field(default_factory=set)
@@ -309,6 +316,16 @@ def _rule_classification(c: Candidate, ctx: GovernanceContext) -> Verdict | None
     return Verdict(ReasonCode.EXCLUDED_CLASSIFICATION, detail, redact=True)
 
 
+def _rule_quarantine(c: Candidate, ctx: GovernanceContext) -> Verdict | None:
+    if not c.quarantined:
+        return None
+    return Verdict(
+        ReasonCode.EXCLUDED_QUARANTINE,
+        f"injection de prompt suspectée (score {format_score(c.injection_score)})"
+        " — libération par un propriétaire",
+    )
+
+
 def _rule_scope(c: Candidate, ctx: GovernanceContext) -> Verdict | None:
     if c.candidate_type == CandidateType.memory:
         scope = c.memory_scope or MemoryScope.project
@@ -439,6 +456,7 @@ RULES: dict[ReasonCode, Rule] = {
     ReasonCode.EXCLUDED_FORGOTTEN: _rule_forgotten,
     ReasonCode.EXCLUDED_ACL: _rule_acl,
     ReasonCode.EXCLUDED_CLASSIFICATION: _rule_classification,
+    ReasonCode.EXCLUDED_QUARANTINE: _rule_quarantine,
     ReasonCode.EXCLUDED_SCOPE: _rule_scope,
     ReasonCode.EXCLUDED_EXPIRED: _rule_expired,
     ReasonCode.EXCLUDED_STALE: _rule_stale,

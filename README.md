@@ -256,6 +256,10 @@ Variables d'environnement préfixées `ORBIT_` (voir [`.env.example`](.env.examp
 | `ORBIT_LLM_PROVIDER` | `openai` | `openai` (compatible OpenAI : vLLM, Ollama, LiteLLM) ou `anthropic` (Messages API, modèle par défaut `claude-sonnet-5`) |
 | `ORBIT_LLM_BASE_URL` / `ORBIT_LLM_MODEL` / `ORBIT_LLM_API_KEY` | vide | LLM **optionnel** (extraction de mémoire, réponses de *Demander à ORBIT*). Sans LLM, tout fonctionne en mode déterministe |
 | `ORBIT_LLM_MAX_CLASSIFICATION` / `ORBIT_LLM_LOCAL` / `ORBIT_LLM_REDACT_PII` | `1` / `false` / `true` | Garde-fou : rien au-dessus de C1 n'est envoyé à un LLM externe (sauf LLM auto-hébergé déclaré), données personnelles masquées |
+| `ORBIT_INJECTION_DETECTION` / `ORBIT_INJECTION_THRESHOLD` / `ORBIT_INJECTION_CLASSIFIER` | `true` / `0.6` / `off` | Détection d'injection de prompt à l'ingestion : au-dessus du seuil, le fragment est mis en quarantaine (`EXCLUDED_QUARANTINE`) jusqu'à libération par un propriétaire ; `local` ajoute un classifieur local optionnel |
+| `ORBIT_SPOTLIGHTING` | `true` | Balise tout contenu servi aux agents (contexte, MCP, *Demander à ORBIT*) comme donnée non fiable |
+| `ORBIT_TRUST_RANKING_PENALTY` | `0.15` | Pénalité de classement des sources de confiance faible (moyenne : la moitié) ; `0` la désactive |
+| `ORBIT_POISONING_ALERT_THRESHOLD` / `ORBIT_POISONING_WINDOW_HOURS` | `8` / `24` | Alerte d'empoisonnement : N propositions/faits d'une même source récente ou d'un agent dans la fenêtre |
 | `ORBIT_ENCRYPTION_KEY` | vide | Clé Fernet chiffrant les secrets des connecteurs, webhooks et Teams ; **requise** pour les créer |
 | `ORBIT_CONNECTOR_DEFAULT_SCHEDULE_MINUTES` | `60` | Fréquence de synchronisation par défaut des connecteurs |
 | `ORBIT_MCP_ALLOW_CUSTOM` | `false` | Autorise des serveurs MCP hors presets (administrateurs uniquement) |

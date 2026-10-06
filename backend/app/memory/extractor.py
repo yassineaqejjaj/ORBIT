@@ -474,6 +474,7 @@ async def _load(session: AsyncSession, job: IngestionJob) -> tuple[Document, Sou
                 Chunk.document_id == document.id,
                 Chunk.version == document.current_version,
                 Chunk.status == ChunkStatus.active,
+                Chunk.quarantined.is_(False),
             )
             .order_by(Chunk.ordinal)
         )

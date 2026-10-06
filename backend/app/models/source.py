@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base, TimestampMixin, UUIDPkMixin
-from app.enums import SourceKind
+from app.enums import DEFAULT_SOURCE_TRUST, SourceKind, SourceTrust
 from app.models._types import StrEnumType, enum_check, range_check
 
 DEFAULT_ACL: tuple[str, ...] = ("project:*",)
@@ -25,6 +25,7 @@ class Source(UUIDPkMixin, TimestampMixin, Base):
     __tablename__ = "sources"
     __table_args__ = (
         enum_check("kind", SourceKind),
+        enum_check("trust", SourceTrust),
         range_check("default_classification", 0, 3),
         Index("ix_sources_project_id_kind", "project_id", "kind"),
     )
@@ -44,4 +45,16 @@ class Source(UUIDPkMixin, TimestampMixin, Base):
     config: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
+    #: Explicit trust (§A3); ``None`` = default of the kind (see :attr:`effective_trust`).
+    trust: Mapped[SourceTrust | None] = mapped_column(StrEnumType(SourceTrust), nullable=True)
     last_ingested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def effective_trust(self) -> SourceTrust:
+        return effective_trust(self.kind, self.trust)
+
+
+def effective_trust(kind: SourceKind | str, trust: SourceTrust | str | None) -> SourceTrust:
+    if trust:
+        return SourceTrust(trust)
+    return DEFAULT_SOURCE_TRUST.get(SourceKind(kind), SourceTrust.medium)

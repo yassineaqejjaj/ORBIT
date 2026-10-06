@@ -105,6 +105,7 @@ def test_governance_order_is_the_documented_one() -> None:
         ReasonCode.EXCLUDED_FORGOTTEN,
         ReasonCode.EXCLUDED_ACL,
         ReasonCode.EXCLUDED_CLASSIFICATION,
+        ReasonCode.EXCLUDED_QUARANTINE,
         ReasonCode.EXCLUDED_SCOPE,
         ReasonCode.EXCLUDED_EXPIRED,
         ReasonCode.EXCLUDED_STALE,

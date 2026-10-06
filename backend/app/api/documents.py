@@ -65,7 +65,7 @@ from app.schemas import (
     page_params,
 )
 from app.schemas.common import make_page
-from app.schemas.documents import ChunkView, DocumentVersion, PiiEntity
+from app.schemas.documents import ChunkView, DocumentVersion, PiiEntity, QuarantinedChunk
 from app.search import opensearch
 from app.services import audit
 from app.services.audit import AuditAction
@@ -349,6 +349,10 @@ def _chunk_view(chunk: Chunk, *, can_see_pii: bool) -> ChunkView:
         pii=entities,
         classification=chunk.classification,
         status=chunk.status,
+        injection_score=float(chunk.injection_score or 0.0),
+        injection_reasons=list(chunk.injection_reasons or []),
+        quarantined=bool(chunk.quarantined),
+        quarantine_released_at=chunk.quarantine_released_at,
     )
 
 
@@ -363,6 +367,41 @@ async def _derived_memory(session: AsyncSession, access: ProjectAccess, document
         )
     )
     return await serialize_items(session, items)
+
+
+@router.get(
+    "/quarantine",
+    response_model=list[QuarantinedChunk],
+    summary="Fragments en quarantaine (injection de prompt suspectée, propriétaires)",
+)
+async def list_quarantine(access: OwnerAccess, session: SessionDep) -> list[QuarantinedChunk]:
+    rows = await session.execute(
+        select(Chunk, Document.title)
+        .join(Document, Document.id == Chunk.document_id)
+        .where(
+            Chunk.project_id == access.project_id,
+            Chunk.quarantined.is_(True),
+            Chunk.status == ChunkStatus.active,
+            Document.status != DocumentStatus.forgotten,
+        )
+        .order_by(Chunk.injection_score.desc(), Chunk.created_at.desc())
+        .limit(200)
+    )
+    return [
+        QuarantinedChunk(
+            id=c.id,
+            document_id=c.document_id,
+            document_title=title,
+            version=c.version,
+            ordinal=c.ordinal,
+            section=c.section,
+            text=c.text_redacted,
+            injection_score=float(c.injection_score or 0.0),
+            injection_reasons=list(c.injection_reasons or []),
+            created_at=c.created_at,
+        )
+        for c, title in rows.tuples()
+    ]
 
 
 @router.get("/{document_id}", response_model=DocumentDetail, summary="Détail d'un document")
@@ -591,6 +630,46 @@ async def forget_document(
         logger.warning("Immediate index purge of forgotten document %s failed: %s", document.id, exc)
     await session.refresh(document)
     return await serialize_summary(session, document)
+
+
+@router.post(
+    "/{document_id}/chunks/{chunk_id}/release",
+    response_model=ChunkView,
+    summary="Libérer un fragment de la quarantaine (propriétaire, audité)",
+)
+async def release_quarantine(
+    document_id: uuid.UUID, chunk_id: uuid.UUID, access: OwnerAccess, session: SessionDep
+) -> ChunkView:
+    document = await get_visible_document(session, DocumentViewer.from_access(access), document_id)
+    chunk = await session.get(Chunk, chunk_id)
+    if chunk is None or chunk.document_id != document.id:
+        raise not_found("Fragment introuvable")
+    if not chunk.quarantined:
+        raise conflict("Ce fragment n'est pas en quarantaine")
+    chunk.quarantined = False
+    chunk.quarantine_released_at = utcnow()
+    chunk.quarantine_released_by = access.principal.user_id
+    await audit.record(
+        session,
+        access.project_id,
+        access.principal,
+        AuditAction.quarantine_release,
+        "chunk",
+        chunk.id,
+        summary=f"Fragment n°{chunk.ordinal + 1} de « {document.title} » libéré de la quarantaine",
+        details={
+            "document_id": str(document.id),
+            "version": chunk.version,
+            "score": float(chunk.injection_score or 0.0),
+            "reasons": [r.get("code") for r in chunk.injection_reasons or []],
+        },
+    )
+    # The released extract may now feed the memory (extraction skipped quarantined chunks).
+    await enqueue_job(
+        session, access.project_id, JobKind.extract_memory, document.id, payload={"version": chunk.version}
+    )
+    await session.commit()
+    return _chunk_view(chunk, can_see_pii=DocumentViewer.from_access(access).can_see_pii)
 
 
 # --- Raw file -----------------------------------------------------------------------------------------

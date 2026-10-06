@@ -221,10 +221,37 @@ async def rerank(
     mode = settings.reranker
     if mode == "none":
         apply_none(candidates, now=now)
-        return "none"
-    apply_heuristic(candidates, query_terms=query_terms, query_vector=query_vector, now=now)
-    if mode == "fastembed":
-        if await apply_cross_encoder(candidates, query=query):
-            return reranker_label()
-        return "heuristic-v1 (repli)"
-    return "heuristic-v1"
+        label = "none"
+    else:
+        apply_heuristic(candidates, query_terms=query_terms, query_vector=query_vector, now=now)
+        label = "heuristic-v1"
+        if mode == "fastembed":
+            label = (
+                reranker_label()
+                if await apply_cross_encoder(candidates, query=query)
+                else "heuristic-v1 (repli)"
+            )
+    apply_trust(candidates)
+    return label
+
+
+def trust_factor(trust: str) -> float:
+    """Score multiplier of a source trust level (§A3): high 1.0, medium 1 - p/2, low 1 - p."""
+    penalty = settings.trust_ranking_penalty
+    if trust == "low":
+        return 1.0 - penalty
+    if trust == "medium":
+        return 1.0 - penalty / 2
+    return 1.0
+
+
+def apply_trust(candidates: Sequence[Candidate]) -> None:
+    """Weight every final score by the trust of its source (session turns are not weighted)."""
+    for c in candidates:
+        if c.candidate_type == CandidateType.session:
+            continue
+        factor = trust_factor(c.trust)
+        c.scores.trust = factor
+        if factor != 1.0:
+            c.scores.final = max(0.0, min(1.0, c.scores.final * factor))
+            c.score = c.scores.final

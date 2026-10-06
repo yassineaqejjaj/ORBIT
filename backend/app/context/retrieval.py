@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.context.textutils import FRENCH_STOPWORDS, fold, unique_preserving
 from app.enums import (
+    TRUST_RANK,
     ActorType,
     CandidateType,
     ChunkStatus,
@@ -37,6 +38,7 @@ from app.enums import (
     MemoryScope,
     MemoryStatus,
     SourceKind,
+    SourceTrust,
 )
 from app.governance.acl import DEFAULT_ACL
 from app.governance.policy import (
@@ -47,6 +49,7 @@ from app.governance.policy import (
     SupersessionInfo,
 )
 from app.models import Agent, Chunk, Document, MemoryEvent, MemoryItem, MemoryProvenance, Source, User
+from app.models.source import effective_trust
 from app.search.tokens import estimate_tokens
 
 logger = logging.getLogger("orbit.context.retrieval")
@@ -253,6 +256,7 @@ class ChunkRow:
     document: Document
     source_kind: SourceKind
     forgotten_by_label: str | None = None
+    trust: str = "high"
 
 
 @dataclass(slots=True)
@@ -263,6 +267,8 @@ class MemoryRow:
     status_changed_at: datetime | None = None
     provenance_kinds: tuple[SourceKind, ...] = ()
     provenance_chunk_ids: frozenset[str] = frozenset()
+    #: Lowest trust of the provenance sources (§A3); ``high`` without provenance.
+    trust: str = "high"
 
 
 @dataclass(slots=True)
@@ -358,15 +364,20 @@ async def hydrate_chunks(
     if not chunk_ids:
         return {}
     rows = await session.execute(
-        select(Chunk, Document, Source.kind)
+        select(Chunk, Document, Source.kind, Source.trust)
         .join(Document, Document.id == Chunk.document_id)
         .join(Source, Source.id == Document.source_id)
         .where(Chunk.id.in_(chunk_ids), Chunk.project_id == project_id)
     )
     result: dict[str, ChunkRow] = {}
     forgotten_by: set[uuid.UUID] = set()
-    for chunk, document, kind in rows.tuples():
-        result[str(chunk.id)] = ChunkRow(chunk=chunk, document=document, source_kind=SourceKind(kind))
+    for chunk, document, kind, trust in rows.tuples():
+        result[str(chunk.id)] = ChunkRow(
+            chunk=chunk,
+            document=document,
+            source_kind=SourceKind(kind),
+            trust=effective_trust(kind, trust).value,
+        )
         if document.forgotten_by is not None:
             forgotten_by.add(document.forgotten_by)
     if forgotten_by:
@@ -440,7 +451,7 @@ async def _enrich_provenance(session: AsyncSession, rows: list[MemoryRow]) -> No
     if not by_lineage:
         return
     result = await session.execute(
-        select(MemoryItem.lineage_id, MemoryProvenance.chunk_id, Source.kind)
+        select(MemoryItem.lineage_id, MemoryProvenance.chunk_id, Source.kind, Source.trust)
         .join(MemoryItem, MemoryItem.id == MemoryProvenance.memory_item_id)
         .outerjoin(Document, Document.id == MemoryProvenance.document_id)
         .outerjoin(Source, Source.id == Document.source_id)
@@ -448,8 +459,12 @@ async def _enrich_provenance(session: AsyncSession, rows: list[MemoryRow]) -> No
     )
     kinds: dict[uuid.UUID, list[SourceKind]] = {}
     chunk_ids: dict[uuid.UUID, set[str]] = {}
-    for lineage_id, chunk_id, kind in result.tuples():
+    trusts: dict[uuid.UUID, SourceTrust] = {}
+    for lineage_id, chunk_id, kind, trust in result.tuples():
         if kind is not None:
+            level = effective_trust(kind, trust)
+            if lineage_id not in trusts or TRUST_RANK[level] < TRUST_RANK[trusts[lineage_id]]:
+                trusts[lineage_id] = level
             source_kind = SourceKind(kind)
             known = kinds.setdefault(lineage_id, [])
             if source_kind not in known:
@@ -459,6 +474,8 @@ async def _enrich_provenance(session: AsyncSession, rows: list[MemoryRow]) -> No
     for lineage_id, row in by_lineage.items():
         row.provenance_kinds = tuple(kinds.get(lineage_id, ()))
         row.provenance_chunk_ids = frozenset(chunk_ids.get(lineage_id, ()))
+        if lineage_id in trusts:
+            row.trust = trusts[lineage_id].value
 
 
 async def _enrich_memory(session: AsyncSession, rows: list[MemoryRow]) -> None:
@@ -729,6 +746,9 @@ def chunk_candidate(row: ChunkRow) -> Candidate:
         uri=document.uri,
         section=chunk.section,
         pii_redacted=bool(chunk.pii),
+        quarantined=bool(chunk.quarantined),
+        injection_score=float(chunk.injection_score or 0.0),
+        trust=row.trust,
         superseded_by=SupersessionInfo(
             title=document.title, version=document.current_version, date=document.source_updated_at
         )
@@ -767,6 +787,7 @@ def memory_candidate(row: MemoryRow) -> Candidate:
         status_changed_at=row.status_changed_at,
         provenance_kinds=row.provenance_kinds,
         provenance_chunk_ids=row.provenance_chunk_ids,
+        trust=row.trust,
         tokens=estimate_tokens(item.content or ""),
     )
 

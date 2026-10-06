@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, Field
 
-from app.enums import ChunkStatus, DocumentStatus, JobKind, JobStatus, PiiType, SourceKind
+from app.enums import ChunkStatus, DocumentStatus, JobKind, JobStatus, PiiType, SourceKind, SourceTrust
 from app.schemas.common import AclPrincipals, ApiModel, ClassificationLevel, InputModel, Tags
 from app.schemas.memory import MemoryItem
 
@@ -33,6 +33,9 @@ class Source(ApiModel):
     created_at: datetime
     updated_at: datetime
     last_ingested_at: datetime | None
+    #: Explicit trust (``None`` = default of the kind) and the effective level (§A3).
+    trust: SourceTrust | None = None
+    effective_trust: SourceTrust = SourceTrust.medium
     counts: SourceCounts = Field(default_factory=SourceCounts)
 
 
@@ -43,6 +46,7 @@ class SourceCreateIn(InputModel):
     default_classification: ClassificationLevel = 1
     default_acl: AclPrincipals = Field(default_factory=lambda: ["project:*"])
     config: dict[str, Any] = Field(default_factory=dict)
+    trust: SourceTrust | None = None
 
 
 class SourceUpdateIn(InputModel):
@@ -52,6 +56,8 @@ class SourceUpdateIn(InputModel):
     default_classification: ClassificationLevel | None = None
     default_acl: AclPrincipals | None = None
     config: dict[str, Any] | None = None
+    #: Owners only (raising the trust of a source is a security decision).
+    trust: SourceTrust | None = None
 
 
 # --- Documents ------------------------------------------------------------------------------------
@@ -75,6 +81,26 @@ class ChunkView(ApiModel):
     pii: list[PiiEntity]
     classification: int
     status: ChunkStatus
+    #: Prompt-injection scan (docs/AI_CONTEXT_ENGINEERING.md §A1).
+    injection_score: float = 0.0
+    injection_reasons: list[dict[str, Any]] = []
+    quarantined: bool = False
+    quarantine_released_at: datetime | None = None
+
+
+class QuarantinedChunk(ApiModel):
+    """A chunk held in quarantine (never served) — owners can review and release it."""
+
+    id: uuid.UUID
+    document_id: uuid.UUID
+    document_title: str
+    version: int
+    ordinal: int
+    section: str | None
+    text: str
+    injection_score: float
+    injection_reasons: list[dict[str, Any]]
+    created_at: datetime
 
 
 class DocumentVersion(ApiModel):

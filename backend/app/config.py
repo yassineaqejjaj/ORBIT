@@ -104,6 +104,20 @@ class Settings(BaseSettings):
     #: Command of the MarkItDown MCP server (stdio).
     markitdown_mcp_command: str = "markitdown-mcp"
 
+    # --- AI security (docs/AI_CONTEXT_ENGINEERING.md §A) -----------------------------------------
+    #: Prompt-injection detector at ingestion (score + reasons per chunk, quarantine above the threshold).
+    injection_detection: bool = True
+    injection_threshold: float = Field(default=0.6, gt=0.0, le=1.0)
+    #: Optional local classifier on top of the rules (``local``); never an external call.
+    injection_classifier: Literal["off", "local"] = "off"
+    #: Spotlighting: served content wrapped in untrusted-data delimiters + header instruction.
+    spotlighting: bool = True
+    #: Ranking penalty of low-trust sources (medium = half of it); 0 disables trust in ranking.
+    trust_ranking_penalty: float = Field(default=0.15, ge=0.0, le=1.0)
+    #: Poisoning alert: at least N memory proposals/facts from one source or agent within the window.
+    poisoning_alert_threshold: int = Field(default=8, ge=1)
+    poisoning_window_hours: int = Field(default=24, ge=1)
+
     # --- Observability ---------------------------------------------------------------------------
     otlp_endpoint: str = ""
     otlp_headers: str = ""  # "key1=value1,key2=value2" (e.g. Langfuse basic auth)

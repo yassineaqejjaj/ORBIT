@@ -37,6 +37,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db import utcnow
 from app.enums import (
     PII_LABELS,
@@ -60,6 +61,9 @@ from app.ingestion.extractors import (
     markitdown,
     needs_conversion,
 )
+from app.ingestion.injection import InjectionResult, scan_hidden
+from app.ingestion.injection import detect as detect_injection
+from app.ingestion.injection import summarize as summarize_injection
 from app.ingestion.pii import PiiEntity, analyze, entities_in_span, redact
 from app.ingestion.queue import PermanentJobError, enqueue_job, track_step
 from app.models import Chunk, Document, DocumentVersion, IngestionJob, Relation, Source, Tombstone
@@ -246,6 +250,7 @@ class _PreparedChunk:
     char_end: int
     token_count: int
     pii: list[dict[str, Any]]
+    injection: InjectionResult | None = None
 
 
 async def handle_ingest(session: AsyncSession, job: IngestionJob) -> None:
@@ -282,7 +287,18 @@ async def handle_ingest(session: AsyncSession, job: IngestionJob) -> None:
         raise
 
 
-async def _extract(document: Document, version: DocumentVersion) -> ExtractedDocument:
+_RAW_TEXT_MIME_PREFIXES = ("text/", "application/xhtml", "application/json")
+
+
+def _raw_text(data: bytes, mime_type: str) -> str | None:
+    """Decoded raw payload of text-like files, for the hidden-text scan of the injection detector."""
+    if not mime_type.startswith(_RAW_TEXT_MIME_PREFIXES):
+        return None
+    return data[:2_000_000].decode("utf-8", errors="ignore")
+
+
+async def _extract(document: Document, version: DocumentVersion) -> tuple[ExtractedDocument, str | None]:
+    """The extracted document and the raw text before normalisation (``None`` for binary formats)."""
     if version.object_key:
         try:
             data = await get_object_store().get(version.object_key)
@@ -294,15 +310,17 @@ async def _extract(document: Document, version: DocumentVersion) -> ExtractedDoc
         if needs_conversion(document.mime_type, filename, data):
             # Fallback converter (F6): MarkItDown MCP server, or a clear French status reason.
             try:
-                return await markitdown.convert(data, document.mime_type, filename)
+                return await markitdown.convert(data, document.mime_type, filename), None
             except ExtractionError as exc:
                 raise PermanentJobError(str(exc)) from exc
         try:
-            return await asyncio.to_thread(extract, data, document.mime_type, filename)
+            extracted = await asyncio.to_thread(extract, data, document.mime_type, filename)
         except ExtractionError as exc:
             raise PermanentJobError(str(exc)) from exc
+        return extracted, _raw_text(data, document.mime_type or "")
+    raw = version.extracted_text or ""
     try:
-        return extract_text_content(version.extracted_text or "", document.mime_type)
+        return extract_text_content(raw, document.mime_type), raw
     except ExtractionError as exc:
         raise PermanentJobError(str(exc)) from exc
 
@@ -316,7 +334,7 @@ async def _ingest(
 ) -> None:
     # 1. extract ------------------------------------------------------------------------------------
     async with track_step(session, job, "extract", commit=True) as step:
-        extracted = await _extract(document, version)
+        extracted, raw_text = await _extract(document, version)
         text = extracted.text
         extraction_meta: dict[str, Any] = {"format": extracted.format, **extracted.metadata}
         if extracted.title:
@@ -383,7 +401,8 @@ async def _ingest(
                 reasons
             )
 
-    # 4. chunk ------------------------------------------------------------------------------------------
+    # 4. chunk (+ prompt-injection scan, §A1) ------------------------------------------------------------
+    hidden = scan_hidden(raw_text) if settings.injection_detection else None
     async with track_step(session, job, "chunk", commit=True) as step:
         spans = await asyncio.to_thread(chunk_text, text)
         if not spans:
@@ -402,11 +421,15 @@ async def _ingest(
                     char_end=span.char_end,
                     token_count=span.token_count,
                     pii=[e.to_dict() for e in entities],
+                    injection=detect_injection(span.text, hidden) if settings.injection_detection else None,
                 )
             )
         total_tokens = sum(c.token_count for c in prepared)
         noun = "fragment" if len(prepared) == 1 else "fragments"
         step.detail = f"{len(prepared)} {noun} · ~{total_tokens} tokens"
+        flagged = [c for c in prepared if c.injection is not None and c.injection.quarantined]
+        if flagged:
+            step.detail += f" · {summarize_injection([c.injection for c in flagged])}"  # type: ignore[misc]
 
     # 5. embed ------------------------------------------------------------------------------------------
     async with track_step(session, job, "embed", commit=True) as step:
@@ -441,6 +464,31 @@ async def _ingest(
         if superseded:
             detail += f" · {superseded} fragment(s) des versions précédentes remplacé(s)"
         step.detail = detail
+
+    quarantined = [c for c in chunks if c.quarantined]
+    if quarantined:
+        await audit.record(
+            session,
+            document.project_id,
+            Actor.system(),
+            AuditAction.chunk_quarantine,
+            "document",
+            document.id,
+            f"« {document.title} » : {len(quarantined)} fragment(s) mis en quarantaine"
+            " (injection de prompt suspectée)",
+            {
+                "version": version.version,
+                "chunks": [
+                    {
+                        "id": str(c.id),
+                        "ordinal": c.ordinal,
+                        "score": c.injection_score,
+                        "reasons": [r.get("code") for r in c.injection_reasons],
+                    }
+                    for c in quarantined
+                ],
+            },
+        )
 
     # 7. extract_memory -----------------------------------------------------------------------------------
     async with track_step(session, job, "extract_memory") as step:
@@ -495,6 +543,10 @@ async def _upsert_chunks(
             row = Chunk(id=item.id, project_id=document.project_id, document_id=document.id, version=version)
             session.add(row)
         row.ordinal = item.ordinal
+        if row.text is not None and row.text != item.text:
+            # New content: a previous owner release no longer applies.
+            row.quarantine_released_at = None
+            row.quarantine_released_by = None
         row.text = item.text
         row.text_redacted = item.text_redacted
         row.token_count = item.token_count
@@ -505,9 +557,18 @@ async def _upsert_chunks(
         row.classification = int(document.classification)
         row.acl_principals = list(document.acl_principals)
         row.status = ChunkStatus.active
+        _apply_injection(row, item)
         rows.append(row)
     await session.flush()
     return rows
+
+
+def _apply_injection(row: Chunk, item: _PreparedChunk) -> None:
+    result = item.injection
+    row.injection_score = result.score if result is not None else 0.0
+    row.injection_reasons = list(result.reasons) if result is not None else []
+    flagged = result is not None and result.quarantined
+    row.quarantined = flagged and row.quarantine_released_at is None
 
 
 async def _supersede_previous_versions(session: AsyncSession, document: Document, version: int) -> int:
