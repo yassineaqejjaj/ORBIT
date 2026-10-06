@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     model_cache_dir: str = ""
     reranker: Literal["heuristic", "fastembed", "none"] = "heuristic"
     reranker_model: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+    #: Candidates scored by the cross-encoder and passage length sent (latency bound, §B2).
+    reranker_top_n: int = Field(default=20, ge=1, le=200)
+    reranker_max_chars: int = Field(default=800, ge=100, le=8000)
 
     # --- Optional LLM (OpenAI-compatible) ---------------------------------------------------------
     llm_base_url: str = ""

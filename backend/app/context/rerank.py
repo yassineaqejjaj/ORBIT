@@ -51,9 +51,9 @@ W_TERMS = 0.05
 
 #: Weight of the cross-encoder relevance vs. the fused retrieval rank when ``ORBIT_RERANKER=fastembed``.
 CROSS_ENCODER_BLEND = 0.5
-#: Only the best candidates (by heuristic score) are sent to the cross-encoder (latency bound).
-CROSS_ENCODER_TOP_N = 30
-CROSS_ENCODER_MAX_CHARS = 1200
+#: Only the best candidates (by heuristic score) are sent to the cross-encoder, truncated: latency grows
+#: super-linearly with the passage length (measured on the demo data, Apple M5, mMARCO MiniLM-L12:
+#: 30 × 1200 chars ≈ 1.1 s, 20 × 800 chars ≈ 370 ms) — ``ORBIT_RERANKER_TOP_N`` / ``_MAX_CHARS``.
 CROSS_ENCODER_TIMEOUT_SECONDS = 8.0
 
 TYPE_BOOST_CHUNK = 0.5
@@ -197,10 +197,10 @@ async def apply_cross_encoder(candidates: Sequence[Candidate], *, query: str) ->
         (c for c in candidates if c.candidate_type != CandidateType.session),
         key=lambda c: c.score,
         reverse=True,
-    )[:CROSS_ENCODER_TOP_N]
+    )[: settings.reranker_top_n]
     if not pool:
         return True
-    passages = [f"{c.title}\n{c.text}"[:CROSS_ENCODER_MAX_CHARS] for c in pool]
+    passages = [f"{c.title}\n{c.text}"[: settings.reranker_max_chars] for c in pool]
     started = time.perf_counter()
     try:
         raw = await asyncio.wait_for(
