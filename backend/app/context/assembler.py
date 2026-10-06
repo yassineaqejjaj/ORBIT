@@ -17,6 +17,7 @@ compress → package → persist and returns the :class:`ContextPackage` of docs
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
@@ -28,10 +29,10 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.context import compression, packaging, persistence, rerank, retrieval, selection
+from app.context import compression, packaging, persistence, query_rewrite, rerank, retrieval, selection
 from app.context import snapshots as snapshot_service
 from app.context.selection import Decision
-from app.context.understanding import Understanding, understand
+from app.context.understanding import Understanding, embed_query, understand
 from app.context.visibility import Viewer
 from app.db import utcnow
 from app.deps import ProjectAccess
@@ -70,7 +71,10 @@ MIN_TOKEN_BUDGET = 500
 MAX_TOKEN_BUDGET = 32_000
 ALL_SCOPES: frozenset[MemoryScope] = frozenset(MemoryScope)
 RETRIEVAL_LABEL = "hybrid-bm25-knn-rrf-v1"
-STAGES = ("understand", "retrieve", "fuse", "rerank", "govern", "select", "compress", "package")
+#: Fused-score factor of hits found by query rewrites (round 1) and by targeted rounds (§B3/§B4).
+REWRITE_DISCOUNT = 0.9
+ROUND_DISCOUNT = 0.85
+STAGES = ("understand", "rewrite", "retrieve", "fuse", "rerank", "govern", "select", "compress", "package")
 FAILURE_MESSAGE = "Échec de l'assemblage du contexte"
 
 _EXCLUSION_ORDER = {code: index for index, code in enumerate(GOVERNANCE_ORDER)}
@@ -104,6 +108,8 @@ class ResolvedRequest:
 @dataclass(slots=True)
 class _Timer:
     timings: dict[str, float] = field(default_factory=dict)
+    #: Iterative retrieval rounds (§B4), serialised in ``timings["rounds"]``.
+    rounds: list[dict[str, Any]] = field(default_factory=list)
     started: float = field(default_factory=time.perf_counter)
 
     @contextmanager
@@ -304,6 +310,78 @@ def _params(resolved: ResolvedRequest, understanding: Understanding) -> dict[str
     }
 
 
+async def _embedded(queries: list[query_rewrite.RewrittenQuery]) -> list[tuple[str, list[float] | None]]:
+    vectors = await asyncio.gather(*(embed_query(q.text) for q in queries))
+    return [(q.text, vector) for q, (vector, _model) in zip(queries, vectors, strict=True)]
+
+
+async def _iterative_retrieve(
+    session: AsyncSession,
+    resolved: ResolvedRequest,
+    understanding: Understanding,
+    rewritten: query_rewrite.Rewrite,
+    timer: _Timer,
+    *,
+    pinned: list[retrieval.PinnedRef],
+    base: Any,
+) -> retrieval.RawRetrieval:
+    """Round 1: the task and its rewrites (§B3). Rounds 2..``ORBIT_RETRIEVAL_MAX_ROUNDS`` (≤ 3): targeted
+    searches of the sub-topics no retrieved item covers yet (§B4); stops early when everything is
+    covered or a round finds nothing new. Every round is traced in ``timings.rounds``."""
+    body = resolved.body
+    scope = {
+        "project_id": resolved.project_id,
+        "include_chunks": body.include_sources,
+        "include_memory": bool(resolved.scopes),
+        "include_org_memory": MemoryScope.long_term in resolved.scopes,
+    }
+    begin = time.perf_counter()
+    raw = await retrieval.retrieve(
+        session,
+        task=understanding.task,
+        query_vector=understanding.query_vector,
+        session_id=body.session_id if MemoryScope.short_term in resolved.scopes else None,
+        pinned=pinned,
+        pinned_label=f"{base.name}@v{base.version}" if base is not None else None,
+        **scope,
+    )
+    found = len({h.id for h in raw.chunk_hits}) + len({h.id for h in raw.memory_hits})
+    extra = rewritten.queries[: settings.query_rewrite_max_queries]
+    if extra:
+        found += await retrieval.search_more(
+            session, raw, await _embedded(extra), discount=REWRITE_DISCOUNT, **scope
+        )
+    missing = query_rewrite.uncovered(rewritten.subtopics, retrieval.coverage_texts(raw))
+    timer.rounds.append(
+        _round(1, [query_rewrite.RewrittenQuery(understanding.task, "task"), *extra], found, missing, begin)
+    )
+    for number in range(2, settings.retrieval_max_rounds + 1):
+        if not missing:
+            break
+        begin = time.perf_counter()
+        targeted = [query_rewrite.RewrittenQuery(t, query_rewrite.KIND_SUBTOPIC) for t in missing]
+        new = await retrieval.search_more(
+            session, raw, await _embedded(targeted), discount=ROUND_DISCOUNT, **scope
+        )
+        missing = query_rewrite.uncovered(missing, retrieval.coverage_texts(raw))
+        timer.rounds.append(_round(number, targeted, new, missing, begin))
+        if new == 0:
+            break
+    return raw
+
+
+def _round(
+    number: int, queries: list[query_rewrite.RewrittenQuery], new: int, missing: list[str], begin: float
+) -> dict[str, Any]:
+    return {
+        "round": number,
+        "queries": [q.as_dict() for q in queries],
+        "new_items": new,
+        "uncovered": list(missing),
+        "ms": round((time.perf_counter() - begin) * 1000, 1),
+    }
+
+
 async def _run(
     session: AsyncSession, resolved: ResolvedRequest, timer: _Timer, request_id: uuid.UUID, trace_id: str
 ) -> ContextPackage:
@@ -319,21 +397,18 @@ async def _run(
         span.set_attribute("orbit.intent", understanding.intent.value)
         span.set_attribute("orbit.dense", understanding.query_vector is not None)
 
+    with timer.stage("rewrite") as span:
+        rewritten = await query_rewrite.rewrite(session, resolved.project_id, understanding.task)
+        span.set_attribute("orbit.rewrite", rewritten.method)
+        span.set_attribute("orbit.rewrite_queries", len(rewritten.queries))
+
     base = resolved.base_snapshot
     pinned = retrieval.pinned_refs(base.items or []) if base is not None else []
     with timer.stage("retrieve") as span:
-        raw = await retrieval.retrieve(
-            session,
-            project_id=resolved.project_id,
-            task=understanding.task,
-            query_vector=understanding.query_vector,
-            include_chunks=body.include_sources,
-            include_memory=bool(resolved.scopes),
-            include_org_memory=MemoryScope.long_term in resolved.scopes,
-            session_id=body.session_id if MemoryScope.short_term in resolved.scopes else None,
-            pinned=pinned,
-            pinned_label=f"{base.name}@v{base.version}" if base is not None else None,
+        raw = await _iterative_retrieve(
+            session, resolved, understanding, rewritten, timer, pinned=pinned, base=base
         )
+        span.set_attribute("orbit.rounds", len(timer.rounds))
         span.set_attribute("orbit.chunk_hits", len(raw.chunk_hits))
         span.set_attribute("orbit.memory_hits", len(raw.memory_hits))
 
@@ -426,6 +501,7 @@ async def _run(
         params = _params(resolved, understanding)
         params.update(
             {
+                "rewrite": rewritten.as_dict(),
                 "config": config.model_dump(mode="json"),
                 "warnings": warnings,
                 "exclusion_summary": {code.value: n for code, n in summary.items()},
@@ -524,6 +600,7 @@ async def _run(
     total = timer.elapsed_ms()
     timings = {stage: timer.timings.get(stage, 0.0) for stage in STAGES}
     timings["total"] = total
+    timings["rounds"] = timer.rounds  # type: ignore[assignment]
     row.latency_ms = round(total)
     row.timings = timings
     package.timings = ContextTimings(**timings)

@@ -96,6 +96,7 @@ TRACE_SCHEMA = "orbit.trace.v1"
 #: Display order of the assembly stages (§9); unknown keys follow alphabetically, ``total`` last.
 STAGE_ORDER: tuple[str, ...] = (
     "understand",
+    "rewrite",
     "retrieve",
     "fuse",
     "rerank",

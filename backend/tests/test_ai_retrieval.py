@@ -5,6 +5,7 @@ Fake LLM through ``httpx.MockTransport``, hash embeddings (conftest), stub cross
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -16,7 +17,7 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.context import rerank
+from app.context import query_rewrite, rerank
 from app.enums import CandidateType
 from app.governance.policy import Candidate
 from app.ingestion import contextual, pipeline
@@ -193,3 +194,115 @@ async def test_progressive_contextual_reindex(
     assert chunks and all(c["context_source"] == "deterministic" for c in chunks)
     indexed = await opensearch.get_documents("chunks", [chunks[0]["id"]])
     assert "Journal Atlas" in str(indexed)
+
+
+# --- B3: query rewriting -------------------------------------------------------------------------------
+
+LONG_TASK = (
+    "Prépare la revue de lancement : résume la décision sur la base de données du service Atlas ; "
+    "liste les risques de sécurité du portail client puis donne le planning de mise en production"
+)
+
+
+def test_deterministic_decomposition_and_expansion() -> None:
+    subtopics = query_rewrite.decompose(LONG_TASK)
+    assert 2 <= len(subtopics) <= query_rewrite.MAX_SUBTOPICS
+    assert any("risques" in s for s in subtopics) and any("planning" in s for s in subtopics)
+    assert query_rewrite.decompose("Quelle base de données ?") == []
+
+    aliases = query_rewrite.aliases_from_titles(["Note de cadrage Plateforme Atlas Facturation (PAF)"])
+    assert "Plateforme Atlas Facturation" in query_rewrite.expansion_terms("Où en est la PAF ?", aliases)
+    assert "PAF" in query_rewrite.expansion_terms("Statut de la plateforme atlas facturation", aliases)
+    terms = query_rewrite.expansion_terms("Date de la MEP et choix de la BDD", {})
+    assert "mise en production" in terms and "base de données" in terms
+    rewrite = query_rewrite.deterministic_rewrite("Date de la MEP", {})
+    assert rewrite.method == "deterministic"
+    assert (
+        rewrite.queries[0].kind == query_rewrite.KIND_EXPANSION
+        and "mise en production" in rewrite.queries[0].text
+    )
+
+    texts = ["Décision : PostgreSQL retenu pour la base de données du service Atlas."]
+    missing = query_rewrite.uncovered(subtopics, texts)
+    assert missing and all("base de données" not in m for m in missing)
+
+
+async def test_llm_rewrite_multi_query_hyde_and_guardrail(
+    db_session: AsyncSession,
+    project: dict[str, Any],
+    fake_llm: Callable[..., FakeLLM],  # noqa: F811
+) -> None:
+    def reply(_prompt: str) -> str:
+        return json.dumps(
+            {
+                "reformulations": ["choix SGBD Atlas", "base de données retenue Atlas"],
+                "sous_questions": ["Quelle base de données ?", "Quels risques de sécurité ?"],
+                "reponse_hypothetique": "Le comité a retenu PostgreSQL pour Atlas.",
+            }
+        )
+
+    fake = fake_llm(reply, provider="openai", query_rewrite="auto")
+    project_id = uuid.UUID(str(project["id"]))
+    result = await query_rewrite.rewrite(db_session, project_id, "Quelle base pour Atlas et quels risques ?")
+    assert result.method == "llm"
+    kinds = [q.kind for q in result.queries]
+    assert kinds.count(query_rewrite.KIND_MULTI) == 2 and query_rewrite.KIND_HYDE in kinds
+    assert result.subtopics == ["Quelle base de données ?", "Quels risques de sécurité ?"]
+    sent = len(fake.requests)
+
+    secret_task = "Strictement confidentiel : quel est le budget de la fusion Orion ?"
+    assert query_rewrite.task_level(secret_task) >= 2
+    skips = guardrail.skip_count()
+    blocked = await query_rewrite.rewrite(db_session, project_id, secret_task)
+    assert len(fake.requests) == sent  # nothing sent above the ceiling
+    assert blocked.method == "deterministic" and blocked.note and "Garde-fou" in blocked.note
+    assert guardrail.skip_count() == skips + 1
+
+    llm.use_transport(httpx.MockTransport(lambda _r: httpx.Response(503, json={})))
+    failed = await query_rewrite.rewrite(db_session, project_id, "Quelle base pour Atlas ?")
+    assert failed.method == "deterministic"
+
+
+# --- B4: iterative retrieval ---------------------------------------------------------------------------
+
+
+async def test_iterative_rounds_bounded_and_traced(
+    admin_client: httpx.AsyncClient, project: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.context import retrieval
+
+    slug = str(project["slug"])
+    await _text(admin_client, slug, title="Décision base Atlas", content=ARCHI)
+    await _text(
+        admin_client,
+        slug,
+        title="Risques portail",
+        content="Risque de sécurité : le portail client expose une API sans limitation de débit.",
+    )
+    await drain()
+
+    async def _post(task: str) -> dict[str, Any]:
+        response = await admin_client.post(f"{API}/{slug}/context", json={"task": task, "min_relevance": 0.0})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    package = await _post(LONG_TASK)
+    rounds = package["timings"]["rounds"]
+    assert 1 <= len(rounds) <= 3 and rounds[0]["round"] == 1 and rounds[0]["queries"][0]["kind"] == "task"
+    assert all(r["ms"] >= 0 for r in rounds)
+
+    # Nothing ever covers the sub-topics and every round finds something: the loop stops at 3 rounds.
+    real_search_more = retrieval.search_more
+
+    async def always_new(*args: Any, **kwargs: Any) -> int:
+        return await real_search_more(*args, **kwargs) + 1
+
+    monkeypatch.setattr(retrieval, "coverage_texts", lambda _raw, limit=40: [])
+    monkeypatch.setattr(retrieval, "search_more", always_new)
+    rounds = (await _post(LONG_TASK))["timings"]["rounds"]
+    assert [r["round"] for r in rounds] == [1, 2, 3]
+    assert all(q["kind"] == "subtopic" for r in rounds[1:] for q in r["queries"])
+    assert rounds[-1]["uncovered"]
+
+    monkeypatch.setattr(settings, "retrieval_max_rounds", 1)
+    assert len((await _post(LONG_TASK))["timings"]["rounds"]) == 1

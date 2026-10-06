@@ -230,7 +230,7 @@ async def _run(resolved: Any) -> tuple[Any, FakeSession]:
 async def test_pipeline_persists_every_decision_and_redacts_for_viewer(corpus: dict[str, Any]) -> None:
     package, session = await _run(_resolved(ContextRequestIn(task="Authentification Atlas ?")))
 
-    assert set(package.timings.model_dump()) == set(assembler.STAGES) | {"total"}
+    assert set(package.timings.model_dump()) == set(assembler.STAGES) | {"total", "rounds"}
     assert package.timings.total >= 0
     assert [i.citation for i in package.items] == [f"S{n}" for n in range(1, len(package.items) + 1)]
     assert package.items[0].memory_kind == MemoryKind.decision  # decisions come first

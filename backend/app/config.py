@@ -127,8 +127,9 @@ class Settings(BaseSettings):
     #: Chunks processed per progressive re-index job (existing projects without preamble).
     contextual_reindex_batch: int = Field(default=200, ge=10, le=5000)
     #: Query rewriting: ``auto`` (multi-query, decomposition, HyDE with the LLM when allowed, else
-    #: deterministic expansion from synonyms and project entities), ``deterministic`` or ``off``.
-    query_rewrite: Literal["auto", "deterministic", "off"] = "auto"
+    #: deterministic expansion from synonyms and project entities), ``deterministic`` (default: no
+    #: LLM call — nor its latency — on the context hot path) or ``off``.
+    query_rewrite: Literal["auto", "deterministic", "off"] = "deterministic"
     #: HyDE (hypothetical answer embedded as an extra query) when the LLM is used for rewriting.
     query_rewrite_hyde: bool = True
     #: Maximum extra queries per context request (rewrites, sub-questions, expansions).

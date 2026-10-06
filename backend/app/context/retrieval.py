@@ -638,6 +638,94 @@ async def retrieve(
     return raw
 
 
+def _discounted(hits: Sequence[IndexHit], factor: float) -> list[IndexHit]:
+    for hit in hits:
+        hit.rrf *= factor
+        hit.rrf_norm *= factor
+    return list(hits)
+
+
+async def search_more(
+    session: AsyncSession,
+    raw: RawRetrieval,
+    queries: Sequence[tuple[str, Sequence[float] | None]],
+    *,
+    project_id: uuid.UUID,
+    include_chunks: bool,
+    include_memory: bool,
+    include_org_memory: bool,
+    discount: float,
+) -> int:
+    """Extra searches (query rewrites §B3, iterative rounds §B4) merged into ``raw``.
+
+    Hits of extra queries rank below those of the task itself (``discount`` on the fused score); the
+    candidates fusion keeps the best score per item. Only new ids are hydrated. Returns the number of
+    new items (chunks + memory) found.
+    """
+    kinds = [k for k, on in (("chunks", include_chunks), ("memory", include_memory)) if on]
+    if not queries or not kinds:
+        return 0
+
+    async def _one(kind: str, text: str, vector: Sequence[float] | None) -> list[IndexHit]:
+        size = CHUNK_TOP_K if kind == "chunks" else MEMORY_TOP_K
+        try:
+            return await search_index(
+                kind,
+                text,
+                vector,
+                project_id=project_id,
+                size_each=size,
+                include_org_memory=include_org_memory and kind == "memory",
+            )
+        except RetrievalUnavailable:
+            return await fallback_search(
+                session, kind, text, project_id=project_id, size=size, include_org_memory=include_org_memory
+            )
+
+    jobs = [(kind, _one(kind, text, vector)) for text, vector in queries for kind in kinds]
+    results = await asyncio.gather(*(job for _, job in jobs), return_exceptions=True)
+    known_chunks = {h.id for h in raw.chunk_hits}
+    known_memory = {h.id for h in raw.memory_hits}
+    new_chunks: list[IndexHit] = []
+    new_memory: list[IndexHit] = []
+    for (kind, _), result in zip(jobs, results, strict=True):
+        if isinstance(result, BaseException):
+            logger.info("Extra %s search failed: %r", kind, result)
+            continue
+        hits = _discounted(result, discount)
+        if kind == "chunks":
+            new_chunks.extend(h for h in hits if h.id not in known_chunks)
+            raw.chunk_hits.extend(hits)
+        else:
+            new_memory.extend(h for h in hits if h.id not in known_memory)
+            raw.memory_hits.extend(hits)
+    chunk_ids = list(dict.fromkeys(h.id for h in new_chunks))
+    memory_ids = list(dict.fromkeys(h.id for h in new_memory))
+    if chunk_ids:
+        raw.chunks.update(await hydrate_chunks(session, project_id, chunk_ids))
+    if memory_ids:
+        resolution, by_lineage = await hydrate_memory(session, project_id, memory_ids, [])
+        raw.memory_resolution.update(resolution)
+        raw.memory_by_lineage.update(by_lineage)
+    if new_chunks or new_memory:
+        await attach_embeddings(RawRetrieval(chunk_hits=new_chunks, memory_hits=new_memory))
+    return len(chunk_ids) + len(memory_ids)
+
+
+def coverage_texts(raw: RawRetrieval, limit: int = 40) -> list[str]:
+    """Titles + texts of the best hydrated hits (coverage check of iterative retrieval)."""
+    texts: list[str] = []
+    for hit in sorted(raw.chunk_hits, key=lambda h: h.rrf_norm, reverse=True)[:limit]:
+        row = raw.chunks.get(hit.id)
+        if row is not None:
+            texts.append(f"{row.document.title} {row.chunk.section or ''} {row.chunk.text}")
+    for hit in sorted(raw.memory_hits, key=lambda h: h.rrf_norm, reverse=True)[:limit]:
+        mrow = raw.memory_resolution.get(hit.id)
+        if mrow is not None:
+            texts.append(f"{mrow.item.title} {mrow.item.content}")
+    return texts
+
+
 async def anchor_decision_hits(
     session: AsyncSession, project_id: uuid.UUID, hits: Sequence[IndexHit]
 ) -> list[IndexHit]:

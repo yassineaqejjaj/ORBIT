@@ -97,8 +97,27 @@ class ExcludedItem(ApiModel):
     related_citation: str | None = None
 
 
+class RetrievalQuery(ApiModel):
+    text: str
+    #: ``task``, ``multi``, ``hyde``, ``expansion`` or ``subtopic``.
+    kind: str
+
+
+class RetrievalRound(ApiModel):
+    """One round of iterative retrieval (docs/AI_CONTEXT_ENGINEERING.md §B4)."""
+
+    round: int
+    queries: list[RetrievalQuery] = []
+    #: New items (chunks + memory) found by this round.
+    new_items: int = 0
+    #: Sub-topics still uncovered after this round.
+    uncovered: list[str] = []
+    ms: float = 0
+
+
 class ContextTimings(ApiModel):
     understand: float = 0
+    rewrite: float = 0
     retrieve: float = 0
     fuse: float = 0
     rerank: float = 0
@@ -107,6 +126,8 @@ class ContextTimings(ApiModel):
     compress: float = 0
     package: float = 0
     total: float = 0
+    #: Retrieval rounds (§B3 rewrites in round 1, §B4 targeted rounds), within ``retrieve``.
+    rounds: list[RetrievalRound] = []
 
 
 class ContextSnapshotInfo(ApiModel):
