@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 
 import { cn } from "@/lib/utils";
 
@@ -78,27 +79,56 @@ export function OrbitMark({ variant = "tile", title, className, ...props }: Orbi
   );
 }
 
+/** Intrinsic size of public/brand/orbit-wordmark*.png (cropped from the brand artwork). */
+const WORDMARK_WIDTH = 319;
+const WORDMARK_HEIGHT = 120;
+
+export interface OrbitWordmarkProps {
+  /** Rendered height in px (width follows the artwork ratio). */
+  height?: number;
+  /**
+   * "auto": light artwork, lifted variant in dark mode. "on-dark": always the lifted variant (dark surfaces such as
+   * the login hero). "on-light": always the original artwork.
+   */
+  tone?: "auto" | "on-dark" | "on-light";
+  className?: string;
+  /** Accessible name; pass "" when a visible text already names ORBIT. */
+  alt?: string;
+}
+
+/** The "orbit" wordmark (red → violet → indigo gradient). */
+export function OrbitWordmark({ height = 24, tone = "auto", className, alt = "ORBIT" }: OrbitWordmarkProps) {
+  const width = Math.round((height * WORDMARK_WIDTH) / WORDMARK_HEIGHT);
+  const size = { width, height, style: { width, height }, draggable: false, priority: true, unoptimized: true } as const;
+  if (tone !== "auto") {
+    const src = tone === "on-dark" ? "/brand/orbit-wordmark-dark.png" : "/brand/orbit-wordmark.png";
+    return <Image src={src} alt={alt} {...size} className={cn("select-none", className)} />;
+  }
+  return (
+    <span className={cn("inline-flex", className)}>
+      <Image src="/brand/orbit-wordmark.png" alt={alt} {...size} className="select-none dark:hidden" />
+      <Image src="/brand/orbit-wordmark-dark.png" alt="" aria-hidden {...size} className="hidden select-none dark:block" />
+    </span>
+  );
+}
+
 export interface OrbitLogoProps {
   className?: string;
-  /** Mark size in px (default 28). */
+  /** Wordmark height in px (default 26). */
   size?: number;
   /** Hide the tagline under the wordmark. */
   hideTagline?: boolean;
   tagline?: string;
 }
 
-/** Mark + "ORBIT" wordmark (+ optional tagline). */
-export function OrbitLogo({ className, size = 28, hideTagline = false, tagline = "Contexte & mémoire" }: OrbitLogoProps) {
+/** "orbit" wordmark (+ optional tagline). */
+export function OrbitLogo({ className, size = 26, hideTagline = false, tagline = "Contexte & mémoire" }: OrbitLogoProps) {
   return (
-    <span className={cn("inline-flex items-center gap-2.5", className)}>
-      <OrbitMark width={size} height={size} />
-      <span className="grid leading-none">
-        <span className="text-[15px] font-semibold tracking-[0.14em] text-foreground">ORBIT</span>
-        {!hideTagline ? (
-          <span className="mt-1 text-[10.5px] font-medium tracking-wide text-subtle-foreground">{tagline}</span>
-        ) : null}
-      </span>
-      <span className="sr-only">ORBIT — plateforme de contexte et de mémoire pour agents IA</span>
+    <span className={cn("inline-grid justify-items-start gap-1 leading-none", className)}>
+      <OrbitWordmark height={size} alt="ORBIT — plateforme de contexte et de mémoire pour agents IA" />
+      {!hideTagline ? (
+        <span className="text-[10.5px] font-medium tracking-wide text-subtle-foreground">{tagline}</span>
+      ) : null}
     </span>
   );
 }

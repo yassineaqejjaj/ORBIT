@@ -203,7 +203,7 @@ export function SidebarContent({ slug, onNavigate, collapsible = false }: Sideba
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-14 shrink-0 items-center px-4">
+      <div className="flex h-[68px] shrink-0 items-center px-4">
         <Link
           href="/projects"
           onClick={onNavigate}

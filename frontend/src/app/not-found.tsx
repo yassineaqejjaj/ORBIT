@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, Compass } from "lucide-react";
 
-import { OrbitMark } from "@/components/brand/orbit-logo";
+import { OrbitWordmark } from "@/components/brand/orbit-logo";
 import { Button } from "@/components/ui/button";
 
 export const metadata = { title: "Page introuvable" };
@@ -11,7 +11,7 @@ export default function NotFound() {
     <main className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden bg-background px-4 text-center">
       <div className="bg-grid pointer-events-none absolute inset-0 [mask-image:radial-gradient(ellipse_at_center,black_20%,transparent_70%)]" aria-hidden />
       <div className="relative grid max-w-md justify-items-center gap-5">
-        <OrbitMark width={48} height={48} />
+        <OrbitWordmark height={36} />
         <p className="font-mono text-sm font-medium tracking-widest text-brand">ERREUR 404</p>
         <h1 className="text-2xl font-semibold tracking-tight">Cette page est hors orbite</h1>
         <p className="text-sm leading-relaxed text-muted-foreground">

@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, Fingerprint, History, Lock, Mail, ShieldCheck, Sparkles } from "lucide-react";
 
-import { ConstellationDots, OrbitLogo, OrbitMark } from "@/components/brand/orbit-logo";
+import { ConstellationDots, OrbitLogo, OrbitWordmark } from "@/components/brand/orbit-logo";
 import { OrbitHero } from "@/components/brand/orbit-hero";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Alert } from "@/components/ui/alert";
@@ -117,12 +117,9 @@ export function LoginView() {
         <div className="pointer-events-none absolute -left-32 -top-32 size-[520px] rounded-full bg-teal-500/10 blur-3xl" aria-hidden />
         <div className="pointer-events-none absolute -bottom-40 right-0 size-[420px] rounded-full bg-violet-500/10 blur-3xl" aria-hidden />
 
-        <div className="relative flex items-center gap-2.5 px-10 pt-10">
-          <OrbitMark width={32} height={32} />
-          <span className="grid leading-none">
-            <span className="text-base font-semibold tracking-[0.16em] text-white">ORBIT</span>
-            <span className="mt-1 text-[11px] font-medium tracking-wide text-slate-400">Contexte & mémoire pour agents IA</span>
-          </span>
+        <div className="relative grid justify-items-start gap-1.5 px-10 pt-10 leading-none">
+          <OrbitWordmark height={30} tone="on-dark" />
+          <span className="text-[11px] font-medium tracking-wide text-slate-400">Contexte & mémoire pour agents IA</span>
         </div>
 
         <div className="relative flex flex-1 flex-col justify-center px-10 py-8 xl:px-16">
