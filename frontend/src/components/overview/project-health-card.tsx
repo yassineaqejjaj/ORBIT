@@ -23,15 +23,15 @@ export function ProjectHealthCard({ overview, className }: { overview: Overview;
   const Icon = LEVEL_ICON[health.level];
 
   return (
-    <Card className={cn("overflow-hidden", className)}>
+    <Card className={cn("bg-hero overflow-hidden rounded-4xl", className)}>
       <CardContent className="grid gap-4 py-5">
         <div className="flex flex-wrap items-start gap-3">
           <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-xl", tone.soft)}>
             <Icon className="size-5" aria-hidden />
           </span>
           <div className="grid min-w-0 flex-1 gap-0.5">
-            <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">État du projet</p>
-            <p className="text-xl font-semibold tracking-tight text-foreground">{meta.label}</p>
+            <p className="group-label">État du projet</p>
+            <p className="text-2xl font-semibold tracking-tight text-foreground">{meta.label}</p>
             <p className="text-[13px] text-muted-foreground">
               {health.attentionCount === 0
                 ? "Aucun élément ne demande votre attention."
@@ -41,7 +41,7 @@ export function ProjectHealthCard({ overview, className }: { overview: Overview;
         </div>
 
         {health.reasons.length > 0 ? (
-          <ul className="grid gap-1 text-[13px]" aria-label="Raisons de l'état">
+          <ul className="grid gap-1 text-[13px]" aria-label="Raisons de l’état">
             {health.reasons.map((reason) => (
               <li key={reason} className={cn("flex items-start gap-2", tone.text)}>
                 <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />

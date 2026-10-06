@@ -45,7 +45,7 @@ export function IngestionHealth({
       : { label: "Opérationnel", tone: "green" as const, pulse: false };
 
   return (
-    <Card className={cn("flex flex-col", incident && "border-red-300 ring-1 ring-red-200 dark:border-red-500/40 dark:ring-red-500/20", className)}>
+    <Card className={cn("flex flex-col", incident && "border-danger/40 ring-1 ring-danger/20", className)}>
       <CardHeader className="flex-row items-center gap-2">
         <Workflow className="size-4 text-muted-foreground" aria-hidden />
         <CardTitle>Santé de l&apos;ingestion</CardTitle>
@@ -75,10 +75,11 @@ export function IngestionHealth({
           </div>
           <div className="flex items-baseline gap-1">
             <span className="font-semibold tabular-nums text-foreground">{formatNumber(active, 0)}</span>
-            <span>en cours</span>
+            {/* Live activity shimmer only while jobs run (disabled under reduced motion). */}
+            <span className={cn(active > 0 && "text-shimmer")}>en cours</span>
           </div>
           <div className="flex items-baseline gap-1">
-            <span className={cn("font-semibold tabular-nums", incident ? "text-red-600 dark:text-red-400" : "text-foreground")}>
+            <span className={cn("font-semibold tabular-nums", incident ? "text-danger" : "text-foreground")}>
               {formatNumber(ingestion.failed, 0)}
             </span>
             <span>en échec</span>
