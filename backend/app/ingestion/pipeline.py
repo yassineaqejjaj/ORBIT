@@ -53,7 +53,7 @@ from app.enums import (
     classification_code,
     classification_label,
 )
-from app.ingestion import classifier, contextual
+from app.ingestion import classifier, contextual, visual
 from app.ingestion.chunker import chunk_text
 from app.ingestion.extractors import (
     ExtractedDocument,
@@ -320,8 +320,11 @@ def _raw_text(data: bytes, mime_type: str) -> str | None:
     return data[:2_000_000].decode("utf-8", errors="ignore")
 
 
-async def _extract(document: Document, version: DocumentVersion) -> tuple[ExtractedDocument, str | None]:
-    """The extracted document and the raw text before normalisation (``None`` for binary formats)."""
+async def _extract(
+    document: Document, version: DocumentVersion
+) -> tuple[ExtractedDocument, str | None, bytes | None]:
+    """The extracted document, the raw text before normalisation (``None`` for binary formats) and the
+    original bytes (``None`` for text documents; images are extracted from them, §B5)."""
     if version.object_key:
         try:
             data = await get_object_store().get(version.object_key)
@@ -333,17 +336,17 @@ async def _extract(document: Document, version: DocumentVersion) -> tuple[Extrac
         if needs_conversion(document.mime_type, filename, data):
             # Fallback converter (F6): MarkItDown MCP server, or a clear French status reason.
             try:
-                return await markitdown.convert(data, document.mime_type, filename), None
+                return await markitdown.convert(data, document.mime_type, filename), None, data
             except ExtractionError as exc:
                 raise PermanentJobError(str(exc)) from exc
         try:
             extracted = await asyncio.to_thread(extract, data, document.mime_type, filename)
         except ExtractionError as exc:
             raise PermanentJobError(str(exc)) from exc
-        return extracted, _raw_text(data, document.mime_type or "")
+        return extracted, _raw_text(data, document.mime_type or ""), data
     raw = version.extracted_text or ""
     try:
-        return extract_text_content(raw, document.mime_type), raw
+        return extract_text_content(raw, document.mime_type), raw, None
     except ExtractionError as exc:
         raise PermanentJobError(str(exc)) from exc
 
@@ -357,7 +360,7 @@ async def _ingest(
 ) -> None:
     # 1. extract ------------------------------------------------------------------------------------
     async with track_step(session, job, "extract", commit=True) as step:
-        extracted, raw_text = await _extract(document, version)
+        extracted, raw_text, original = await _extract(document, version)
         text = extracted.text
         extraction_meta: dict[str, Any] = {"format": extracted.format, **extracted.metadata}
         if extracted.title:
@@ -423,6 +426,43 @@ async def _ingest(
             step.detail = f"{classification_code(level)} ({classification_label(level)}) — " + "; ".join(
                 reasons
             )
+
+    # 3b. visual (images of PDF/PPTX described and appended to the text, §B5) ----------------------------
+    filename = str((version.metadata_ or {}).get("filename") or document.title)
+    images = (
+        await asyncio.to_thread(visual.extract_images, original, document.mime_type, filename)
+        if original
+        else []
+    )
+    if images:
+        async with track_step(session, job, "visual", commit=True) as step:
+            vision_level = max(int(document.classification), level)
+            descriptions = await visual.describe(images, classification=vision_level)
+            section = visual.to_markdown(descriptions)
+            if section:
+                text = f"{text}\n\n{section}"
+                version.extracted_text = text
+                pii_result = await asyncio.to_thread(analyze, text)
+                visual_level = max(
+                    classifier.keyword_level(section)[0], classifier.pii_level(pii_result.entities)[0]
+                )
+                if visual_level > level and not manual:
+                    level = visual_level
+                    document.classification = level
+                    document.metadata_ = {
+                        **(document.metadata_ or {}),
+                        "classification_reasons": [*reasons, "contenu des images (éléments visuels)"],
+                    }
+            version.metadata_ = {
+                **(version.metadata_ or {}),
+                "char_count": len(text),
+                "visual": {
+                    "images": len(images),
+                    "described": len(descriptions),
+                    "methods": dict(Counter(d.method for d in descriptions)),
+                },
+            }
+            step.detail = visual.summarize(len(images), descriptions, visual.vision_allowed(vision_level))
 
     # 4. chunk (+ prompt-injection scan, §A1) ------------------------------------------------------------
     hidden = scan_hidden(raw_text) if settings.injection_detection else None

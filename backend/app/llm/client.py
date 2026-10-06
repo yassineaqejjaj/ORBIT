@@ -17,10 +17,12 @@ above the ceiling is never sent (``None`` is returned and the skip counted); PII
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -106,12 +108,29 @@ async def close() -> None:
     _client = None
 
 
+def _data_url(data: bytes, mime: str) -> str:
+    return f"data:{mime};base64,{base64.b64encode(data).decode()}"
+
+
 async def _openai(
-    system: str, user: str, *, json_mode: bool, temperature: float, max_tokens: int, timeout_seconds: float
+    system: str,
+    user: str,
+    *,
+    json_mode: bool,
+    temperature: float,
+    max_tokens: int,
+    timeout_seconds: float,
+    images: Sequence[tuple[bytes, str]] = (),
 ) -> LLMResult | None:
+    content: Any = user
+    if images:
+        # Vision (§B5): OpenAI-compatible multimodal content parts.
+        content = [
+            {"type": "image_url", "image_url": {"url": _data_url(data, mime)}} for data, mime in images
+        ] + [{"type": "text", "text": user}]
     body: dict[str, Any] = {
         "model": _model(),
-        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
@@ -142,6 +161,7 @@ async def generate(
     max_tokens: int = 800,
     timeout_seconds: float | None = None,
     classification: int | None = None,
+    images: Sequence[tuple[bytes, str]] = (),
 ) -> LLMResult | None:
     """Single-turn completion with token usage. ``None`` if disabled, blocked by the guardrail or failed.
 
@@ -166,6 +186,7 @@ async def generate(
                 max_tokens=max_tokens,
                 json_mode=json_mode,
                 timeout_seconds=timeout,
+                images=images,
             )
             result: LLMResult | None = LLMResult(text, tokens_in, tokens_out)
         else:
@@ -176,12 +197,36 @@ async def generate(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 timeout_seconds=timeout,
+                images=images,
             )
     except (httpx.HTTPError, anthropic.AnthropicError, KeyError, IndexError, TypeError, ValueError) as exc:
         logger.warning("LLM call failed after %.0f ms: %s", (time.perf_counter() - started) * 1000, exc)
         return None
     logger.debug("LLM call ok in %.0f ms", (time.perf_counter() - started) * 1000)
     return result
+
+
+async def describe_image(
+    system: str,
+    user: str,
+    image: bytes,
+    mime_type: str,
+    *,
+    classification: int,
+    max_tokens: int = 400,
+    timeout_seconds: float | None = None,
+) -> str | None:
+    """Vision completion on one image (``ORBIT_LLM_MODEL`` must be multimodal). Same guardrail as
+    :func:`generate`; ``None`` if disabled, blocked or failed."""
+    result = await generate(
+        system,
+        user,
+        max_tokens=max_tokens,
+        timeout_seconds=timeout_seconds,
+        classification=classification,
+        images=[(image, mime_type)],
+    )
+    return result.text if result is not None else None
 
 
 async def complete(
