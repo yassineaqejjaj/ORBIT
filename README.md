@@ -40,7 +40,7 @@ personnelles caviardées. Le scénario de présentation est décrit dans [`docs/
 > *entièrement fictifs*. N'y mélangez jamais de vraies données ; l'interface affiche un bandeau d'avertissement dès
 > qu'un contenu C2/C3 est ingéré, affiché ou servi.
 
-### Démo en ligne
+## Démo en ligne
 
 | URL | Hébergement |
 |---|---|
@@ -50,7 +50,7 @@ personnelles caviardées. Le scénario de présentation est décrit dans [`docs/
 Les identifiants de l'instance en ligne sont **communiqués séparément** : ils ne figurent pas dans ce dépôt (les
 mots de passe ci-dessous ne valent que pour une installation locale).
 
-### Parcours dans l'interface
+## Parcours dans l’interface
 
 | Section | Entrées | À quoi ça sert |
 |---|---|---|
@@ -106,7 +106,7 @@ flowchart LR
 
 | Service | Rôle | Port hôte |
 |---|---|---|
-| `web` | Interface Next.js 15 (voir *Parcours dans l'interface*) et landing page | 3000 |
+| `web` | Interface Next.js 15 (voir *Parcours dans l’interface*) et landing page | 3000 |
 | `api` | FastAPI : REST `/api/v1`, MCP `/mcp`, webhook Teams, `/metrics`, `/health`, `/ready` | 8000 |
 | `worker` | Ingestion, synchronisation des connecteurs (natifs et MCP), extraction mémoire, consolidation, oubli sélectif, livraison des webhooks, résumés (file Postgres `SKIP LOCKED`) | — |
 | `postgres` | Source de vérité (documents, versions, chunks, mémoire, requêtes, snapshots, audit) | 5433 |
@@ -326,7 +326,7 @@ exécution complète du seed contre une API simulée (`tests/test_seed_data*.py`
 
 ## Organisation du dépôt
 
-```
+```text
 orbit/
   docker-compose.yml  Makefile  .env.example  README.md
   docs/               ARCHITECTURE.md (contrat), API.md (API REST + MCP), DEMO.md (jeu et scénario),
