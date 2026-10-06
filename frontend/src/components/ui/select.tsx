@@ -21,10 +21,10 @@ export const SelectTrigger = React.forwardRef<React.ElementRef<typeof SelectPrim
       ref={ref}
       aria-invalid={invalid || undefined}
       className={cn(
-        "flex w-full min-w-0 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm shadow-xs",
+        "flex w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-border bg-surface-2 px-3 text-left text-[13px]",
         "transition-[border-color,box-shadow] duration-150 data-[placeholder]:text-subtle-foreground",
-        "focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/20",
-        "disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-destructive",
+        "focus-visible:border-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+        "disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger",
         "[&>span]:truncate [&_svg]:size-4 [&_svg]:shrink-0",
         size === "sm" ? "h-8 text-[13px]" : "h-9",
         className,

@@ -23,7 +23,7 @@ const sideClasses = {
     "inset-y-0 right-0 h-full border-l data-[state=open]:animate-slide-in-right data-[state=closed]:animate-slide-out-right",
   left: "inset-y-0 left-0 h-full border-r data-[state=open]:animate-slide-in-left data-[state=closed]:animate-slide-out-left",
   bottom:
-    "inset-x-0 bottom-0 max-h-[85dvh] rounded-t-xl border-t data-[state=open]:animate-slide-in-bottom data-[state=closed]:animate-slide-out-bottom",
+    "inset-x-0 bottom-0 max-h-[85dvh] rounded-t-2xl border-t data-[state=open]:animate-slide-in-bottom data-[state=closed]:animate-slide-out-bottom",
 } as const;
 
 const widthClasses = {

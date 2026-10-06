@@ -63,7 +63,7 @@ const FULL_LABEL_MAX_EDGES = 40;
 /** Hex colors (SVG attributes cannot always resolve CSS variables, e.g. markers, minimap). */
 const TONE_HEX: Record<Tone, string> = {
   neutral: "#94a3b8",
-  teal: "#14b8a6",
+  teal: "#f8485e" /* coral accent */,
   green: "#10b981",
   amber: "#f59e0b",
   red: "#ef4444",
@@ -356,7 +356,7 @@ function GraphCanvas({
     [focusId, adjacency, selectedId],
   );
 
-  const labelBg = dark ? "#10161d" : "#ffffff";
+  const labelBg = dark ? "#151314" : "#ffffff";
   const edges = React.useMemo<Edge[]>(
     () =>
       built.edges.map((e, index) => {
@@ -431,7 +431,7 @@ function GraphCanvas({
         className="!bg-transparent"
         aria-label="Graphe des relations mémoire"
       >
-        <Background variant={BackgroundVariant.Dots} gap={18} size={1} color={dark ? "#1e2934" : "#d5dde5"} />
+        <Background variant={BackgroundVariant.Dots} gap={18} size={1} color={dark ? "#2a2526" : "#e3dcda"} />
         <Controls showInteractive={false} position="bottom-left" />
         <MiniMap
           pannable

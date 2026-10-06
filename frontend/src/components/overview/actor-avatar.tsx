@@ -22,7 +22,7 @@ export function ActorAvatar({ actorType, actorId, label, members, size = "md", c
     return (
       <span
         className={cn(
-          "flex shrink-0 items-center justify-center rounded-full bg-teal-50 text-teal-700 ring-1 ring-inset ring-teal-600/20 dark:bg-teal-400/10 dark:text-teal-300 dark:ring-teal-400/25",
+          "flex shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-text ring-1 ring-inset ring-accent-coral/20",
           box,
           className,
         )}

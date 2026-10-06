@@ -46,7 +46,7 @@ function Highlight({ text, query }: { text: string; query: string }) {
     <>
       {parts.map((part, i) =>
         i % 2 === 1 ? (
-          <mark key={i} className="rounded-sm bg-brand/15 px-0.5 text-foreground dark:bg-brand/25">
+          <mark key={i} className="rounded-sm bg-accent-soft px-0.5 text-foreground">
             {part}
           </mark>
         ) : (
@@ -77,7 +77,7 @@ const itemClass = cn(
 
 const groupClass = cn(
   "px-1.5 pb-1 [&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:pb-1.5 [&_[cmdk-group-heading]]:pt-3",
-  "[&_[cmdk-group-heading]]:text-[10.5px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase",
+  "[&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase",
   "[&_[cmdk-group-heading]]:tracking-[0.08em] [&_[cmdk-group-heading]]:text-subtle-foreground",
 );
 

@@ -12,7 +12,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
       <QueryProvider>
-        <TooltipProvider delayDuration={300} skipDelayDuration={150}>
+        <TooltipProvider delayDuration={250} skipDelayDuration={150}>
           {children}
           <Toaster />
         </TooltipProvider>

@@ -23,7 +23,7 @@ function ProjectGlyph({ name, className }: { name: string; className?: string })
   return (
     <span
       className={cn(
-        "flex size-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-teal-500 to-teal-700 text-[12px] font-semibold uppercase text-white shadow-xs",
+        "flex size-7 shrink-0 items-center justify-center rounded-md bg-accent-soft ring-1 ring-inset ring-accent-coral/20 text-[12px] font-semibold uppercase text-accent-text shadow-xs",
         className,
       )}
       aria-hidden

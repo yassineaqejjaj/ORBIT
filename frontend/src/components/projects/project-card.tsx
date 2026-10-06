@@ -30,7 +30,7 @@ export function ProjectCard({ project }: { project: ProjectSummary }) {
     >
       <div className="flex items-start gap-3">
         <span
-          className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500 to-teal-700 text-base font-semibold uppercase text-white shadow-xs"
+          className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent-soft ring-1 ring-inset ring-accent-coral/20 text-base font-semibold uppercase text-accent-text shadow-xs"
           aria-hidden
         >
           {project.name.trim().charAt(0) || "P"}

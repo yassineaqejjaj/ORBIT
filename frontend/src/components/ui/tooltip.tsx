@@ -5,7 +5,10 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 
 import { cn } from "@/lib/utils";
 
-export const TooltipProvider = TooltipPrimitive.Provider;
+/** NOVA: tooltips open after 250 ms. */
+export function TooltipProvider({ delayDuration = 250, ...props }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
+  return <TooltipPrimitive.Provider delayDuration={delayDuration} {...props} />;
+}
 export const Tooltip = TooltipPrimitive.Root;
 export const TooltipTrigger = TooltipPrimitive.Trigger;
 
@@ -18,7 +21,7 @@ export const TooltipContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 max-w-xs rounded-md bg-slate-900 px-2.5 py-1.5 text-xs leading-snug text-slate-50 shadow-md dark:bg-slate-100 dark:text-slate-900",
+        "z-50 max-w-xs rounded-md border border-border-strong bg-surface-3 px-2.5 py-1.5 text-xs leading-snug text-foreground shadow-elevated",
         "data-[state=delayed-open]:animate-pop-in data-[state=instant-open]:animate-pop-in",
         className,
       )}

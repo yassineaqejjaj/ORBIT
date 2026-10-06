@@ -12,7 +12,16 @@ export interface SegmentedOption<V extends string = string> {
   disabled?: boolean;
   /** Accessible label when `label` is icon-only. */
   ariaLabel?: string;
+  /** NOVA: the active pill takes this status tint (e.g. Always / Ask / Never). */
+  tone?: "accent" | "success" | "warning" | "danger";
 }
+
+const ACTIVE_TONE: Record<NonNullable<SegmentedOption["tone"]>, string> = {
+  accent: "data-[state=on]:bg-accent-soft data-[state=on]:text-accent-text",
+  success: "data-[state=on]:bg-success/15 data-[state=on]:text-success",
+  warning: "data-[state=on]:bg-warning/15 data-[state=on]:text-warning",
+  danger: "data-[state=on]:bg-danger/15 data-[state=on]:text-danger",
+};
 
 export interface SegmentedControlProps<V extends string = string> {
   value: V;
@@ -44,7 +53,7 @@ export function SegmentedControl<V extends string = string>({
       }}
       aria-label={ariaLabel}
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5",
+        "inline-flex items-center gap-0.5 rounded-full border border-border bg-surface-2 p-0.5",
         fullWidth && "flex w-full",
         className,
       )}
@@ -56,10 +65,12 @@ export function SegmentedControl<V extends string = string>({
           disabled={o.disabled}
           aria-label={o.ariaLabel}
           className={cn(
-            "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium text-muted-foreground transition-[color,background-color,box-shadow]",
-            "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
-            "data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm",
-            size === "sm" ? "h-6 px-2 text-xs [&_svg]:size-3.5" : "h-7 px-2.5 text-[13px] [&_svg]:size-4",
+            "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-150",
+            "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
+            o.tone
+              ? ACTIVE_TONE[o.tone]
+              : "data-[state=on]:bg-surface data-[state=on]:text-foreground data-[state=on]:shadow-xs dark:data-[state=on]:bg-surface-3",
+            size === "sm" ? "h-6 px-2.5 text-xs [&_svg]:size-3.5" : "h-7 px-3 text-[13px] [&_svg]:size-4",
             fullWidth && "flex-1",
           )}
         >

@@ -25,7 +25,7 @@ export function PageHeader({ title, description, eyebrow, icon, actions, meta, c
         <div className="flex min-w-0 items-start gap-3">
           {icon ? (
             <span
-              className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-brand shadow-xs [&_svg]:size-[18px]"
+              className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-brand shadow-panel [&_svg]:size-[18px]"
               aria-hidden
             >
               {icon}
@@ -33,10 +33,10 @@ export function PageHeader({ title, description, eyebrow, icon, actions, meta, c
           ) : null}
           <div className="grid min-w-0 gap-1">
             {eyebrow ? (
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle-foreground">{eyebrow}</p>
+              <p className="group-label">{eyebrow}</p>
             ) : null}
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h1 className="truncate text-xl font-semibold tracking-tight text-foreground sm:text-[22px]">{title}</h1>
+              <h1 className="truncate text-2xl font-semibold leading-tight tracking-[-0.02em] text-foreground sm:text-[28px]">{title}</h1>
               {meta}
             </div>
             {description ? (

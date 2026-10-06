@@ -43,8 +43,8 @@ export function StatCard({ label, value, icon, tone = "teal", hint, delta, loadi
   const body = (
     <div
       className={cn(
-        "group relative flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-xs",
-        href && "transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-md",
+        "group relative flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-panel",
+        href && "transition-[border-color,box-shadow] hover:border-border-strong hover:shadow-elevated",
         className,
       )}
     >
@@ -66,7 +66,7 @@ export function StatCard({ label, value, icon, tone = "teal", hint, delta, loadi
               <span
                 className={cn(
                   "inline-flex items-center gap-0.5 text-xs font-medium tabular-nums",
-                  good ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400",
+                  good ? "text-success" : "text-danger",
                 )}
               >
                 {up ? <ArrowUpRight className="size-3.5" aria-hidden /> : <ArrowDownRight className="size-3.5" aria-hidden />}

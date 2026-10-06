@@ -29,7 +29,7 @@ function Primitive({ value }: { value: JsonValue }) {
   if (value === undefined) return <span className="text-subtle-foreground">undefined</span>;
   switch (typeof value) {
     case "string":
-      return <span className="break-all text-teal-700 dark:text-teal-300">&quot;{value}&quot;</span>;
+      return <span className="break-all text-success">&quot;{value}&quot;</span>;
     case "number":
     case "bigint":
       return <span className="text-blue-700 dark:text-blue-300">{String(value)}</span>;

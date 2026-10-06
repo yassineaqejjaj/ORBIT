@@ -22,7 +22,7 @@ export function CitationTag({ citation, forgotten = false }: { citation: string;
         "inline-flex h-5 items-center rounded px-1.5 font-mono text-[11px] font-semibold ring-1 ring-inset",
         forgotten
           ? "bg-red-50 text-red-700 ring-red-600/25 dark:bg-red-400/10 dark:text-red-300"
-          : "bg-teal-50 text-teal-800 ring-teal-600/25 dark:bg-teal-400/10 dark:text-teal-300 dark:ring-teal-400/30",
+          : "bg-accent-soft text-accent-text ring-accent-coral/25",
       )}
     >
       {citation || "—"}

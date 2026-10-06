@@ -34,7 +34,7 @@ export function Alert({ tone = "blue", title, icon, action, className, children,
       className={cn("flex items-start gap-3 rounded-lg border px-3.5 py-3 text-[13px]", t.callout, className)}
       {...props}
     >
-      {resolvedIcon ? <span className="mt-px flex shrink-0 [&_svg]:size-4">{resolvedIcon}</span> : null}
+      {resolvedIcon ? <span className={cn("mt-px flex shrink-0 [&_svg]:size-4", t.text)}>{resolvedIcon}</span> : null}
       <div className="grid min-w-0 flex-1 gap-0.5">
         {title ? <p className="font-semibold leading-snug">{title}</p> : null}
         {children ? <div className="leading-relaxed opacity-90">{children}</div> : null}
