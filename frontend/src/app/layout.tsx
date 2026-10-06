@@ -8,9 +8,10 @@ import { themeInitScript } from "@/lib/theme-script";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  // The browser tab shows only the "o" favicon and "Orbit", whatever the page (page titles stay in the UI).
   title: {
-    default: "ORBIT — Contexte & mémoire pour agents IA",
-    template: "%s · ORBIT",
+    default: "Orbit",
+    template: "Orbit",
   },
   description:
     "ORBIT fournit à chaque agent IA le bon contexte, au bon moment : pertinence, fraîcheur, provenance et droits d'accès, avec une explicabilité complète.",
