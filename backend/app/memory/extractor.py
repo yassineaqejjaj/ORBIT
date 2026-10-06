@@ -41,9 +41,10 @@ from app.enums import (
     MemoryStatus,
     RelationType,
     SourceKind,
+    SourceTrust,
 )
 from app.ingestion.queue import PermanentJobError, track_step
-from app.memory import lifecycle
+from app.memory import lifecycle, poisoning
 from app.memory.conflicts import content_terms, fold, kind_family, normalize_text
 from app.memory.llm_extraction import (
     LLMExtractionStats,
@@ -393,6 +394,11 @@ def is_meeting_record(document: Document, first_text: str = "") -> bool:
     return bool(_MEETING.search(fold(head)) or _MEETING_CR.search(head))
 
 
+_TRUST_CONFIDENCE_DELTA: dict[SourceTrust, float] = {
+    SourceTrust.high: 0.0,
+    SourceTrust.medium: 0.0,
+    SourceTrust.low: -0.1,
+}
 _SOURCE_CONFIDENCE_DELTA: dict[SourceKind, float] = {
     SourceKind.agent_trace: -0.15,
     SourceKind.url: -0.1,
@@ -487,7 +493,9 @@ async def _collect_candidates(
 ) -> list[Candidate]:
     source_kind = SourceKind(source.kind)
     meeting = source_kind == SourceKind.note and is_meeting_record(document, chunks[0].text if chunks else "")
-    delta = _SOURCE_CONFIDENCE_DELTA.get(source_kind, 0.0)
+    trust = source.effective_trust
+    # §A3: low-trust sources lower the confidence and are never promoted to validated automatically.
+    delta = _SOURCE_CONFIDENCE_DELTA.get(source_kind, 0.0) + _TRUST_CONFIDENCE_DELTA[trust]
     candidates: list[Candidate] = []
     by_text: dict[str, Candidate] = {}
     for chunk in chunks:
@@ -498,7 +506,7 @@ async def _collect_candidates(
             result.used_llm = True
         statements = merge_statements(card_statements, rules)
         for statement in statements:
-            validated = meeting and statement.explicit_decision
+            validated = meeting and statement.explicit_decision and trust != SourceTrust.low
             statement.confidence = round(
                 max(0.3, min(0.95, statement.confidence + delta + (0.1 if validated else 0))), 2
             )
@@ -820,6 +828,10 @@ async def extract_from_document(session: AsyncSession, job: IngestionJob) -> dic
                 details=result.counters(),
             )
         await session.flush()
+        if result.created:
+            signals = await poisoning.check_and_record(session, document.project_id)  # §A3
+            if signals:
+                await session.flush()
         step.detail = result.detail()
         logger.info(
             "Memory extraction for document %s: %s in %.0f ms",

@@ -119,6 +119,9 @@ async def test_quarantine_flow(
     assert chunk["id"] not in {i["id"] for i in package["items"]}
     assert "collecte.example" not in package["context"]
 
+    overview = (await admin_client.get(f"{API}/{slug}/overview")).json()
+    assert any("1 fragment en quarantaine" in a["message"] for a in overview["alerts"])
+
     # Owners only: list + release (audited).
     assert (await editor.get(f"{API}/{slug}/documents/quarantine")).status_code == 403
     listed = (await admin_client.get(f"{API}/{slug}/documents/quarantine")).json()
@@ -185,3 +188,80 @@ async def test_spotlighting_in_context_and_mcp(
     assert all("collecte.example" not in h["text"] for h in hits)  # quarantined chunk never served
     assert result["untrusted_content_notice"] == spotlight.MCP_NOTICE
     assert spotlight.OPEN in result["context"] and "collecte.example" not in result["context"]
+
+
+# --- Trust (§A3) -------------------------------------------------------------------------------------
+
+
+def test_trust_weights_ranking() -> None:
+    from app.context import rerank
+    from app.enums import CandidateType
+    from app.governance.policy import Candidate
+
+    def cand(trust: str) -> Candidate:
+        c = Candidate(CandidateType.chunk, trust, "t", "x", 1, ["project:*"], "active", None, trust=trust)
+        c.scores.final = c.score = 0.8
+        return c
+
+    high, medium, low = cand("high"), cand("medium"), cand("low")
+    rerank.apply_trust([high, medium, low])
+    assert high.score == 0.8 > medium.score > low.score
+    assert low.scores.trust == pytest.approx(0.85)
+
+
+def test_default_trust_per_kind() -> None:
+    from app.enums import SourceKind, SourceTrust
+    from app.models.source import effective_trust
+
+    assert effective_trust(SourceKind.document, None) == SourceTrust.high
+    assert effective_trust(SourceKind.agent_trace, None) == SourceTrust.low
+    assert effective_trust(SourceKind.agent_trace, "high") == SourceTrust.high
+
+
+async def test_source_trust_is_owner_only(
+    admin_client: httpx.AsyncClient,
+    project: dict,  # type: ignore[type-arg]
+    make_user: Callable[..., Awaitable[UserInfo]],
+    client_for: Callable[[UserInfo], Awaitable[httpx.AsyncClient]],
+) -> None:
+    slug = str(project["slug"])
+    _, editor = await _member(admin_client, slug, make_user, client_for, "editor", 1)
+    created = await editor.post(f"{API}/{slug}/sources", json={"name": "Veille web", "kind": "url"})
+    assert created.status_code == 201, created.text
+    source = created.json()
+    assert source["trust"] is None and source["effective_trust"] == "low"
+    url = f"{API}/{slug}/sources/{source['id']}"
+    assert (await editor.patch(url, json={"trust": "high"})).status_code == 403
+    updated = await admin_client.patch(url, json={"trust": "medium"})
+    assert updated.status_code == 200 and updated.json()["effective_trust"] == "medium"
+
+
+async def test_poisoning_alert_on_agent_burst(
+    admin_client: httpx.AsyncClient,
+    agent_setup: Any,  # noqa: F811
+    agent_client: Callable[[str], httpx.AsyncClient],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "poisoning_alert_threshold", 3)
+    slug = agent_setup.slug
+    overview = (await admin_client.get(f"{API}/{slug}/overview")).json()
+    assert not any("Empoisonnement" in a["message"] for a in overview["alerts"])
+    agent = agent_client(agent_setup.api_key)
+    for n in range(4):
+        body = {
+            "scope": "project",
+            "kind": "fact",
+            "title": f"Fait {n}",
+            "content": f"Le fournisseur {n} est validé.",
+        }
+        response = await agent.post(f"{API}/{slug}/memory", json=body)
+        assert response.status_code == 201, response.text
+    overview = (await admin_client.get(f"{API}/{slug}/overview")).json()
+    alert = next(a for a in overview["alerts"] if "Empoisonnement" in a["message"])
+    assert alert["level"] == "critical" and "Agent Produit" in alert["message"]
+    audit = (
+        await admin_client.get(f"{API}/{slug}/audit", params={"action": "security.poisoning_alert"})
+    ).json()
+    assert len(audit["items"]) == 1  # recorded once per window

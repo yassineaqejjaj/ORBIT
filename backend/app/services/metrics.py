@@ -44,6 +44,7 @@ from app.enums import (
     SourceKind,
 )
 from app.governance.acl import acl_allows, effective_principals
+from app.memory import poisoning
 from app.models import (
     Agent,
     AuditLog,
@@ -188,6 +189,9 @@ class AlertSignals:
     pending_proposals: int = 0
     c2_documents: int = 0
     c3_documents: int = 0
+    #: §A1 chunks held in quarantine, §A3 poisoning alert messages.
+    quarantined_chunks: int = 0
+    poisoning: tuple[str, ...] = ()
 
 
 _ALERT_RANK = {AlertLevel.critical: 0, AlertLevel.warning: 1, AlertLevel.info: 2}
@@ -195,7 +199,17 @@ _ALERT_RANK = {AlertLevel.critical: 0, AlertLevel.warning: 1, AlertLevel.info: 2
 
 def build_alerts(signals: AlertSignals) -> list[Alert]:
     """French alerts, most severe first."""
-    alerts: list[Alert] = []
+    alerts: list[Alert] = [Alert(level=AlertLevel.critical, message=message) for message in signals.poisoning]
+    if signals.quarantined_chunks:
+        alerts.append(
+            Alert(
+                level=AlertLevel.warning,
+                message=_plural(
+                    signals.quarantined_chunks, "fragment en quarantaine", "fragments en quarantaine"
+                )
+                + " (injection de prompt suspectée) — à examiner par un propriétaire.",
+            )
+        )
     if signals.failed_jobs:
         alerts.append(
             Alert(
@@ -469,6 +483,14 @@ async def build_overview(session: AsyncSession, access: ProjectAccess) -> Overvi
             pending_proposals=pending_proposals,
             c2_documents=by_classification.get(2, 0),
             c3_documents=by_classification.get(3, 0),
+            quarantined_chunks=await _count(
+                session,
+                Chunk.id,
+                Chunk.project_id == pid,
+                Chunk.quarantined.is_(True),
+                Chunk.status == ChunkStatus.active,
+            ),
+            poisoning=tuple(s.message for s in await poisoning.detect(session, pid, now)),
         )
     )
 

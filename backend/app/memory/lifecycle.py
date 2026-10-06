@@ -581,6 +581,10 @@ async def create_item(
         await supersede(session, old, item, resolved, reason=None)
     elif detect:
         await detect_relations(session, item, vector=vector)
+    if resolved.type == ActorType.agent and project_id is not None:
+        from app.memory import poisoning  # local import: poisoning depends on the models only
+
+        await poisoning.check_and_record(session, project_id)  # §A3 burst of agent proposals
     return item
 
 
