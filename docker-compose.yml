@@ -15,8 +15,8 @@ x-backend: &backend
     context: ./backend
     args:
       ORBIT_EMBEDDING_MODEL: ${ORBIT_EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
-      PRELOAD_RERANKER: ${PRELOAD_RERANKER:-false}
-      ORBIT_RERANKER_MODEL: ${ORBIT_RERANKER_MODEL:-jinaai/jina-reranker-v2-base-multilingual}
+      PRELOAD_RERANKER: ${PRELOAD_RERANKER:-true}
+      ORBIT_RERANKER_MODEL: ${ORBIT_RERANKER_MODEL:-cross-encoder/mmarco-mMiniLMv2-L12-H384-v1}
   image: orbit-backend:latest
   env_file:
     - path: .env

@@ -252,7 +252,8 @@ Variables d'environnement préfixées `ORBIT_` (voir [`.env.example`](.env.examp
 | `ORBIT_COOKIE_SECURE` | `false` | `true` derrière HTTPS |
 | `ORBIT_EMBEDDING_PROVIDER` | `fastembed` | `fastembed` (local, hors ligne), `openai` (TEI, vLLM, LiteLLM… via `ORBIT_EMBEDDING_BASE_URL` / `_API_KEY`), `hash` (tests) |
 | `ORBIT_EMBEDDING_MODEL` / `ORBIT_EMBEDDING_DIM` | `paraphrase-multilingual-MiniLM-L12-v2` / `384` | Modèle et dimension (doivent correspondre) |
-| `ORBIT_RERANKER` | `heuristic` | `heuristic`, `fastembed` (cross-encoder multilingue) ou `none` |
+| `ORBIT_RERANKER` | `heuristic` | `heuristic`, `fastembed` (cross-encoder multilingue local) ou `none` |
+| `ORBIT_RERANKER_MODEL` | `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` | Cross-encoder fastembed (Apache-2.0, multilingue FR/EN, ~470 Mo, embarqué dans l'image : build arg `PRELOAD_RERANKER=true`) ; repli heuristique en cas d'échec |
 | `ORBIT_LLM_PROVIDER` | `openai` | `openai` (compatible OpenAI : vLLM, Ollama, LiteLLM) ou `anthropic` (Messages API, modèle par défaut `claude-sonnet-5`) |
 | `ORBIT_LLM_BASE_URL` / `ORBIT_LLM_MODEL` / `ORBIT_LLM_API_KEY` | vide | LLM **optionnel** (extraction de mémoire, réponses de *Demander à ORBIT*). Sans LLM, tout fonctionne en mode déterministe |
 | `ORBIT_LLM_MAX_CLASSIFICATION` / `ORBIT_LLM_LOCAL` / `ORBIT_LLM_REDACT_PII` | `1` / `false` / `true` | Garde-fou : rien au-dessus de C1 n'est envoyé à un LLM externe (sauf LLM auto-hébergé déclaré), données personnelles masquées |

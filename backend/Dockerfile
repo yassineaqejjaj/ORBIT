@@ -67,8 +67,8 @@ RUN for tool in "mcp-atlassian==${MCP_ATLASSIAN_VERSION}" "workspace-mcp==${WORK
 
 # 2. Embedding model (and optionally the cross-encoder reranker) baked into the image
 ARG ORBIT_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-ARG PRELOAD_RERANKER=false
-ARG ORBIT_RERANKER_MODEL=jinaai/jina-reranker-v2-base-multilingual
+ARG PRELOAD_RERANKER=true
+ARG ORBIT_RERANKER_MODEL=cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
 ENV ORBIT_EMBEDDING_MODEL=${ORBIT_EMBEDDING_MODEL}
 COPY docker/preload_models.py /tmp/preload_models.py
 RUN python /tmp/preload_models.py \

@@ -20,17 +20,28 @@ import asyncio
 import logging
 import math
 import threading
+import time
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
+
+from prometheus_client import Histogram
 
 from app.config import settings
 from app.context.textutils import cosine, term_overlap
 from app.enums import CandidateType, MemoryKind, MemoryStatus
 from app.governance import freshness
 from app.governance.policy import Candidate
+from app.search.reranker_models import PERMISSIVE_LICENSES, ensure_registered, license_of
 
 logger = logging.getLogger("orbit.context.rerank")
+
+#: Cross-encoder latency (§B2: measured, exposed to Prometheus and in the rerank stage timing).
+CROSS_ENCODER_LATENCY = Histogram(
+    "orbit_reranker_latency_seconds",
+    "Cross-encoder reranking latency per context request",
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1.5, 3.0, 8.0),
+)
 
 W_RRF = 0.55
 W_DENSE = 0.20
@@ -142,6 +153,14 @@ def _load_encoder() -> Any:
             try:
                 from fastembed.rerank.cross_encoder import TextCrossEncoder
 
+                ensure_registered(settings.reranker_model)
+                licence = license_of(settings.reranker_model)
+                if licence is not None and licence.lower() not in PERMISSIVE_LICENSES:
+                    logger.warning(
+                        "Cross-encoder %s is licensed %s (not permissive): check your usage rights",
+                        settings.reranker_model,
+                        licence,
+                    )
                 kwargs: dict[str, Any] = {"model_name": settings.reranker_model}
                 if settings.model_cache_dir:
                     kwargs["cache_dir"] = settings.model_cache_dir
@@ -182,6 +201,7 @@ async def apply_cross_encoder(candidates: Sequence[Candidate], *, query: str) ->
     if not pool:
         return True
     passages = [f"{c.title}\n{c.text}"[:CROSS_ENCODER_MAX_CHARS] for c in pool]
+    started = time.perf_counter()
     try:
         raw = await asyncio.wait_for(
             asyncio.to_thread(_cross_encode, query, passages), timeout=CROSS_ENCODER_TIMEOUT_SECONDS
@@ -189,6 +209,7 @@ async def apply_cross_encoder(candidates: Sequence[Candidate], *, query: str) ->
     except Exception as exc:
         logger.warning("Cross-encoder reranking skipped: %s", exc)
         return False
+    CROSS_ENCODER_LATENCY.observe(time.perf_counter() - started)
     for c, logit in zip(pool, raw, strict=True):
         s = c.scores
         s.cross_encoder = _sigmoid(logit)

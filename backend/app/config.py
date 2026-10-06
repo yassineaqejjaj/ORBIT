@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     #: Local cache for fastembed models (baked into the Docker image). Falls back to FASTEMBED_CACHE_PATH.
     model_cache_dir: str = ""
     reranker: Literal["heuristic", "fastembed", "none"] = "heuristic"
-    reranker_model: str = "jinaai/jina-reranker-v2-base-multilingual"
+    reranker_model: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 
     # --- Optional LLM (OpenAI-compatible) ---------------------------------------------------------
     llm_base_url: str = ""

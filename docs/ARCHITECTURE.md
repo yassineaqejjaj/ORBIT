@@ -45,7 +45,7 @@ Flux : `Sources métier → ingestion & normalisation → indexation → gouvern
 | `ORBIT_EMBEDDING_DIM` | `384` | doit correspondre au modèle |
 | `ORBIT_EMBEDDING_BASE_URL` / `ORBIT_EMBEDDING_API_KEY` | vide | provider `openai` |
 | `ORBIT_RERANKER` | `heuristic` | `heuristic` \| `fastembed` (cross-encoder) \| `none` |
-| `ORBIT_RERANKER_MODEL` | `jinaai/jina-reranker-v2-base-multilingual` | |
+| `ORBIT_RERANKER_MODEL` | `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` | Apache-2.0, multilingue (§B2) |
 | `ORBIT_LLM_BASE_URL` / `ORBIT_LLM_MODEL` / `ORBIT_LLM_API_KEY` | vide | LLM **optionnel** compatible OpenAI (vLLM, Ollama, LiteLLM). Sans LLM, tout fonctionne en mode déterministe (règles + extraction). |
 | `ORBIT_OTLP_ENDPOINT` | vide | Export OpenTelemetry (Langfuse, Jaeger, Tempo…) |
 | `ORBIT_INDEX_PREFIX` | `orbit` | Index : `{prefix}-chunks-v1`, `{prefix}-memory-v1` |
