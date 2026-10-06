@@ -49,6 +49,7 @@ import {
   type ExplorerFormErrors,
   type ExplorerFormState,
 } from "@/lib/explorer-utils";
+import { agentColorStyle } from "@/lib/agent-colors";
 import { formatDate, formatNumber } from "@/lib/format";
 import { toneClasses } from "@/lib/tones";
 import { cn, modKeyLabel } from "@/lib/utils";
@@ -190,7 +191,11 @@ export function TaskComposer({
       value: a.id,
       label: a.name,
       description: `${AGENT_KIND_META[a.kind]?.label ?? a.kind} · habilitation ${CLASSIFICATION_META[a.clearance]?.code ?? `C${a.clearance}`}`,
-      icon: <EnumIcon name={AGENT_KIND_META[a.kind]?.icon} />,
+      icon: (
+        <span className="agent-text flex" style={agentColorStyle(a.kind)}>
+          <EnumIcon name={AGENT_KIND_META[a.kind]?.icon} />
+        </span>
+      ),
     })),
   ];
   // Keep a selected agent visible while the list loads (or if it was revoked meanwhile).
