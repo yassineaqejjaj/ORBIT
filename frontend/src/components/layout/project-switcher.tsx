@@ -34,7 +34,7 @@ function ProjectGlyph({ name, className }: { name: string; className?: string })
 }
 
 /** Sidebar dropdown to switch project or create a new one. */
-export function ProjectSwitcher({ slug }: { slug?: string }) {
+export function ProjectSwitcher({ slug, compact = false }: { slug?: string; /** Icon-only trigger (collapsed sidebar). */ compact?: boolean }) {
   const router = useRouter();
   const { openCreateProject } = useShell();
   const projects = useProjects();
@@ -46,14 +46,17 @@ export function ProjectSwitcher({ slug }: { slug?: string }) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="group flex w-full items-center gap-2.5 rounded-lg border border-sidebar-border bg-background px-2 py-1.5 text-left shadow-xs transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label="Changer de projet"
+          className={cn(
+            "group flex items-center rounded-lg border border-sidebar-border bg-surface-2 text-left transition-colors hover:border-border-strong hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+            compact ? "size-10 justify-center p-0" : "w-full gap-2.5 px-2 py-1.5",
+          )}
+          aria-label={currentName ? `Changer de projet (projet actuel : ${currentName})` : "Changer de projet"}
         >
           {slug ? (
             currentName ? (
               <ProjectGlyph name={currentName} />
             ) : current.isError ? (
-              <ProjectGlyph name="?" className="from-slate-400 to-slate-600" />
+              <ProjectGlyph name="?" className="bg-surface-3 text-muted-foreground ring-border" />
             ) : (
               <Skeleton className="size-7" />
             )
@@ -62,16 +65,18 @@ export function ProjectSwitcher({ slug }: { slug?: string }) {
               <FolderKanban className="size-3.5" aria-hidden />
             </span>
           )}
-          <span className="grid min-w-0 flex-1 leading-tight">
+          <span className={cn("grid min-w-0 flex-1 leading-tight", compact && "sr-only")}>
             <span className="text-[10.5px] font-medium uppercase tracking-wider text-subtle-foreground">Projet</span>
             <span className="truncate text-[13px] font-semibold text-foreground">
               {slug ? (currentName ?? (current.isError ? "Projet indisponible" : "Chargement…")) : "Choisir un projet"}
             </span>
           </span>
-          <ChevronsUpDown className="size-4 shrink-0 text-subtle-foreground group-hover:text-foreground" aria-hidden />
+          {compact ? null : (
+            <ChevronsUpDown className="size-4 shrink-0 text-subtle-foreground group-hover:text-foreground" aria-hidden />
+          )}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-64">
+      <DropdownMenuContent align="start" side={compact ? "right" : "bottom"} className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-64">
         <DropdownMenuLabel>Mes projets</DropdownMenuLabel>
         {projects.isPending ? (
           <div className="grid gap-1.5 p-2">

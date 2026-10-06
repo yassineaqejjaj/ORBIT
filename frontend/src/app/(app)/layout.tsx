@@ -9,12 +9,14 @@ import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { MobileTabBar } from "@/components/layout/mobile-tab-bar";
 import { ShellProvider, useShell } from "@/components/layout/shell-context";
 import { SplashScreen } from "@/components/layout/splash-screen";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/api/client";
 import { useMe } from "@/lib/api/hooks";
+import { cn } from "@/lib/utils";
 
 function GlobalCreateProjectDialog() {
   const { createProjectOpen, setCreateProjectOpen } = useShell();
@@ -26,7 +28,7 @@ function BackendUnavailable({ error, onRetry, retrying }: { error: unknown; onRe
     <div className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-background px-4 text-center">
       <OrbitLogo />
       <div className="grid max-w-md justify-items-center gap-3">
-        <span className="flex size-11 items-center justify-center rounded-xl border border-border bg-card text-destructive shadow-xs">
+        <span className="flex size-11 items-center justify-center rounded-xl border border-border bg-card text-destructive shadow-panel">
           <ServerCrash className="size-5" aria-hidden />
         </span>
         <h1 className="text-lg font-semibold tracking-tight">Service ORBIT indisponible</h1>
@@ -64,11 +66,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <MobileNav slug={slug} />
         <div className="flex min-w-0 flex-1 flex-col">
           <AppHeader />
-          <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
+          <main
+            id="main-content"
+            tabIndex={-1}
+            className={cn(
+              "flex-1 focus:outline-none",
+              // Keep content clear of the fixed mobile tab bar (64 px + safe area).
+              slug && "pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0",
+            )}
+          >
             <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</div>
           </main>
         </div>
       </div>
+      <MobileTabBar slug={slug} />
       <CommandPalette />
       <GlobalCreateProjectDialog />
     </ShellProvider>

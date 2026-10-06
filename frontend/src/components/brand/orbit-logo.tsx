@@ -5,36 +5,21 @@ import Image from "next/image";
 
 import { cn } from "@/lib/utils";
 
-/** Ring geometry shared by the mark (unrotated ellipse centred on the planet). */
-const RX = 13;
-const RY = 2.8;
-const TILT = -22;
-const BACK_ARC = `M ${-RX} 0 A ${RX} ${RY} 0 0 1 ${RX} 0`;
-const FRONT_ARC = `M ${-RX} 0 A ${RX} ${RY} 0 0 0 ${RX} 0`;
-// Satellite on the front half of the ring (t = 50°), clear of the planet.
-const SAT_X = +(RX * Math.cos((50 * Math.PI) / 180)).toFixed(2);
-const SAT_Y = +(RY * Math.sin((50 * Math.PI) / 180)).toFixed(2);
+/** ORBIT "o" ring path (same geometry as src/app/icon.svg and public/orbit-mark.svg). */
+const RING_PATH =
+  "M16 2.42a14 13.58 0 1 0 0 27.16a14 13.58 0 1 0 0-27.16Z M16.02 10.15a5.91 5.91 0 1 1 0 11.82a5.91 5.91 0 1 1 0-11.82Z";
 
 export interface OrbitMarkProps extends React.SVGProps<SVGSVGElement> {
-  /** "tile": white mark on a teal gradient tile (app icon). "bare": teal mark on transparent. */
-  variant?: "tile" | "bare";
-  /** Accessible title; omit when the mark sits next to the wordmark. */
+  /** Accessible title; omit when the mark sits next to a visible name. */
   title?: string;
 }
 
 /**
- * ORBIT mark — a planet crossed by a tilted orbit ring carrying a satellite.
- * The ring passes behind the planet (occluded) and in front of it (knock-out gap).
+ * ORBIT mark — the "o" ring of the wordmark, in the brand gradient (coral → magenta → indigo).
+ * The gradient is reserved to the brand (logo, icon, presence ring).
  */
-export function OrbitMark({ variant = "tile", title, className, ...props }: OrbitMarkProps) {
-  const uid = React.useId().replace(/:/g, "");
-  const gradId = `orbit-grad-${uid}`;
-  const planetId = `orbit-planet-${uid}`;
-  const maskId = `orbit-cut-${uid}`;
-  const tile = variant === "tile";
-  const ring = tile ? "#ffffff" : "var(--brand)";
-  const planetFill = tile ? `url(#${planetId})` : `url(#${gradId})`;
-
+export function OrbitMark({ title, className, ...props }: OrbitMarkProps) {
+  const gradId = `orbit-ring-${React.useId().replace(/:/g, "")}`;
   return (
     <svg
       viewBox="0 0 32 32"
@@ -46,35 +31,15 @@ export function OrbitMark({ variant = "tile", title, className, ...props }: Orbi
     >
       {title ? <title>{title}</title> : null}
       <defs>
-        <linearGradient id={gradId} x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#2ED3B7" />
-          <stop offset="0.55" stopColor="#0E9384" />
-          <stop offset="1" stopColor="#125D56" />
+        <linearGradient id={gradId} x1="2" y1="0" x2="30" y2="0" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#FD5051" />
+          <stop offset="0.4" stopColor="#FB3268" />
+          <stop offset="0.6" stopColor="#CF208F" />
+          <stop offset="0.85" stopColor="#7407C0" />
+          <stop offset="1" stopColor="#3A01D3" />
         </linearGradient>
-        <linearGradient id={planetId} x1="11" y1="10" x2="21" y2="22" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#FFFFFF" />
-          <stop offset="1" stopColor="#CCFBEF" />
-        </linearGradient>
-        <mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
-          <rect width="32" height="32" fill="#fff" />
-          <g transform={`translate(16 16) rotate(${TILT})`}>
-            <path d={FRONT_ARC} fill="none" stroke="#000" strokeWidth="3.8" strokeLinecap="round" />
-          </g>
-        </mask>
       </defs>
-
-      {tile ? <rect width="32" height="32" rx="8" fill={`url(#${gradId})`} /> : null}
-
-      <g transform={`translate(16 16) rotate(${TILT})`}>
-        <path d={BACK_ARC} fill="none" stroke={ring} strokeOpacity={tile ? 0.6 : 0.45} strokeWidth="1.7" strokeLinecap="round" />
-      </g>
-
-      <circle cx="16" cy="16" r="6.1" fill={planetFill} mask={`url(#${maskId})`} />
-
-      <g transform={`translate(16 16) rotate(${TILT})`}>
-        <path d={FRONT_ARC} fill="none" stroke={ring} strokeWidth="1.7" strokeLinecap="round" />
-        <circle cx={SAT_X} cy={SAT_Y} r="1.75" fill={tile ? "#ffffff" : "var(--brand)"} />
-      </g>
+      <path fill={`url(#${gradId})`} fillRule="evenodd" d={RING_PATH} />
     </svg>
   );
 }
@@ -133,7 +98,7 @@ export function OrbitLogo({ className, size = 26, hideTagline = false, tagline =
   );
 }
 
-/** The three NOVA programme constellation dots (NOVA Core red, ORBIT teal, FORGE violet). */
+/** The three NOVA programme constellation dots (NOVA Core coral, ORBIT magenta, FORGE violet). */
 export function ConstellationDots({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-1", className)} aria-hidden>
