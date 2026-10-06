@@ -70,6 +70,15 @@ function ChunkCard({ chunk, redacted, canSeeOriginal }: { chunk: ChunkView; reda
           ))}
           {chunk.classification >= 2 ? <ClassificationBadge level={chunk.classification} showLabel={false} /> : null}
           {chunk.status !== "active" ? <StatusBadge kind="chunk" status={chunk.status} /> : null}
+          {chunk.quarantined ? (
+            <Badge
+              tone="danger"
+              size="sm"
+              title={(chunk.injection_reasons ?? []).map((r) => r.label).join(" · ") || "Injection de prompt suspectée"}
+            >
+              Quarantaine
+            </Badge>
+          ) : null}
           <span className="text-xs tabular-nums text-muted-foreground">{formatTokens(chunk.token_count)}</span>
         </span>
       </header>

@@ -9,6 +9,7 @@ import type {
   AgentCreated,
   AuditEvent,
   AuditListParams,
+  ChunkView,
   ContextFeedbackIn,
   ContextPackage,
   ContextRequestDetail,
@@ -62,6 +63,7 @@ import type {
   SnapshotSummary,
   SnapshotVersionRef,
   SupersedeIn,
+  QuarantinedChunk,
   Source,
   SourceCreateIn,
   SourceUpdateIn,
@@ -502,6 +504,39 @@ export function exportTraces(slug: string, params: TraceExportParams = {}, opts:
     query: { days: params.days },
     responseType: "text",
     ...opts,
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* AI security (quarantine, AI Act traceability report)                       */
+/* -------------------------------------------------------------------------- */
+
+/** GET /projects/{slug}/documents/quarantine (owner) → chunks held in quarantine. */
+export function listQuarantine(slug: string, opts: Opts = {}): Promise<QuarantinedChunk[]> {
+  return http.get<QuarantinedChunk[]>(`${p(slug)}/documents/quarantine`, opts);
+}
+
+/** POST /projects/{slug}/documents/{id}/chunks/{chunk}/release (owner, audited) → ChunkView */
+export function releaseQuarantine(slug: string, documentId: UUID, chunkId: UUID): Promise<ChunkView> {
+  return http.post<ChunkView>(`${p(slug)}/documents/${e(documentId)}/chunks/${e(chunkId)}/release`);
+}
+
+export interface ComplianceReportParams {
+  format?: "json" | "html";
+  request_id?: string;
+  memory_id?: string;
+  from?: string;
+  to?: string;
+}
+
+/** URL of GET /projects/{slug}/compliance/report (owner) — JSON download or printable HTML. */
+export function complianceReportUrl(slug: string, params: ComplianceReportParams = {}): string {
+  return apiUrl(`${p(slug)}/compliance/report`, {
+    format: params.format,
+    request_id: params.request_id || undefined,
+    memory_id: params.memory_id || undefined,
+    from: params.from || undefined,
+    to: params.to || undefined,
   });
 }
 

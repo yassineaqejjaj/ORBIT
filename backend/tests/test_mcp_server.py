@@ -725,7 +725,10 @@ async def test_get_snapshot_hides_restricted_items(
         missing = await mcp.call_tool("get_snapshot", {"name": "design-atlas"})
 
     assert latest["version"] == 2 and latest["parent_version"] == 1 and latest["restricted_items"] == 0
-    assert latest["content"] == spotlight.wrap("[S1] 650 postes") and latest["created_by_label"] == "Agent Produit"
+    assert (
+        latest["content"] == spotlight.wrap("[S1] 650 postes")
+        and latest["created_by_label"] == "Agent Produit"
+    )
     assert first["restricted_items"] == 1 and first["items_count"] == 1
     assert [i["citation"] for i in first["items"]] == ["S1"]
     assert "480" not in first["content"] and "Budget" not in json.dumps(first)

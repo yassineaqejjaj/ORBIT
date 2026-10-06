@@ -146,7 +146,34 @@ export interface Source {
   created_at: ISODateString;
   updated_at: ISODateString;
   last_ingested_at: ISODateString | null;
+  /** Explicit trust (null = default of the kind) and effective level (AI security §A3). */
+  trust?: SourceTrust | null;
+  effective_trust?: SourceTrust;
   counts: SourceCounts;
+}
+
+export type SourceTrust = "high" | "medium" | "low";
+
+/** One prompt-injection signal of a chunk (AI security §A1). */
+export interface InjectionReason {
+  code: string;
+  label: string;
+  weight: number;
+  excerpt: string;
+}
+
+/** GET /projects/{slug}/documents/quarantine (owners). */
+export interface QuarantinedChunk {
+  id: UUID;
+  document_id: UUID;
+  document_title: string;
+  version: number;
+  ordinal: number;
+  section: string | null;
+  text: string;
+  injection_score: number;
+  injection_reasons: InjectionReason[];
+  created_at: ISODateString;
 }
 
 export interface DocumentSummary {
@@ -200,6 +227,10 @@ export interface ChunkView {
   pii: PiiEntity[];
   classification: Classification;
   status: ChunkStatus;
+  injection_score?: number;
+  injection_reasons?: InjectionReason[];
+  quarantined?: boolean;
+  quarantine_released_at?: ISODateString | null;
 }
 
 /** Known pipeline step names; unknown names are allowed (`string`). */
@@ -458,6 +489,8 @@ export interface SourceCreateIn {
   default_classification?: Classification;
   default_acl?: string[];
   config?: JsonObject;
+  /** Owners only (AI security §A3). */
+  trust?: SourceTrust;
 }
 
 export type SourceUpdateIn = Partial<SourceCreateIn>;

@@ -22,7 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useMembers } from "@/lib/api/hooks";
 import type { ApiError } from "@/lib/api/client";
 import type { Source } from "@/lib/api/types";
-import { getMeta, SOURCE_KIND_META } from "@/lib/enums";
+import { getMeta, SOURCE_KIND_META, SOURCE_TRUST_META } from "@/lib/enums";
 import { formatNumber, formatPercent, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AclChips } from "./acl-chips";
@@ -140,6 +140,7 @@ export function SourcesPanel({ slug, sources, isPending, error, onRetry, onShowD
                     </h3>
                     <p className="truncate text-xs text-muted-foreground">
                       {getMeta(SOURCE_KIND_META, source.kind).label}
+                      {source.effective_trust ? ` · ${SOURCE_TRUST_META[source.effective_trust].label.toLowerCase()}` : ""}
                       {source.last_ingested_at ? (
                         <>
                           {" · dernière ingestion "}

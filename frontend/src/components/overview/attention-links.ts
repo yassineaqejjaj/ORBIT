@@ -12,6 +12,12 @@ export interface AlertLink {
 /** Best-effort link from a backend alert message to the screen where it can be handled. */
 export function alertLink(slug: string, message: string): AlertLink | null {
   const text = normalizeText(message);
+  if (/empoisonnement/.test(text)) {
+    return { href: projectHref(slug, "inbox"), label: "Vérifier les propositions suspectes", cta: "Vérifier" };
+  }
+  if (/quarantaine/.test(text)) {
+    return { href: `${projectHref(slug, "sources")}?tab=quarantine`, label: "Examiner la quarantaine", cta: "Examiner" };
+  }
   if (/(echec|echoue|failed|erreur)/.test(text)) {
     return { href: `${projectHref(slug, "sources")}?tab=jobs&job_status=failed`, label: "Voir les traitements en échec", cta: "Voir" };
   }

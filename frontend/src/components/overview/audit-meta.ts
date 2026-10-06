@@ -48,6 +48,11 @@ export const AUDIT_ACTION_META: Record<string, AuditActionMeta> = {
   "governance.acl_change": { label: "Droits d'accès modifiés", tone: "amber" },
   "governance.classification_change": { label: "Classification modifiée", tone: "amber" },
   "traces.export": { label: "Export des traces", tone: "neutral" },
+  // AI security (docs/AI_CONTEXT_ENGINEERING.md §A).
+  "security.quarantine": { label: "Fragment mis en quarantaine", tone: "red" },
+  "security.quarantine_release": { label: "Fragment libéré de la quarantaine", tone: "amber" },
+  "security.poisoning_alert": { label: "Alerte d'empoisonnement", tone: "red" },
+  "compliance.export": { label: "Rapport de traçabilité IA exporté", tone: "neutral" },
   // Product features (docs/FEATURES.md) — product language, the raw action stays visible in the audit log.
   "ask.question": { label: "Question posée à ORBIT", tone: "teal" },
   "memory.bulk": { label: "Revue de la mémoire", tone: "green" },
@@ -87,6 +92,8 @@ export const AUDIT_DOMAINS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "session", label: "Sessions d'agents" },
   { value: "auth", label: "Connexions" },
   { value: "traces", label: "Exports de traces" },
+  { value: "security", label: "Sécurité IA" },
+  { value: "compliance", label: "Conformité IA" },
 ];
 
 const DOMAIN_TONES: Record<string, Tone> = {

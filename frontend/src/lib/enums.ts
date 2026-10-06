@@ -381,6 +381,7 @@ export const REASON_CODES = [
   "EXCLUDED_LOW_SCORE",
   "EXCLUDED_BUDGET",
   "EXCLUDED_FORGOTTEN",
+  "EXCLUDED_QUARANTINE",
 ] as const;
 export type ReasonCode = (typeof REASON_CODES)[number];
 
@@ -416,6 +417,13 @@ export const REASON_CODE_META: Record<ReasonCode, ReasonCodeMeta> = {
     included: false,
   },
   EXCLUDED_FORGOTTEN: { label: "Exclu — oubli sélectif", short: "Oublié", tone: "red", group: "governance", included: false },
+  EXCLUDED_QUARANTINE: {
+    label: "Exclu — quarantaine (injection suspectée)",
+    short: "Quarantaine",
+    tone: "red",
+    group: "governance",
+    included: false,
+  },
   EXCLUDED_STALE: { label: "Exclu — information périmée", short: "Périmé", tone: "amber", group: "quality", included: false },
   EXCLUDED_SUPERSEDED: { label: "Exclu — remplacé", short: "Remplacé", tone: "amber", group: "quality", included: false },
   EXCLUDED_CONFLICT: { label: "Exclu — contradiction résolue", short: "Conflit", tone: "amber", group: "quality", included: false },
@@ -445,6 +453,7 @@ export const REASON_CODE_ORDER: readonly ReasonCode[] = [
   "EXCLUDED_FORGOTTEN",
   "EXCLUDED_ACL",
   "EXCLUDED_CLASSIFICATION",
+  "EXCLUDED_QUARANTINE",
   "EXCLUDED_SCOPE",
   "EXCLUDED_EXPIRED",
   "EXCLUDED_STALE",
@@ -608,3 +617,30 @@ export function aclPrincipalLabel(principal: string, userNames?: Record<string, 
   if (principal.startsWith("role:")) return `Rôle ${principal.slice(5)}`;
   return principal;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Source trust (AI security §A3)                                             */
+/* -------------------------------------------------------------------------- */
+
+export type SourceTrustLevel = "high" | "medium" | "low";
+
+export const SOURCE_TRUST_META: Record<SourceTrustLevel, EnumMeta> = {
+  high: { label: "Confiance élevée", tone: "teal", description: "Contenus maîtrisés : aucun ajustement du classement." },
+  medium: { label: "Confiance moyenne", tone: "neutral", description: "Légère pénalité de classement." },
+  low: {
+    label: "Confiance faible",
+    tone: "amber",
+    description: "Pénalité de classement, jamais promu automatiquement en mémoire validée.",
+  },
+};
+
+/** Default trust of each source kind (mirrors the backend `DEFAULT_SOURCE_TRUST`). */
+export const DEFAULT_SOURCE_TRUST: Record<SourceKind, SourceTrustLevel> = {
+  document: "high",
+  note: "medium",
+  ticket: "medium",
+  crm: "medium",
+  feedback: "low",
+  agent_trace: "low",
+  url: "low",
+};

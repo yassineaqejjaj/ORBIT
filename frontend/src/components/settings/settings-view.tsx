@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Lock, Plug, ScrollText, Settings, SlidersHorizontal, Users, Webhook } from "lucide-react";
+import { Bot, Lock, Plug, ScrollText, Settings, ShieldCheck, SlidersHorizontal, Users, Webhook } from "lucide-react";
 
 import { RoleBadge } from "@/components/domain/enum-badge";
 import { useUrlParams } from "@/components/sources/use-url-params";
@@ -11,12 +11,13 @@ import { useCurrentProject } from "@/hooks/use-current-project";
 import { useAgents, useMembers } from "@/lib/api/hooks";
 import { AgentsPanel } from "./agents-panel";
 import { AuditPanel } from "./audit-panel";
+import { CompliancePanel } from "./compliance-panel";
 import { McpPanel } from "./mcp-panel";
 import { MembersPanel } from "./members-panel";
 import { ProjectSettingsPanel } from "./project-settings-panel";
 import { WebhooksPanel } from "./webhooks-panel";
 
-const TABS = ["project", "members", "agents", "mcp", "webhooks", "audit"] as const;
+const TABS = ["project", "members", "agents", "mcp", "webhooks", "audit", "compliance"] as const;
 type SettingsTab = (typeof TABS)[number];
 const DEFAULT_TAB: SettingsTab = "project";
 
@@ -45,7 +46,7 @@ export function SettingsView() {
         icon={<Settings />}
         eyebrow={project.name}
         title="Paramètres"
-        description="Configuration du projet, membres et rôles, agents et clés API, connexion MCP, webhooks et journal d'audit."
+        description="Configuration du projet, membres et rôles, agents et clés API, connexion MCP, webhooks, journal d'audit et conformité IA."
         meta={
           <>
             <RoleBadge value={role} size="sm" />
@@ -84,6 +85,10 @@ export function SettingsView() {
             <ScrollText aria-hidden />
             Audit
           </TabsTrigger>
+          <TabsTrigger value="compliance">
+            <ShieldCheck aria-hidden />
+            Conformité IA
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="project">
@@ -103,6 +108,9 @@ export function SettingsView() {
         </TabsContent>
         <TabsContent value="audit">
           <AuditPanel />
+        </TabsContent>
+        <TabsContent value="compliance">
+          <CompliancePanel />
         </TabsContent>
       </Tabs>
     </div>
