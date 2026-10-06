@@ -31,14 +31,14 @@ const FEATURES = [
   {
     icon: Sparkles,
     title: "Explicabilité totale",
-    text: "Ce qui a été retenu, pourquoi, d'où cela provient — et ce qui a été exclu.",
+    text: "Ce qui a été retenu, pourquoi, d’où cela provient — et ce qui a été exclu.",
   },
 ] as const;
 
 function loginErrorMessage(error: unknown): string {
   if (isApiError(error)) {
     if (error.status === 401 || error.status === 400) return "E-mail ou mot de passe incorrect.";
-    if (error.status === 403) return error.detail || "Ce compte n'est pas autorisé à se connecter.";
+    if (error.status === 403) return error.detail || "Ce compte n’est pas autorisé à se connecter.";
     if (error.status === 429) return "Trop de tentatives de connexion. Patientez quelques instants avant de réessayer.";
     if (error.isNetwork || error.isServer) {
       return "Le service ORBIT est injoignable pour le moment. Vérifiez que la plateforme est démarrée puis réessayez.";
@@ -109,38 +109,39 @@ export function LoginView() {
   return (
     <div className="grid min-h-dvh lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)]">
       {/* Brand panel */}
-      <aside className="relative hidden overflow-hidden bg-[#070b10] text-slate-100 lg:flex lg:flex-col">
+      {/* Always dark: the panel scopes the NOVA dark tokens with the `dark` class. */}
+      <aside className="dark relative hidden overflow-hidden bg-background text-foreground lg:flex lg:flex-col">
         <div
           className="bg-grid pointer-events-none absolute inset-0 opacity-[0.14] [mask-image:radial-gradient(ellipse_at_50%_40%,black_10%,transparent_70%)]"
           aria-hidden
         />
-        <div className="pointer-events-none absolute -left-32 -top-32 size-[520px] rounded-full bg-teal-500/10 blur-3xl" aria-hidden />
+        <div className="pointer-events-none absolute -left-32 -top-32 size-[520px] rounded-full bg-glow opacity-60 blur-3xl" aria-hidden />
         <div className="pointer-events-none absolute -bottom-40 right-0 size-[420px] rounded-full bg-violet-500/10 blur-3xl" aria-hidden />
 
         <div className="relative grid justify-items-start gap-1.5 px-10 pt-10 leading-none">
           <OrbitWordmark height={30} tone="on-dark" />
-          <span className="text-[11px] font-medium tracking-wide text-slate-400">Contexte & mémoire pour agents IA</span>
+          <span className="text-[11px] font-medium tracking-wide text-muted-foreground">Contexte & mémoire pour agents IA</span>
         </div>
 
         <div className="relative flex flex-1 flex-col justify-center px-10 py-8 xl:px-16">
           <div className="mx-auto w-full max-w-xl">
             <OrbitHero className="mx-auto max-h-[34vh] max-w-lg" />
-            <h2 className="mt-2 text-balance text-3xl font-semibold leading-tight tracking-tight text-white xl:text-[34px]">
+            <h2 className="mt-2 text-balance text-3xl font-semibold leading-[1.1] tracking-tight text-foreground xl:text-[36px]">
               Le bon contexte, au bon agent, au bon moment.
             </h2>
-            <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-slate-400">
+            <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-muted-foreground">
               ORBIT sélectionne pour chaque agent les informations utiles à sa tâche selon leur pertinence, leur
-              fraîcheur, leur provenance et les droits d&apos;accès.
+              fraîcheur, leur provenance et les droits d’accès.
             </p>
             <ul className="mt-8 grid gap-4">
               {FEATURES.map(({ icon: Icon, title, text }) => (
                 <li key={title} className="flex items-start gap-3">
-                  <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-teal-300">
+                  <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border border-border-strong bg-surface-2 text-accent-text">
                     <Icon className="size-4" aria-hidden />
                   </span>
                   <span className="grid gap-0.5">
-                    <span className="text-sm font-medium text-slate-100">{title}</span>
-                    <span className="text-[13px] leading-relaxed text-slate-400">{text}</span>
+                    <span className="text-sm font-medium text-foreground">{title}</span>
+                    <span className="text-[13px] leading-relaxed text-muted-foreground">{text}</span>
                   </span>
                 </li>
               ))}
@@ -148,12 +149,12 @@ export function LoginView() {
           </div>
         </div>
 
-        <div className="relative flex items-center justify-between px-10 pb-8 text-xs text-slate-500">
+        <div className="relative flex items-center justify-between px-10 pb-8 text-xs text-subtle-foreground">
           <span className="flex items-center gap-2">
             <ConstellationDots />
             <span>
-              <span className="text-slate-400">NOVA Core</span> · <span className="text-teal-300">ORBIT</span> ·{" "}
-              <span className="text-slate-400">FORGE</span>
+              <span className="text-muted-foreground">NOVA Core</span> · <span className="text-accent-text">ORBIT</span> ·{" "}
+              <span className="text-muted-foreground">FORGE</span>
             </span>
           </span>
           <span>Devoteam — Programme NOVA</span>
@@ -173,10 +174,10 @@ export function LoginView() {
         <div className="flex flex-1 items-center justify-center px-5 py-10 sm:px-8">
           <div className="w-full max-w-[380px]">
             <div className="grid gap-2">
-              <span className="flex size-11 items-center justify-center rounded-xl border border-border bg-card text-brand shadow-xs">
+              <span className="flex size-11 items-center justify-center rounded-xl border border-border bg-card text-brand shadow-panel">
                 <Fingerprint className="size-5" aria-hidden />
               </span>
-              <h1 className="mt-3 text-2xl font-semibold tracking-tight">Connexion à ORBIT</h1>
+              <h1 className="mt-3 text-[28px] font-semibold leading-tight tracking-tight">Connexion à ORBIT</h1>
               <p className="text-sm leading-relaxed text-muted-foreground">
                 Accédez à la plateforme de contexte et de mémoire de vos agents IA.
               </p>
@@ -244,7 +245,7 @@ export function LoginView() {
                     <button
                       type="button"
                       onClick={() => setShowPassword((s) => !s)}
-                      className="flex size-7 items-center justify-center rounded-md text-subtle-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex size-7 items-center justify-center rounded-md text-subtle-foreground transition-colors hover:bg-surface-3 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                       aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
                       aria-pressed={showPassword}
                     >
@@ -262,7 +263,7 @@ export function LoginView() {
             <p className="mt-8 flex items-start gap-2 text-xs leading-relaxed text-subtle-foreground">
               <ShieldCheck className="mt-px size-3.5 shrink-0" aria-hidden />
               Accès réservé aux collaborateurs habilités. Chaque connexion et chaque contexte servi sont journalisés
-              dans l&apos;audit.
+              dans l’audit.
             </p>
           </div>
         </div>

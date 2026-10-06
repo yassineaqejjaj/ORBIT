@@ -11,13 +11,14 @@ export function Toaster() {
     <SonnerToaster
       theme={resolvedTheme}
       position="bottom-right"
+      mobileOffset={{ bottom: "calc(5rem + env(safe-area-inset-bottom))" }}
       closeButton
       richColors
       duration={4500}
       visibleToasts={4}
       toastOptions={{
         classNames: {
-          toast: "!rounded-lg !border !border-border !shadow-lg !font-sans !text-[13px]",
+          toast: "!rounded-menu !border !border-border !shadow-lg !font-sans !text-[13px]",
           title: "!font-medium",
           description: "!text-muted-foreground",
           closeButton: "!bg-popover !border-border",
