@@ -265,3 +265,77 @@ async def test_poisoning_alert_on_agent_burst(
         await admin_client.get(f"{API}/{slug}/audit", params={"action": "security.poisoning_alert"})
     ).json()
     assert len(audit["items"]) == 1  # recorded once per window
+
+
+# --- AI Act traceability report (§A4) ----------------------------------------------------------------
+
+
+async def test_compliance_report_export_and_access(
+    admin_client: httpx.AsyncClient,
+    project: dict,  # type: ignore[type-arg]
+    make_user: Callable[..., Awaitable[UserInfo]],
+    client_for: Callable[[UserInfo], Awaitable[httpx.AsyncClient]],
+) -> None:
+    slug = str(project["slug"])
+    _, editor = await _member(admin_client, slug, make_user, client_for, "editor", 1)
+    injected = await _text(editor, slug, title="Procédure facturation (wiki)", content=INJECTED)
+    await _text(editor, slug, title="Procédure facturation", content=BENIGN)
+    await drain()
+    package = await _context(admin_client, slug, "procédure de facturation Nimbus")
+    url = f"{API}/{slug}/compliance/report"
+
+    assert (await editor.get(url)).status_code == 403  # owners only
+
+    by_request = await admin_client.get(url, params={"request_id": package["request_id"]})
+    assert by_request.status_code == 200, by_request.text
+    assert "attachment" in by_request.headers["content-disposition"]
+    report = by_request.json()
+    assert report["report"] == "ai_act_traceability" and report["totals"]["requests"] == 1
+    row = report["requests"][0]
+    assert row["context"]["task"] == "procédure de facturation Nimbus" and len(row["context"]["sha256"]) == 64
+    assert {s["title"] for s in row["sources"]} == {"Procédure facturation"}
+    assert row["decision"]["excluded_by_reason"].get("EXCLUDED_QUARANTINE") == 1
+    assert any(e["document_id"] == injected["id"] for e in row["decision"]["excluded_items"])
+    assert row["model"]["embedding_model"] and row["model"]["reranker"]
+    assert report["safeguards"]["spotlighting"] is True
+
+    period = (await admin_client.get(url, params={"from": "2000-01-01T00:00:00Z"})).json()
+    assert period["totals"]["requests"] >= 1
+    empty = (await admin_client.get(url, params={"to": "2000-01-01T00:00:00Z"})).json()
+    assert empty["totals"]["requests"] == 0
+    bad = await admin_client.get(url, params={"from": "2030-01-01T00:00:00Z", "to": "2000-01-01T00:00:00Z"})
+    assert bad.status_code == 422
+
+    printable = await admin_client.get(url, params={"format": "html", "request_id": package["request_id"]})
+    assert printable.status_code == 200 and printable.headers["content-type"].startswith("text/html")
+    assert "Rapport de traçabilité IA" in printable.text and "Exclu — quarantaine" in printable.text
+    assert "<script" not in printable.text
+
+    audit = (await admin_client.get(f"{API}/{slug}/audit", params={"action": "compliance"})).json()
+    assert len(audit["items"]) >= 3
+
+
+async def test_compliance_report_by_decision(
+    admin_client: httpx.AsyncClient,
+    project: dict,  # type: ignore[type-arg]
+) -> None:
+    slug = str(project["slug"])
+    created = await admin_client.post(
+        f"{API}/{slug}/memory",
+        json={
+            "scope": "project",
+            "kind": "decision",
+            "title": "Facturation mensuelle Nimbus",
+            "content": "Décision : la facturation Nimbus devient mensuelle.",
+            "status": "validated",
+        },
+    )
+    assert created.status_code == 201, created.text
+    memory_id = created.json()["id"]
+    await _context(admin_client, slug, "facturation Nimbus mensuelle")
+    report = (
+        await admin_client.get(f"{API}/{slug}/compliance/report", params={"memory_id": memory_id})
+    ).json()
+    assert report["totals"]["requests"] == 1
+    assert report["scope"]["decision_title"] == "Facturation mensuelle Nimbus"
+    assert any(s["memory_item_id"] == memory_id for s in report["requests"][0]["sources"])

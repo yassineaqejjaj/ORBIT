@@ -48,6 +48,7 @@ OPENAPI_TAGS = [
     {"name": "snapshots", "description": "Snapshots de contexte"},
     {"name": "metrics", "description": "Vue projet, métriques, export des traces"},
     {"name": "audit", "description": "Journal d'audit"},
+    {"name": "compliance", "description": "Rapport de traçabilité IA (AI Act)"},
     {"name": "meta", "description": "Métadonnées de la plateforme"},
     {"name": "system", "description": "Santé et disponibilité"},
 ]

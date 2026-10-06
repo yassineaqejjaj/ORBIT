@@ -7,6 +7,7 @@ from app.api import (
     ask,
     audit,
     auth,
+    compliance,
     connectors,
     context,
     documents,
@@ -53,6 +54,7 @@ for module in (
     ask,
     teams,
     connectors,
+    compliance,
 ):
     api_router.include_router(module.router)
 
