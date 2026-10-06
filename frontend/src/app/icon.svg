@@ -1,28 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- ORBIT "o" mark: gradient ring (red → magenta → indigo), proportions taken from the brand artwork. -->
   <defs>
-    <linearGradient id="g" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#2ED3B7"/>
-      <stop offset="0.55" stop-color="#0E9384"/>
-      <stop offset="1" stop-color="#125D56"/>
+    <linearGradient id="g" x1="2" y1="0" x2="30" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FD5051"/>
+      <stop offset="0.4" stop-color="#FB3268"/>
+      <stop offset="0.6" stop-color="#CF208F"/>
+      <stop offset="0.85" stop-color="#7407C0"/>
+      <stop offset="1" stop-color="#3A01D3"/>
     </linearGradient>
-    <linearGradient id="p" x1="11" y1="10" x2="21" y2="22" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#FFFFFF"/>
-      <stop offset="1" stop-color="#CCFBEF"/>
-    </linearGradient>
-    <mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
-      <rect width="32" height="32" fill="#fff"/>
-      <g transform="translate(16 16) rotate(-22)">
-        <path d="M -13 0 A 13 2.8 0 0 0 13 0" fill="none" stroke="#000" stroke-width="3.8" stroke-linecap="round"/>
-      </g>
-    </mask>
   </defs>
-  <rect width="32" height="32" rx="8" fill="url(#g)"/>
-  <g transform="translate(16 16) rotate(-22)">
-    <path d="M -13 0 A 13 2.8 0 0 1 13 0" fill="none" stroke="#fff" stroke-opacity="0.6" stroke-width="1.7" stroke-linecap="round"/>
-  </g>
-  <circle cx="16" cy="16" r="6.1" fill="url(#p)" mask="url(#m)"/>
-  <g transform="translate(16 16) rotate(-22)">
-    <path d="M -13 0 A 13 2.8 0 0 0 13 0" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/>
-    <circle cx="8.36" cy="2.14" r="1.75" fill="#fff"/>
-  </g>
+  <path fill="url(#g)" fill-rule="evenodd"
+        d="M16 2.42a14 13.58 0 1 0 0 27.16a14 13.58 0 1 0 0-27.16Z M16.02 10.15a5.91 5.91 0 1 1 0 11.82a5.91 5.91 0 1 1 0-11.82Z"/>
 </svg>
