@@ -279,6 +279,11 @@ Variables d'environnement préfixées `ORBIT_` (voir [`.env.example`](.env.examp
 | `ORBIT_MEMORY_ENTITY_ALIASES` | `true` | Résolution d'entités (§D2) : les alias élargissent la recherche |
 | `ORBIT_MEMORY_CONTRADICTION_MODE` / `ORBIT_MEMORY_NLI_MODEL` / `ORBIT_MEMORY_CONTRADICTION_THRESHOLD` | `auto` / vide / `0.7` | Contradictions par modèle (§D3) : crochet NLI local, sinon LLM-juge si le garde-fou l'autorise, sinon marqueurs lexicaux ; score et explication stockés |
 | `ORBIT_MEMORY_REFLECTION` | `true` | Réflexion mensuelle « ce qui a changé » (§D4), proposée en mémoire long terme |
+| `ORBIT_EVAL_K` / `ORBIT_EVAL_MIN_RECALL` | `5` / `0.6` | Banc d'évaluation (§E1) : jeux de questions de référence, rappel@k, nDCG, suffisance, fidélité des citations ; page Suivi → Évaluation ; CI : `python -m app.admin eval --project <slug> --min-recall 0.6` (code de sortie 1 sous le seuil) |
+| `ORBIT_RANKING_LEARNING` / `_MAX_DELTA` / `_RATE` / `_MIN_SIGNALS` | `true` / `0.1` / `0.2` / `5` | Apprentissage borné des poids du classement (§E2) à partir des 👍/👎, signalements, épingles et décisions de tri ; journalisé, réversible (Paramètres → Évaluation) |
+| `ORBIT_JUDGE_SAMPLE_RATE` / `_ALERT_THRESHOLD` / `_WINDOW_DAYS` / `_MIN_SAMPLES` | `0` / `0.5` / `7` / `3` | LLM-juge sur échantillon (§E3) : note de suffisance (garde-fou ; jamais C2/C3 vers un LLM externe), alerte de dégradation, export NDJSON pour FORGE |
+| `ORBIT_A2A_ENABLED` / `ORBIT_A2A_SIGNING_SECRET` / `ORBIT_A2A_HANDOFF_TTL_SECONDS` | `true` / vide (= `ORBIT_JWT_SECRET`) / `600` | A2A (§E5, protocole 0.3.0) : Agent Card `/.well-known/agent-card.json` (+ alias `agent.json`), passation signée d'un snapshot (JWS HS256, usage unique, auditée) |
+| `ORBIT_OTEL_GENAI_CAPTURE_CONTENT` | `false` | OpenTelemetry GenAI (§E6) : attributs `gen_ai.*` sur les spans LLM, recherche et MCP ; contenus des prompts seulement si activé |
 | `ORBIT_ENCRYPTION_KEY` | vide | Clé Fernet chiffrant les secrets des connecteurs, webhooks et Teams ; **requise** pour les créer |
 | `ORBIT_CONNECTOR_DEFAULT_SCHEDULE_MINUTES` | `60` | Fréquence de synchronisation par défaut des connecteurs |
 | `ORBIT_MCP_ALLOW_CUSTOM` | `false` | Autorise des serveurs MCP hors presets (administrateurs uniquement) |

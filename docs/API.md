@@ -280,3 +280,34 @@ Outils :
 - `record_turn(session_id, role, content)` → `{turns, expires_at}`
 - `send_feedback(request_id, rating, comment?)` → `{id}`
 - `list_skills(task_type?)` → `{skills: Skill[]}` · `get_skill(name)` → `Skill & {skill_md}` (§D1 façons de faire)
+
+Au-delà des outils (§E4, SDK `mcp` 2.2) :
+- *resources* : `orbit://about` (index statique) ; modèles `orbit://decisions{?limit}`, `orbit://decisions/{decision_id}`,
+  `orbit://snapshots{?limit}`, `orbit://snapshots/{name}/{version}`, `orbit://skills{?task_type}`, `orbit://skills/{name}` (SKILL.md) —
+  même authentification, visibilité et balisage « données non fiables » que les outils ;
+- *prompts* : `rediger_spec(sujet)`, `preparer_revue(sujet?)`, `resumer_changements(jours?)` (contexte gouverné intégré) ;
+- *elicitation* : `preparer_revue` sans sujet renvoie un `InputRequiredResult` (formulaire « sujet ») aux clients en protocole
+  `2026-07-28` (aller-retour sans état) ; les clients plus anciens reçoivent un sujet par défaut.
+
+## Évaluation & interopérabilité (§E)
+
+Sous `/api/v1/projects/{slug}/evaluation` :
+- `GET|POST /sets` · `GET|DELETE /sets/{id}` · `POST /sets/{id}/cases` `{question, expected:[{type:"memory"|"document", id, title?}]}` ·
+  `DELETE /sets/{id}/cases/{case_id}` · `POST /sets/{id}/generate` `{limit?}` (génération assistée depuis les décisions validées) ;
+- `POST /sets/{id}/runs` `{k?, min_recall?}` → 202 (tâche `evaluate`) · `GET /runs?set_id=` · `GET /runs/{id}` (métriques
+  `recall`, `ndcg`, `sufficiency`, `citation_faithfulness`, détail par question) · `GET /compare?base=&target=` · `GET /settings` ;
+- `GET /ranking-weights` (poids en vigueur, défauts, bornes, journal) · `POST /ranking-weights/learn` · `POST /ranking-weights/{change_id}/revert` ·
+  `POST /ranking-weights/reset` (owner) ;
+- `GET /judgements` (verdicts du LLM-juge, moyenne glissante, alertes) · `GET /judgements/export?days=` (NDJSON FORGE, owner, audité).
+
+CLI (CI) : `python -m app.admin eval --project <slug> [--set <nom>] [--k 5] [--min-recall 0.6] [--as <email>] [--json]` → code 0 si tous
+les jeux passent, 1 sous le seuil, 2 en cas d'erreur d'usage.
+
+A2A (protocole **0.3.0**) : `GET /.well-known/agent-card.json` (alias `/.well-known/agent.json`) ·
+`POST /api/v1/projects/{slug}/a2a/handoffs` `{snapshot:"nom@version", audience:"agent:<id>"|"user:<id>"|URL}` → `{handoff_id, token, expires_at}`
+(JWS compact HS256, `typ` `orbit-context-handoff+jwt`) · `POST /api/v1/projects/{slug}/a2a/handoffs/receive` `{token}` → snapshot filtré selon
+les droits du destinataire ; 401 signature invalide/expirée, 403 destinataire ou projet différent, 409 rejeu ou snapshot modifié.
+
+OpenTelemetry GenAI (§E6) : spans `chat {model}` (`gen_ai.operation.name=chat`, `gen_ai.provider.name`, `gen_ai.request.*`, `gen_ai.usage.*`),
+`context.retrieve` (`gen_ai.operation.name=retrieval`, `gen_ai.data_source.id`), spans MCP du SDK (`mcp.method.name`, `gen_ai.tool.name`) enrichis de
+`gen_ai.agent.id|name` et `mcp.resource.uri`, juge (`gen_ai.evaluation.*`).
