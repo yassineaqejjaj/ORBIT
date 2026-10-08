@@ -4,12 +4,14 @@ transcription server through MockTransport, fake MCP servers)."""
 from __future__ import annotations
 
 import io
+import json
 from datetime import date
 from typing import Any
 
 import httpx
 import pytest
 from docx import Document as new_docx
+from sqlalchemy import select
 
 from app.config import settings
 from app.db import get_sessionmaker
@@ -21,6 +23,7 @@ from app.llm import guardrail
 from app.memory import meeting_extraction as me
 from app.seed import manifest as mf
 from app.worker import Worker
+from tests.test_feature_mcp import fakes  # noqa: F401
 
 API = "/api/v1/projects"
 JSON = dict[str, Any]
@@ -333,3 +336,270 @@ def _now() -> Any:
     from datetime import UTC, datetime
 
     return datetime(2026, 10, 8, 9, tzinfo=UTC)
+
+
+# --- F2 Figma preset ---------------------------------------------------------------------------------------
+
+FIGMA_FILE = {  # shape recorded from figma-developer-mcp 0.13.2 (--format=json) on a fictitious file
+    "metadata": {"name": "Atlas — Maquettes", "components": {}, "componentSets": {}},
+    "nodes": [
+        {
+            "id": "1:1",
+            "name": "Réservation",
+            "type": "CANVAS",
+            "children": [
+                {
+                    "id": "1:2",
+                    "name": "Écran plan d'étage",
+                    "type": "FRAME",
+                    "layout": {"mode": "none", "dimensions": {"width": 390, "height": 844}},
+                    "children": [
+                        {"id": "1:3", "type": "TEXT", "text": "Choisissez votre poste"},
+                        {"id": "1:4", "type": "TEXT", "text": "Réserver ce poste"},
+                        {"id": "1:5", "type": "RECTANGLE"},
+                    ],
+                }
+            ],
+        },
+        {
+            "id": "2:1",
+            "name": "Illustrations",
+            "type": "CANVAS",
+            "children": [{"id": "2:2", "type": "VECTOR"}],
+        },
+    ],
+}
+
+
+def test_figma_file_keys_and_page_mapping() -> None:
+    from app.connectors.mcp import presets
+    from app.connectors.mcp.presets import Ctx, figma_file_key
+
+    assert figma_file_key("https://www.figma.com/design/AbCdEf123456/Maquettes?node-id=1-2") == "AbCdEf123456"
+    assert figma_file_key("AbCdEf123456") == "AbCdEf123456" and figma_file_key("pas une clé") is None
+    ctx = Ctx(config={}, item="https://www.figma.com/file/AbCdEf123456/Maquettes")
+    items = presets._figma_items(FIGMA_FILE, ctx)
+    assert [i["id"] for i in items] == ["1:1", "2:1"]
+    record = presets._map_figma_page(items[0], None, ctx)
+    assert record is not None and record.external_id == "figma:AbCdEf123456:1:1"
+    assert record.title == "Atlas — Maquettes — Réservation"
+    assert record.uri == "https://www.figma.com/design/AbCdEf123456?node-id=1-1"
+    assert "## Écran plan d'étage\n\nChoisissez votre poste\n\nRéserver ce poste" in record.content
+    assert presets._map_figma_page(items[1], None, ctx) is None  # page without text
+    preset = presets.get_preset("figma")
+    assert preset.args({}) == ["--stdio", "--format=json", "--skip-image-downloads", "--no-telemetry"]
+    assert preset.env({}, {"api_key": "figd_test"})["FRAMELINK_TELEMETRY"] == "off"
+    with pytest.raises(Exception, match="Fichier Figma invalide"):
+        preset.validate({"files": ["???"]}, True)
+
+
+async def test_figma_preset_sync_with_fake_server(
+    admin_client: httpx.AsyncClient,
+    project: JSON,
+    fakes: Any,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests import test_feature_mcp as mcp_tests
+
+    monkeypatch.setitem(mcp_tests.PRESET_BY_COMMAND, "figma-developer-mcp", "figma")
+    fakes.in_process.add("figma")
+    fakes.write("figma", {"files": {"AbCdEf123456": FIGMA_FILE}})
+    base = mcp_tests._base(project)
+    body = {
+        "type": "mcp",
+        "name": "Maquettes Atlas",
+        "config": {"preset": "figma", "files": ["https://www.figma.com/design/AbCdEf123456/Maquettes"]},
+        "secret": json.dumps({"api_key": "figd_fictif_0001"}),
+    }
+    tested = (await admin_client.post(f"{base}/test", json=mcp_tests._probe(body))).json()
+    assert tested["ok"] is True, tested
+    created = await admin_client.post(base, json={**body, "start_sync": True})
+    assert created.status_code == 201, created.text
+    await mcp_tests._run_connector_jobs()
+    run = await mcp_tests._last_run(admin_client, base, created.json()["id"])
+    assert (run["status"], run["created"]) == ("succeeded", 1), run
+    docs = await mcp_tests._docs(created.json()["source_id"])
+    [key] = list(docs)
+    assert key.endswith("figma:AbCdEf123456:1:1")  # the page without text is not ingested
+
+
+# --- F3 project e-mails --------------------------------------------------------------------------------------
+
+
+def test_quote_stripping_and_gmail_thread_parsing() -> None:
+    from app.connectors.mcp import mail
+
+    reply = (
+        "Merci, c'est validé de mon côté.\n\n"
+        "Le mar. 6 oct. 2026 à 10:00, Claire Dubois <claire@exemple.test> a écrit :\n> Peux-tu valider ?"
+    )
+    assert mail.strip_quoted(reply) == "Merci, c'est validé de mon côté."
+    outlook = (
+        "OK pour moi.\n\nDe : Claire Dubois\nEnvoyé : lundi 5 octobre 2026\nObjet : Planning\n\nAncien texte"
+    )
+    assert mail.strip_quoted(outlook) == "OK pour moi."
+    assert mail.strip_quoted("OK.\n-----Original Message-----\nancien") == "OK."
+    assert mail.strip_quoted("Voir plus bas.\n--\nKarim Benali\nLead dev") == "Voir plus bas."
+    assert mail.strip_quoted("De : Claire nous vient le planning.\nIl est bon.").startswith("De : Claire")
+
+    text = (
+        "Thread ID: t1\nSubject: Planning pilote\nMessages: 2\n\n"
+        "=== Message 1 ===\nFrom: Claire Dubois <claire@exemple.test>\nDate: Mon, 05 Oct 2026 09:00:00 +0000\n"
+        "To: equipe@exemple.test\n\nVoici le planning.\n\n--- ATTACHMENTS ---\n"
+        "1. planning.pdf (application/pdf, 12.5 KB)\n   Attachment ID: a0\n\n"
+        "=== Message 2 ===\nFrom: Karim Benali <karim@exemple.test>\nDate: Tue, 06 Oct 2026 10:00:00 +0000\n"
+        "To: equipe@exemple.test\n\nValidé.\n\nLe lun. 5 oct. 2026, Claire a écrit :\n> Voici le planning.\n"
+    )
+    subject, messages = mail.parse_gmail_thread(text)
+    assert subject == "Planning pilote" and [m.sender for m in messages][1].startswith("Karim")
+    assert messages[0].attachments == ["planning.pdf (12.5 Ko)"]
+    markdown = mail.thread_markdown(subject, messages)
+    assert "Participants : Claire Dubois, Karim Benali" in markdown and "Messages : 2" in markdown
+    assert "## 2026-10-06 10:00 — Karim Benali\n\nValidé." in markdown
+    assert "> Voici le planning" not in markdown and "Pièces jointes : planning.pdf (12.5 Ko)" in markdown
+
+
+def _graph(mid: str, conversation: str, when: str, sender: str, html: str, attachments: Any = ()) -> JSON:
+    return {
+        "id": mid,
+        "conversationId": conversation,
+        "subject": "RE: Choix de la base" if mid != "m1" else "Choix de la base",
+        "receivedDateTime": when,
+        "from": {"emailAddress": {"name": sender, "address": "x@exemple.test"}},
+        "body": {"contentType": "html", "content": html},
+        "attachments": [{"name": a, "size": 20480, "isInline": False} for a in attachments],
+        "webLink": f"https://outlook.exemple.test/{mid}",
+    }
+
+
+async def test_ms365_mail_folder_threads(admin_client: httpx.AsyncClient, project: JSON, fakes: Any) -> None:  # noqa: F811
+    from tests import test_feature_mcp as mcp_tests
+
+    fakes.in_process.add("ms365")
+    rows = [
+        _graph(
+            "m1",
+            "conv-A",
+            "2026-10-05T09:00:00Z",
+            "Claire Dubois",
+            "<p>On part sur PostgreSQL ?</p>",
+            ["adr.pdf"],
+        ),
+        _graph(
+            "m2",
+            "conv-A",
+            "2026-10-05T11:00:00Z",
+            "Karim Benali",
+            "<p>Oui, validé.</p><div>De : Claire Dubois<br>Envoyé : lundi<br>Objet : Choix</div><p>On part ?</p>",
+        ),
+        _graph("m3", "conv-B", "2026-10-06T08:00:00Z", "Lucas Morel", "<p>Planning de la recette en PJ.</p>"),
+    ]
+    fakes.write("ms365", {"folders": {"projet-atlas": rows}})
+    base = mcp_tests._base(project)
+    created = await admin_client.post(
+        base,
+        json={
+            "type": "mcp",
+            "name": "Boîte projet",
+            "config": {"preset": "ms365", "mail_folders": ["projet-atlas"]},
+            "secret": json.dumps({"access_token": "graph-token-fictif-0002"}),
+            "start_sync": True,
+        },
+    )
+    assert created.status_code == 201, created.text
+    await mcp_tests._run_connector_jobs()
+    run = await mcp_tests._last_run(admin_client, base, created.json()["id"])
+    assert (run["status"], run["created"]) == ("succeeded", 2), run
+    docs = await mcp_tests._docs(created.json()["source_id"])
+    thread = next(d for key, d in docs.items() if key.endswith("conv-A"))
+    assert thread.title == "Choix de la base"
+    async with get_sessionmaker()() as session:
+        from app.models import DocumentVersion
+
+        version = await session.scalar(
+            select(DocumentVersion).where(DocumentVersion.document_id == thread.id)
+        )
+        assert version is not None
+        content = version.extracted_text or ""
+    assert "## 2026-10-05 11:00 — Karim Benali\n\nOui, validé." in content
+    assert "Envoyé : lundi" not in content and "Pièces jointes : adr.pdf (20 Ko)" in content
+    calls = fakes.calls("ms365")
+    assert any(c["args"].get("filter") == "conversationId eq 'conv-A'" for c in calls)
+
+    # A reply arrives: only newer messages are listed (cursor), the whole thread is re-read → new version.
+    rows.append(
+        _graph("m4", "conv-A", "2026-10-07T09:00:00Z", "Lucas Morel", "<p>Je lance la migration.</p>")
+    )
+    fakes.write("ms365", {"folders": {"projet-atlas": rows}})
+    await admin_client.post(f"{base}/{created.json()['id']}/sync")
+    await mcp_tests._run_connector_jobs()
+    run = await mcp_tests._last_run(admin_client, base, created.json()["id"])
+    assert (run["status"], run["created"], run["updated"]) == ("succeeded", 0, 1), run
+    listing = [
+        c for c in fakes.calls("ms365") if (c["args"].get("filter") or "").startswith("receivedDateTime")
+    ]
+    assert listing and listing[-1]["args"]["filter"].startswith("receivedDateTime ge 2026-10-06")
+
+
+async def test_gmail_label_threads(
+    admin_client: httpx.AsyncClient,
+    project: JSON,
+    fakes: Any,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests import test_feature_mcp as mcp_tests
+
+    monkeypatch.setitem(mcp_tests.PRESET_BY_COMMAND, "workspace-mcp", "google_workspace")
+    fakes.in_process.add("google_workspace")
+    fakes.write(
+        "google_workspace",
+        {
+            "threads": {
+                "thread-0001": {
+                    "label": "projet-atlas",
+                    "subject": "Planning pilote",
+                    "messages": [
+                        {
+                            "id": "g1",
+                            "from": "Claire Dubois <claire@exemple.test>",
+                            "date": "Mon, 05 Oct 2026 09:00:00 +0000",
+                            "body": "Voici le planning.",
+                            "attachments": ["planning.pdf"],
+                        },
+                        {
+                            "id": "g2",
+                            "from": "Karim Benali <karim@exemple.test>",
+                            "date": "Tue, 06 Oct 2026 10:00:00 +0000",
+                            "body": "Validé.\n\nLe lun. 5 oct. 2026, Claire a écrit :\n> Voici le planning.",
+                        },
+                    ],
+                }
+            }
+        },
+    )
+    base = mcp_tests._base(project)
+    created = await admin_client.post(
+        base,
+        json={
+            "type": "mcp",
+            "name": "Gmail projet",
+            "config": {
+                "preset": "google_workspace",
+                "user_email": "robot@exemple.test",
+                "gmail_labels": ["projet-atlas"],
+            },
+            "secret": json.dumps({"service_account_json": '{"type": "service_account"}'}),
+            "start_sync": True,
+        },
+    )
+    assert created.status_code == 201, created.text
+    await mcp_tests._run_connector_jobs()
+    run = await mcp_tests._last_run(admin_client, base, created.json()["id"])
+    assert (run["status"], run["created"]) == ("succeeded", 1), run
+    docs = await mcp_tests._docs(created.json()["source_id"])
+    [(key, doc)] = list(docs.items())
+    assert key.endswith("thread-0001") and doc.title == "Planning pilote"
+    queries = [
+        c["args"]["query"] for c in fakes.calls("google_workspace") if c["tool"] == "search_gmail_messages"
+    ]
+    assert queries == ['label:"projet-atlas"']

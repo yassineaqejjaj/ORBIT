@@ -299,7 +299,16 @@ async def test_stdio_startup_failure_reports_redacted_stderr() -> None:
 async def test_types_list_presets_with_fields(admin_client: httpx.AsyncClient, project: JSON) -> None:
     types = (await admin_client.get(f"{_base(project)}/types")).json()
     presets = {t["preset"]: t for t in types if t["via_mcp"]}
-    assert set(presets) == {"atlassian", "ms365", "google_workspace", "slack", "github", "linear", "obsidian"}
+    assert set(presets) == {
+        "atlassian",
+        "ms365",
+        "google_workspace",
+        "slack",
+        "github",
+        "linear",
+        "obsidian",
+        "figma",
+    }
     atlassian = presets["atlassian"]
     assert atlassian["type"] == "mcp" and atlassian["icon"] == "atlassian" and atlassian["credentials_help"]
     groups = {f["key"]: f["group"] for f in atlassian["fields"]}

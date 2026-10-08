@@ -22,6 +22,8 @@ from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any, Literal
 
+from app.config import settings
+from app.connectors.mcp import mail
 from app.connectors.mcp.mapper import (
     Record,
     as_datetime,
@@ -648,6 +650,72 @@ def _map_teams_message(item: dict[str, Any], _: Any, ctx: Ctx) -> Record | None:
     )
 
 
+# §F3 project e-mails: one document per conversation of a dedicated folder (own or shared mailbox).
+_THREAD_SELECT = [
+    "id",
+    "conversationId",
+    "subject",
+    "from",
+    "receivedDateTime",
+    "uniqueBody",
+    "body",
+    "webLink",
+]
+
+
+def _mail_folder_args(ctx: Ctx) -> dict[str, Any]:
+    offset = int(ctx.page or 0)
+    args: dict[str, Any] = {
+        "mailFolderId": str(ctx.item),
+        "top": 50,
+        "skip": offset or None,
+        "filter": f"receivedDateTime ge {_iso(ctx.since)}" if ctx.since else None,
+        "select": ["id", "conversationId", "receivedDateTime"],
+    }
+    if ctx.config.get("shared_mailbox"):
+        args["userId"] = str(ctx.config["shared_mailbox"])
+    return _drop_empty(args)
+
+
+def _mail_thread_args(item: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    conversation = str(item.get("conversationId") or "").replace("'", "''")
+    args: dict[str, Any] = {
+        "mailFolderId": str(ctx.item),
+        "filter": f"conversationId eq '{conversation}'",
+        "top": min(50, settings.mail_max_messages),
+        "select": _THREAD_SELECT,
+        "expand": "attachments($select=name,size,isInline)",
+    }
+    if ctx.config.get("shared_mailbox"):
+        args["userId"] = str(ctx.config["shared_mailbox"])
+    return args
+
+
+def _mail_folder_next(payload: Any, items: list[dict[str, Any]], ctx: Ctx) -> list[Any]:
+    offset = int(ctx.page or 0) + len(items)
+    return [offset] if len(items) >= 50 and offset < settings.mail_max_messages else []
+
+
+def _map_mail_thread(item: dict[str, Any], full: Any, ctx: Ctx) -> Record | None:
+    rows = find_list(full, "value") if full is not None else []
+    rows = rows or [item]
+    messages = [mail.graph_message(row) for row in rows if isinstance(row, dict)]
+    if not messages or not any(m.body.strip() for m in messages):
+        return None
+    subject = text_of(rows[0].get("subject")) or "(sans objet)"
+    subject = re.sub(r"^(?:(?:re|tr|fw|fwd)\s*:\s*)+", "", subject, flags=re.IGNORECASE) or subject
+    return Record(
+        external_id=str(item.get("conversationId")),
+        title=subject[:300],
+        content=mail.thread_markdown(subject, messages),
+        uri=text_of(rows[-1].get("webLink")) or None,
+        author=messages[0].sender or None,
+        updated_at=mail.latest(messages),
+        source_kind="note",
+        metadata={**mail.thread_metadata("outlook_thread", messages), "folder": ctx.item},
+    )
+
+
 def _teams_args(ctx: Ctx) -> dict[str, Any]:
     team, _, channel = str(ctx.item or "").partition("/")
     return _drop_empty({"teamId": team, "channelId": channel, "top": 50, "skiptoken": ctx.page})
@@ -682,8 +750,9 @@ MS365 = Preset(
         not require_scope
         or config.get("drive_ids")
         or config.get("channels")
+        or config.get("mail_folders")
         or _bool(config, "include_mail"),
-        "Choisissez au moins un drive, un canal Teams ou la messagerie",
+        "Choisissez au moins un drive, un canal Teams, un dossier de messagerie ou la messagerie",
     ),
     docs_url="https://github.com/Softeria/ms-365-mcp-server",
     credentials_help=(
@@ -709,6 +778,21 @@ MS365 = Preset(
             "scope",
             placeholder="subject:ORBIT",
             visible_if="include_mail=true",
+        ),
+        PresetField(
+            "mail_folders",
+            "Dossiers de messagerie projet",
+            "scope",
+            "list",
+            placeholder="inbox ou ID de dossier",
+            help="Un document par fil de discussion (réponses citées retirées, pièces jointes listées)",
+        ),
+        PresetField(
+            "shared_mailbox",
+            "Boîte partagée du projet",
+            "scope",
+            placeholder="projet-atlas@exemple.fr",
+            help="Vide = boîte de l'utilisateur du jeton",
         ),
         PresetField(
             "channels",
@@ -770,6 +854,36 @@ MS365 = Preset(
             map=_map_mail,
             enabled=lambda config: _bool(config, "include_mail"),
             incremental="skip",
+        ),
+        Stream(
+            key="mail_threads",
+            label="Fils d'e-mails du projet",
+            list_tool="list-mail-folder-messages",
+            list_args=_mail_folder_args,
+            next_pages=_mail_folder_next,
+            item_id=lambda item, ctx: str(item.get("conversationId") or "") or None,
+            item_updated=lambda item: as_datetime(item.get("receivedDateTime")),
+            read_tool="list-mail-folder-messages",
+            read_args=_mail_thread_args,
+            map=_map_mail_thread,
+            foreach="mail_folders",
+            enabled=lambda config: not config.get("shared_mailbox"),
+            incremental="filter",
+        ),
+        Stream(
+            key="mail_threads",
+            label="Fils d'e-mails du projet (boîte partagée)",
+            list_tool="list-shared-mailbox-folder-messages",
+            list_args=_mail_folder_args,
+            next_pages=_mail_folder_next,
+            item_id=lambda item, ctx: str(item.get("conversationId") or "") or None,
+            item_updated=lambda item: as_datetime(item.get("receivedDateTime")),
+            read_tool="list-shared-mailbox-folder-messages",
+            read_args=_mail_thread_args,
+            map=_map_mail_thread,
+            foreach="mail_folders",
+            enabled=lambda config: bool(config.get("shared_mailbox")),
+            incremental="filter",
         ),
         Stream(
             key="teams",
@@ -873,6 +987,36 @@ def _map_gmail(item: dict[str, Any], content: Any, ctx: Ctx) -> Record | None:
     )
 
 
+def _gmail_thread_items(payload: Any, ctx: Ctx) -> list[dict[str, Any]]:
+    text = payload if isinstance(payload, str) else result_text(ctx.result)
+    token = re.search(r"page_token='([^']+)'", text) or re.search(
+        r"(?i)next\s*page\s*token\s*[:=]\s*(\S+)", text
+    )
+    ctx.state["next_token"] = token.group(1) if token else None
+    ids = mail.gmail_thread_ids(text)
+    ctx.state.setdefault("threads", set()).update(ids)
+    return [{"id": thread} for thread in ids]
+
+
+def _map_gmail_thread(item: dict[str, Any], content: Any, ctx: Ctx) -> Record | None:
+    text = content if isinstance(content, str) else result_text(ctx.result)
+    subject, messages = mail.parse_gmail_thread(text)
+    if not messages:
+        return None
+    subject = re.sub(r"^(?:(?:re|tr|fw|fwd)\s*:\s*)+", "", subject, flags=re.IGNORECASE) or subject
+    thread = str(item.get("id"))
+    return Record(
+        external_id=thread,
+        title=subject[:300],
+        content=mail.thread_markdown(subject, messages),
+        uri=f"https://mail.google.com/mail/u/0/#all/{thread}",
+        author=messages[0].sender or None,
+        updated_at=mail.latest(messages),
+        source_kind="note",
+        metadata={**mail.thread_metadata("gmail_thread", messages), "label": ctx.item},
+    )
+
+
 GOOGLE = Preset(
     id="google_workspace",
     label="Google Workspace",
@@ -892,7 +1036,7 @@ GOOGLE = Preset(
         "drive",
         "docs",
         "sheets",
-        *(["gmail"] if _bool(config, "include_gmail") else []),
+        *(["gmail"] if _bool(config, "include_gmail") or _list(config, "gmail_labels") else []),
         "--read-only",
     ],
     env=lambda config, secrets: {
@@ -946,6 +1090,14 @@ GOOGLE = Preset(
             "scope",
             placeholder="label:orbit newer_than:30d",
             visible_if="include_gmail=true",
+        ),
+        PresetField(
+            "gmail_labels",
+            "Libellés Gmail du projet",
+            "scope",
+            "list",
+            placeholder="projet-atlas",
+            help="Un document par fil de discussion (réponses citées retirées, pièces jointes listées)",
         ),
     ),
     streams=(
@@ -1009,6 +1161,42 @@ GOOGLE = Preset(
             },
             map=_map_gmail,
             enabled=lambda config: _bool(config, "include_gmail"),
+            incremental="filter",
+        ),
+        Stream(
+            key="gmail_threads",
+            label="Fils Gmail du projet",
+            list_tool="search_gmail_messages",
+            list_args=lambda ctx: _drop_empty(
+                {
+                    "query": " ".join(
+                        p
+                        for p in (
+                            f"label:{_quote(str(ctx.item))}",
+                            f"after:{int(ctx.since.timestamp())}" if ctx.since else "",
+                        )
+                        if p
+                    ),
+                    "user_google_email": str(ctx.config.get("user_email") or ""),
+                    "page_size": 25,
+                    "page_token": ctx.page,
+                }
+            ),
+            items=_gmail_thread_items,
+            next_pages=lambda payload, items, ctx: (
+                [ctx.state["next_token"]]
+                if ctx.state.get("next_token")
+                and len(ctx.state.get("threads", ())) < settings.mail_max_messages
+                else []
+            ),
+            item_id=lambda item, ctx: str(item.get("id") or "") or None,
+            read_tool="get_gmail_thread_content",
+            read_args=lambda item, ctx: {
+                "thread_id": str(item.get("id")),
+                "user_google_email": str(ctx.config.get("user_email") or ""),
+            },
+            map=_map_gmail_thread,
+            foreach="gmail_labels",
             incremental="filter",
         ),
     ),
@@ -1672,6 +1860,152 @@ OBSIDIAN = Preset(
 )
 
 
+# --- 8. Figma (GLips/Figma-Context-MCP « figma-developer-mcp », §F2) ------------------------------------
+
+
+_FIGMA_KEY = re.compile(r"figma\.com/(?:file|design|proto|board|slides)/([A-Za-z0-9]+)")
+_FIGMA_CONTAINERS = frozenset({"FRAME", "SECTION", "COMPONENT", "COMPONENT_SET", "INSTANCE", "GROUP"})
+FIGMA_MAX_DEPTH = 12
+
+
+def figma_file_key(value: str | None) -> str | None:
+    """File key of a Figma URL (``figma.com/design/<key>/…``) or of a bare key."""
+    text = str(value or "").strip()
+    match = _FIGMA_KEY.search(text)
+    if match:
+        return match.group(1)
+    return text if re.fullmatch(r"[A-Za-z0-9]{10,64}", text) else None
+
+
+def _figma_items(payload: Any, ctx: Ctx) -> list[dict[str, Any]]:
+    """Pages (``CANVAS`` nodes) of a ``get_figma_data`` JSON result (``--format=json``)."""
+    if not isinstance(payload, dict):
+        return []
+    key = figma_file_key(ctx.item)
+    file_name = str(dig(payload, "metadata.name") or key or "Figma")
+    nodes = payload.get("nodes") if isinstance(payload.get("nodes"), list) else []
+    pages = [n for n in nodes if isinstance(n, dict) and n.get("type") == "CANVAS"]
+    if not pages and nodes:  # a single node (nodeId) or a file without pages: one document
+        pages = [{"id": "0:0", "name": file_name, "type": "CANVAS", "children": nodes}]
+    return [
+        {"id": str(p.get("id")), "name": str(p.get("name") or ""), "node": p, "file": file_name}
+        for p in pages
+    ]
+
+
+def _figma_lines(node: dict[str, Any], depth: int, out: list[str]) -> None:
+    if depth > FIGMA_MAX_DEPTH:
+        return
+    kind = str(node.get("type") or "")
+    if kind == "TEXT":
+        text = " ".join(str(node.get("text") or "").split())
+        if text and (not out or out[-1] != text):
+            out.append(text)
+        return
+    named = kind in _FIGMA_CONTAINERS and str(node.get("name") or "").strip()
+    if named:
+        level = min(6, 2 + depth)
+        out.append(f"{'#' * level} {str(node.get('name')).strip()}")
+    for child in node.get("children") or []:
+        if isinstance(child, dict):
+            _figma_lines(child, depth + (1 if named else 0), out)
+
+
+def _map_figma_page(item: dict[str, Any], _: Any, ctx: Ctx) -> Record | None:
+    key = figma_file_key(ctx.item) or ""
+    lines: list[str] = []
+    for child in item["node"].get("children") or []:
+        if isinstance(child, dict):
+            _figma_lines(child, 0, lines)
+    if not any(not line.startswith("#") for line in lines):
+        return None  # page without any text (illustrations only)
+    page_id = str(item.get("id"))
+    title = (
+        f"{item['file']} — {item['name']}"
+        if item.get("name") and item["name"] != item["file"]
+        else item["file"]
+    )
+    body = "\n\n".join(lines)
+    return Record(
+        external_id=f"figma:{key}:{page_id}",
+        title=title[:300],
+        content=f"# {title}\n\n{body}\n",
+        uri=f"https://www.figma.com/design/{key}?node-id={page_id.replace(':', '-')}",
+        source_kind="document",
+        metadata={"kind": "figma_page", "file_key": key, "page_id": page_id, "page": item.get("name")},
+    )
+
+
+def _figma_validate(config: dict[str, Any], require_scope: bool) -> None:
+    files = _list(config, "files")
+    _require(not require_scope or files, "Indiquez au moins un fichier Figma (URL ou clé)")
+    bad = [f for f in files if not figma_file_key(f)]
+    _require(not bad, f"Fichier Figma invalide : {', '.join(bad[:3])}")
+
+
+FIGMA = Preset(
+    id="figma",
+    label="Figma",
+    vendor="Figma · figma-developer-mcp",
+    description=(
+        "Pages, frames et textes des maquettes Figma via le serveur MCP communautaire Framelink "
+        "(figma-developer-mcp, lecture seule)."
+    ),
+    icon="figma",
+    source_kind="document",
+    transport="stdio",
+    command="figma-developer-mcp",
+    fallback=("npx", "-y", "figma-developer-mcp@0.13.2"),
+    version="figma-developer-mcp 0.13.2",
+    args=lambda config: ["--stdio", "--format=json", "--skip-image-downloads", "--no-telemetry"],
+    env=lambda config, secrets: {
+        "FIGMA_API_KEY": secrets.get("api_key", ""),
+        "FRAMELINK_TELEMETRY": "off",
+        "DO_NOT_TRACK": "1",
+    },
+    required_tools=("get_figma_data",),
+    probe=lambda config: (
+        ("get_figma_data", {"fileKey": figma_file_key(_list(config, "files")[0]), "depth": 1})
+        if _list(config, "files") and figma_file_key(_list(config, "files")[0])
+        else None
+    ),
+    validate=_figma_validate,
+    docs_url="https://github.com/GLips/Figma-Context-MCP",
+    credentials_help=(
+        "Figma → Settings → Security → Personal access tokens : jeton en lecture seule (« File content : "
+        "Read »), idéalement d'un compte de service invité en lecteur sur les fichiers synchronisés. Les "
+        "commentaires ne sont pas exposés par ce serveur."
+    ),
+    fields=(
+        PresetField("api_key", "Jeton d'accès personnel Figma", "secret", "password", True),
+        PresetField(
+            "files",
+            "Fichiers Figma",
+            "scope",
+            "list",
+            True,
+            help="URL (figma.com/design/<clé>/…) ou clé de fichier ; un document par page",
+            placeholder="https://www.figma.com/design/AbCdEf123456/Maquettes",
+        ),
+    ),
+    streams=(
+        Stream(
+            key="pages",
+            label="Pages",
+            list_tool="get_figma_data",
+            list_args=lambda ctx: {"fileKey": figma_file_key(ctx.item)},
+            items=_figma_items,
+            item_id=lambda item, ctx: f"{figma_file_key(ctx.item)}:{item.get('id')}",
+            map=_map_figma_page,
+            foreach="files",
+            incremental="none",
+            full_listing=True,
+        ),
+    ),
+    suggested_task="Résumer les écrans de la maquette : parcours, libellés et points à valider",
+)
+
+
 # --- Custom server (platform admins, ORBIT_MCP_ALLOW_CUSTOM) ----------------------------------------
 
 
@@ -1782,7 +2116,7 @@ def _custom_validate(config: dict[str, Any]) -> None:
 
 
 PRESETS: dict[str, Preset] = {
-    p.id: p for p in (ATLASSIAN, MS365, GOOGLE, SLACK, GITHUB, LINEAR, OBSIDIAN, CUSTOM)
+    p.id: p for p in (ATLASSIAN, MS365, GOOGLE, SLACK, GITHUB, LINEAR, OBSIDIAN, FIGMA, CUSTOM)
 }
 
 

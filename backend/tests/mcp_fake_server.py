@@ -293,6 +293,117 @@ def build(preset: str, data_path: str | None = None, *, header_token: Any = None
         def list_channel_messages(teamId: str, channelId: str, top: int = 50) -> str:
             return json.dumps({"value": []})
 
+        def _folder_messages(mailFolderId: str, filter: str | None, userId: str | None) -> str:
+            remote.log(
+                "list-mail-folder-messages",
+                {"mailFolderId": mailFolderId, "filter": filter, "userId": userId},
+            )
+            rows = remote.data().get("folders", {}).get(mailFolderId, [])
+            match = re.match(r"conversationId eq '(.+)'", filter or "")
+            if match:
+                rows = [r for r in rows if r.get("conversationId") == match.group(1)]
+            elif filter and filter.startswith("receivedDateTime ge "):
+                rows = [r for r in rows if _after(r.get("receivedDateTime"), filter.split(" ge ", 1)[1])]
+            return json.dumps({"value": rows})
+
+        @server.tool(name="list-mail-folder-messages")
+        def list_mail_folder_messages(
+            mailFolderId: str,
+            top: int = 50,
+            skip: int | None = None,
+            filter: str | None = None,
+            select: list[str] | None = None,
+            expand: str | None = None,
+        ) -> str:
+            return _folder_messages(mailFolderId, filter, None)
+
+        @server.tool(name="list-shared-mailbox-folder-messages")
+        def list_shared_mailbox_folder_messages(
+            userId: str,
+            mailFolderId: str,
+            top: int = 50,
+            skip: int | None = None,
+            filter: str | None = None,
+            select: list[str] | None = None,
+            expand: str | None = None,
+        ) -> str:
+            return _folder_messages(mailFolderId, filter, userId)
+
+    elif preset == "figma":
+
+        @server.tool()
+        def get_figma_data(fileKey: str, nodeId: str | None = None, depth: int | None = None) -> str:
+            """Shape of figma-developer-mcp 0.13.2 with --format=json (recorded on a fictitious file)."""
+            remote.log("get_figma_data", {"fileKey": fileKey, "depth": depth})
+            files = remote.data().get("files", {})
+            if fileKey not in files:
+                raise ToolError(
+                    f"Error fetching file: Request to Figma API endpoint '/files/{fileKey}' returned 404"
+                )
+            return json.dumps(files[fileKey], ensure_ascii=False)
+
+    elif preset == "google_workspace":
+
+        @server.tool()
+        def search_drive_files(
+            user_google_email: str, query: str, page_size: int = 10, page_token: str | None = None
+        ) -> str:
+            return "No files found."
+
+        @server.tool()
+        def get_drive_file_content(user_google_email: str, file_id: str) -> str:
+            return ""
+
+        @server.tool()
+        def search_gmail_messages(
+            query: str, user_google_email: str, page_size: int = 10, page_token: str | None = None
+        ) -> str:
+            remote.log("search_gmail_messages", {"query": query})
+            threads = remote.data().get("threads", {})
+            lines = [f"Found {len(threads)} messages matching '{query}':", ""]
+            for index, (thread_id, thread) in enumerate(threads.items(), 1):
+                if thread.get("label") and f'label:"{thread["label"]}"' not in query:
+                    continue
+                for message in thread["messages"]:
+                    lines += [
+                        f"  {index}. Message ID: {message['id']}",
+                        f"     Web Link: https://mail.google.com/mail/u/0/#all/{message['id']}",
+                        f"     Thread ID: {thread_id}",
+                        f"     Thread Link: https://mail.google.com/mail/u/0/#all/{thread_id}",
+                        "",
+                    ]
+            return "\n".join(lines)
+
+        @server.tool()
+        def get_gmail_thread_content(thread_id: str, user_google_email: str) -> str:
+            remote.log("get_gmail_thread_content", {"thread_id": thread_id})
+            thread = remote.data()["threads"][thread_id]
+            lines = [
+                f"Thread ID: {thread_id}",
+                f"Subject: {thread['subject']}",
+                f"Messages: {len(thread['messages'])}",
+                "",
+            ]
+            for index, message in enumerate(thread["messages"], 1):
+                lines += [
+                    f"=== Message {index} ===",
+                    f"From: {message['from']}",
+                    f"Date: {message['date']}",
+                    "To: equipe@exemple.test",
+                    "Cc: [not present in Gmail response]",
+                    "",
+                    message["body"],
+                    "",
+                ]
+                if message.get("attachments"):
+                    lines.append("--- ATTACHMENTS ---")
+                    for att_index, name in enumerate(message["attachments"]):
+                        lines.append(
+                            f"{att_index + 1}. {name} (application/pdf, 12.5 KB)\n   Attachment ID: a{att_index}"
+                        )
+                    lines.append("")
+            return "\n".join(lines)
+
     elif preset == "custom":
 
         @server.resource("note://orbit/charte")
