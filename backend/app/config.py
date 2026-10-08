@@ -148,6 +148,28 @@ class Settings(BaseSettings):
     #: Images smaller than this (pixels on the shorter side) are ignored (logos, icons, bullets).
     visual_min_size: int = Field(default=96, ge=1)
 
+    # --- Context assembly (docs/AI_CONTEXT_ENGINEERING.md §C) ------------------------------------
+    #: §C1 prompt-cache-aware layout: stable prefix (notice, decisions, constraints, snapshot items)
+    #: first, variable items and the task after it; ``cache_prefix_hash`` exposed in the package.
+    context_cache_ordering: bool = True
+    #: Window in which a previous request with the same prefix hash counts as a cache reuse.
+    context_cache_ttl_seconds: int = Field(default=300, ge=1, le=86_400)
+    #: §C2 ``progressive`` mode: tokens of each item's teaser in the summary index.
+    context_progressive_excerpt_tokens: int = Field(default=40, ge=8, le=400)
+    #: §C3 per-agent-kind context profiles (budget, sections, order, thresholds) applied to agents.
+    context_profiles: bool = True
+    #: §C4 sentence-level compression: ``learned`` (embedding relevance + redundancy + optional local
+    #: pruning model) or ``extractive`` (term overlap + position).
+    compression_mode: Literal["learned", "extractive"] = "learned"
+    #: Optional local pruning model hook ``package.module:function`` (sentences, query) -> scores in [0, 1].
+    compression_pruner: str = ""
+    #: §C5 context sufficiency: score thresholds of the ``sufficient`` / ``partial`` verdicts.
+    context_sufficiency: bool = True
+    sufficiency_sufficient_threshold: float = Field(default=0.75, ge=0, le=1)
+    sufficiency_partial_threshold: float = Field(default=0.4, ge=0, le=1)
+    #: « Demander à ORBIT » answers « je ne sais pas » when the context is insufficient.
+    ask_abstain_when_insufficient: bool = True
+
     # --- Observability ---------------------------------------------------------------------------
     otlp_endpoint: str = ""
     otlp_headers: str = ""  # "key1=value1,key2=value2" (e.g. Langfuse basic auth)

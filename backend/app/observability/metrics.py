@@ -38,6 +38,24 @@ EXCLUSIONS_TOTAL = Counter(
 )
 WORKER_INFLIGHT = Gauge("orbit_worker_inflight_jobs", "Jobs currently processed by this worker.")
 
+CONTEXT_CACHE_PREFIX_TOTAL = Counter(
+    "orbit_context_cache_prefix_total",
+    "Context packages by stable-prefix reuse (hit: same prefix served within the cache window).",
+    ["result"],
+)
+CONTEXT_CACHE_PREFIX_TOKENS_TOTAL = Counter(
+    "orbit_context_cache_prefix_tokens_total",
+    "Tokens of stable prefixes served, by reuse result (hit = cacheable tokens).",
+    ["result"],
+)
+
+
+def observe_cache_prefix(*, reused: bool, tokens: int) -> None:
+    """§C1: one served package with a stable prefix."""
+    result = "hit" if reused else "miss"
+    CONTEXT_CACHE_PREFIX_TOTAL.labels(result=result).inc()
+    CONTEXT_CACHE_PREFIX_TOKENS_TOTAL.labels(result=result).inc(max(tokens, 0))
+
 
 def observe_context_request(
     *,

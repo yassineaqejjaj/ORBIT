@@ -24,8 +24,10 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -51,9 +53,11 @@ from app.governance.acl import effective_clearance, effective_principals
 from app.governance.policy import Candidate, GovernanceContext, evaluate
 from app.llm import client as llm_client
 from app.models import Agent, ContextRequest, ContextSnapshot, User
-from app.observability.metrics import observe_context_request
+from app.observability.metrics import observe_cache_prefix, observe_context_request
 from app.observability.tracing import current_trace_id, get_tracer
 from app.schemas.context import (
+    CacheControl,
+    CacheHintBlock,
     ContextConfig,
     ContextPackage,
     ContextRequestIn,
@@ -256,6 +260,37 @@ def _enforce_budget(
         excluded.append(dropped)
         packaged = packaging.render(task, intent, included)
     return packaged
+
+
+def cache_hint_blocks(markdown: str, prefix: str) -> list[CacheHintBlock]:
+    """§C1: the context as Anthropic text blocks, a ``cache_control`` breakpoint closing the prefix."""
+    blocks = [CacheHintBlock(text=prefix, cache_control=CacheControl())]
+    rest = markdown[len(prefix) :] if markdown.startswith(prefix) else ""
+    if rest.strip():
+        blocks.append(CacheHintBlock(text=rest))
+    return blocks
+
+
+async def _prefix_reused(
+    session: AsyncSession, project_id: uuid.UUID, prefix_hash: str | None, now: Any
+) -> bool:
+    """A request of the project served the same stable prefix within the cache window (§C1)."""
+    if not prefix_hash:
+        return False
+    since = now - timedelta(seconds=settings.context_cache_ttl_seconds)
+    scalar = getattr(session, "scalar", None)  # unit tests drive the pipeline with a fake session
+    if scalar is None:
+        return False
+    found = await scalar(
+        select(ContextRequest.id)
+        .where(
+            ContextRequest.project_id == project_id,
+            ContextRequest.created_at >= since,
+            ContextRequest.params["cache"]["prefix_hash"].astext == prefix_hash,
+        )
+        .limit(1)
+    )
+    return found is not None
 
 
 def _link_related(included: list[Decision], excluded: list[Decision]) -> None:
@@ -494,6 +529,14 @@ async def _run(
             config=config,
             warnings=warnings,
         )
+        if packaged.prefix:
+            package.cache_prefix_hash = packaged.prefix_hash
+            package.cache_prefix_tokens = packaged.prefix_tokens
+            package.cache_prefix_reused = await _prefix_reused(
+                session, resolved.project_id, packaged.prefix_hash, now
+            )
+            if body.cache_hints:
+                package.cache_hints = cache_hint_blocks(packaged.markdown, packaged.prefix)
         span.set_attribute("orbit.tokens_used", packaged.tokens_used)
 
     # --- persist ---------------------------------------------------------------------------------
@@ -506,6 +549,11 @@ async def _run(
                 "warnings": warnings,
                 "exclusion_summary": {code.value: n for code, n in summary.items()},
                 "retrieval_sources": raw.sources_used,
+                "cache": {
+                    "prefix_hash": package.cache_prefix_hash,
+                    "prefix_tokens": package.cache_prefix_tokens,
+                    "reused": package.cache_prefix_reused,
+                },
             }
         )
         row = persistence.request_row(
@@ -670,6 +718,8 @@ async def assemble_context(
                 latency_seconds=elapsed / 1000, tokens_used=0, status="failed", caller=caller
             )
             raise
+    if package.cache_prefix_hash:
+        observe_cache_prefix(reused=package.cache_prefix_reused, tokens=package.cache_prefix_tokens)
     observe_context_request(
         latency_seconds=package.timings.total / 1000,
         tokens_used=package.tokens_used,

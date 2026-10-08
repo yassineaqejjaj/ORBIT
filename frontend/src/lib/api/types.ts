@@ -838,6 +838,13 @@ export interface ContextPackage {
   snapshot: { id: UUID; name: string; version: number } | null;
   config: ContextConfig;
   warnings: string[];
+  /** §C1 prompt cache: SHA-256 of the stable prefix of `context` (null when the layout is disabled). */
+  cache_prefix_hash?: string | null;
+  cache_prefix_tokens?: number;
+  /** A request of this project served the same prefix within the cache window. */
+  cache_prefix_reused?: boolean;
+  /** Anthropic text blocks (requested with `cache_hints: true`); `cache_control` closes the prefix. */
+  cache_hints?: { type: "text"; text: string; cache_control: { type: "ephemeral" } | null }[] | null;
 }
 
 export interface FeedbackItemFlag {
@@ -1019,6 +1026,16 @@ export interface Metrics {
   /** understand/retrieve/… */
   stage_latency_avg: Record<string, number>;
   ingestion: MetricsIngestion;
+  /** §C1 prompt-cache reuse of stable prefixes. */
+  cache?: MetricsCache;
+}
+
+export interface MetricsCache {
+  packages: number;
+  reused: number;
+  reuse_rate: number;
+  avg_prefix_tokens: number;
+  reused_prefix_tokens: number;
 }
 
 export interface AuditListParams {

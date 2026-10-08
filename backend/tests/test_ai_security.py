@@ -177,7 +177,8 @@ async def test_spotlighting_in_context_and_mcp(
     assert spotlight.NOTICE in context
     # Once in the header notice, once as the actual boundary; the forged one is neutralised.
     assert context.count(spotlight.OPEN) == 2 and context.count(spotlight.CLOSE) == 2
-    assert context.rstrip().endswith(spotlight.CLOSE)
+    # §C1: only the task (caller-provided, not source data) follows the closed data block.
+    assert context.rsplit(spotlight.CLOSE, 1)[1].lstrip().startswith("## Tâche")
 
     async with mcp_client(app, {"X-Orbit-Key": agent_setup.api_key}) as mcp:
         found = await mcp.call_tool("search_sources", {"query": "procédure facturation Nimbus"})

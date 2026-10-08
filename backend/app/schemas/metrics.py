@@ -51,6 +51,16 @@ class IngestionMetrics(ApiModel):
     avg_ingest_ms: float = 0
 
 
+class CacheMetrics(ApiModel):
+    """§C1 prompt-cache reuse: packages whose stable prefix was already served within the window."""
+
+    packages: int = 0
+    reused: int = 0
+    reuse_rate: float = 0
+    avg_prefix_tokens: float = 0
+    reused_prefix_tokens: int = 0
+
+
 class Metrics(ApiModel):
     totals: MetricsTotals
     series: list[MetricsPoint]
@@ -60,3 +70,4 @@ class Metrics(ApiModel):
     by_agent: list[AgentUsage]
     stage_latency_avg: dict[str, float]
     ingestion: IngestionMetrics
+    cache: CacheMetrics = CacheMetrics()

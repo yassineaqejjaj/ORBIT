@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import Field
 
@@ -48,6 +49,10 @@ class ContextRequestIn(InputModel):
     save_snapshot: SaveSnapshotRef | None = None
     explain: bool | None = Field(
         default=None, description="Défaut : true pour un humain, false pour un agent"
+    )
+    cache_hints: bool = Field(
+        default=False,
+        description="Contexte découpé en blocs avec points d'arrêt cache_control (format Anthropic)",
     )
 
 
@@ -143,6 +148,18 @@ class ContextConfig(ApiModel):
     llm: str | None = None
 
 
+class CacheControl(ApiModel):
+    type: Literal["ephemeral"] = "ephemeral"
+
+
+class CacheHintBlock(ApiModel):
+    """One Anthropic Messages API text block; ``cache_control`` marks the end of the cacheable prefix."""
+
+    type: Literal["text"] = "text"
+    text: str
+    cache_control: CacheControl | None = None
+
+
 class ContextPackage(ApiModel):
     request_id: uuid.UUID
     trace_id: str
@@ -160,6 +177,12 @@ class ContextPackage(ApiModel):
     snapshot: ContextSnapshotInfo | None = None
     config: ContextConfig
     warnings: list[str] = Field(default_factory=list)
+    #: §C1: SHA-256 of the stable prefix of ``context`` and its size; ``cache_prefix_reused`` when a
+    #: request of this project served the same prefix within ``ORBIT_CONTEXT_CACHE_TTL_SECONDS``.
+    cache_prefix_hash: str | None = None
+    cache_prefix_tokens: int = 0
+    cache_prefix_reused: bool = False
+    cache_hints: list[CacheHintBlock] | None = None
 
 
 class ItemFlag(InputModel):

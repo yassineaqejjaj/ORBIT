@@ -269,6 +269,12 @@ Variables d'environnement préfixées `ORBIT_` (voir [`.env.example`](.env.examp
 | `ORBIT_RETRIEVAL_MAX_ROUNDS` | `3` | Recherche itérative (§B4) : tours (1 à 3) relançant une recherche ciblée sur les sous-sujets non couverts ; tours visibles dans les timings et l'Explorateur |
 | `ORBIT_VISUAL_EXTRACTION` / `ORBIT_VISUAL_LLM` | `auto` / `true` | Documents visuels (§B5) : images des PDF/PPTX décrites (LLM vision si autorisé, sinon OCR si installé, sinon texte alternatif) et indexées comme fragments |
 | `ORBIT_VISUAL_MAX_IMAGES` / `ORBIT_VISUAL_MIN_SIZE` | `20` / `96` | Images décrites par document ; taille minimale (px, plus petit côté) |
+| `ORBIT_CONTEXT_CACHE_ORDERING` / `ORBIT_CONTEXT_CACHE_TTL_SECONDS` | `true` / `300` | Cache de prompt (§C1) : préfixe stable (consignes, décisions, contraintes, snapshot) puis éléments variables ; `cache_prefix_hash` / `cache_prefix_tokens`, réutilisation mesurée sur la fenêtre ; `cache_hints: true` renvoie les blocs `cache_control` Anthropic |
+| `ORBIT_CONTEXT_PROGRESSIVE_EXCERPT_TOKENS` | `40` | Mode `progressive` (§C2) : résumé + index des sources et décisions ; détail via les outils MCP `expand_source`, `get_decision`, `get_memory_item`, `search_more` |
+| `ORBIT_CONTEXT_PROFILES` | `true` | Profils de contexte par type d'agent (§C3) : budget, sections, ordre, seuils, éditables dans Paramètres, ajustement suggéré d'après les retours |
+| `ORBIT_COMPRESSION_MODE` / `ORBIT_COMPRESSION_PRUNER` | `learned` / vide | Compression au niveau phrase (§C4) : pertinence par embeddings + redondance (+ modèle d'élagage local `module:fonction`), citations préservées ; `extractive` = repli simple |
+| `ORBIT_CONTEXT_SUFFICIENCY` / `ORBIT_SUFFICIENCY_SUFFICIENT_THRESHOLD` / `ORBIT_SUFFICIENCY_PARTIAL_THRESHOLD` | `true` / `0.75` / `0.4` | Suffisance du contexte (§C5) : score, verdict `sufficient`/`partial`/`insufficient`, sous-sujets manquants |
+| `ORBIT_ASK_ABSTAIN_WHEN_INSUFFICIENT` | `true` | « Demander à ORBIT » répond « Je ne sais pas » quand le contexte est insuffisant |
 | `ORBIT_ENCRYPTION_KEY` | vide | Clé Fernet chiffrant les secrets des connecteurs, webhooks et Teams ; **requise** pour les créer |
 | `ORBIT_CONNECTOR_DEFAULT_SCHEDULE_MINUTES` | `60` | Fréquence de synchronisation par défaut des connecteurs |
 | `ORBIT_MCP_ALLOW_CUSTOM` | `false` | Autorise des serveurs MCP hors presets (administrateurs uniquement) |

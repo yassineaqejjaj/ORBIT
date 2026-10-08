@@ -20,7 +20,7 @@ from decimal import Decimal
 from typing import Any
 
 import orjson
-from sqlalchemy import Date, and_, cast, exists, func, literal, literal_column, select, text, tuple_
+from sqlalchemy import Date, Integer, and_, cast, exists, func, literal, literal_column, select, text, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -65,6 +65,7 @@ from app.schemas import (
     AgentUsage,
     Alert,
     AuditEvent,
+    CacheMetrics,
     IngestionMetrics,
     Metrics,
     MetricsPoint,
@@ -665,6 +666,32 @@ async def build_metrics(session: AsyncSession, access: ProjectAccess, *, days: i
         by_agent=await _by_agent(session, in_window),
         stage_latency_avg=await _stage_latency(session, pid, since),
         ingestion=await _ingestion_metrics(session, pid, since),
+        cache=await _cache_metrics(session, in_window),
+    )
+
+
+async def _cache_metrics(session: AsyncSession, in_window: Any) -> CacheMetrics:
+    """§C1: reuse of stable prefixes (``params.cache`` written by the assembler)."""
+    cache = ContextRequest.params["cache"]
+    tokens = cast(cache["prefix_tokens"].astext, Integer)
+    reused = cache["reused"].astext == "true"
+    row = (
+        await session.execute(
+            select(
+                func.count(ContextRequest.id),
+                func.count(ContextRequest.id).filter(reused),
+                func.avg(tokens),
+                func.coalesce(func.sum(tokens).filter(reused), 0),
+            ).where(in_window, cache["prefix_hash"].astext.is_not(None))
+        )
+    ).one()
+    packages, hits, avg_tokens, hit_tokens = row
+    return CacheMetrics(
+        packages=int(packages),
+        reused=int(hits),
+        reuse_rate=round(int(hits) / int(packages), 4) if packages else 0,
+        avg_prefix_tokens=rounded(avg_tokens),
+        reused_prefix_tokens=int(hit_tokens),
     )
 
 

@@ -536,6 +536,9 @@ async def reconstitute(
             llm=config_raw.get("llm"),
         ),
         warnings=list(params.get("warnings") or []),
+        cache_prefix_hash=(params.get("cache") or {}).get("prefix_hash"),
+        cache_prefix_tokens=int((params.get("cache") or {}).get("prefix_tokens") or 0),
+        cache_prefix_reused=bool((params.get("cache") or {}).get("reused")),
         feedback=[
             ContextFeedbackOut(
                 id=f.id,

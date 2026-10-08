@@ -18,6 +18,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import replace
 
+from app.config import settings
 from app.context import packaging, spotlight
 from app.context.selection import Decision
 from app.context.textutils import cosine, split_sentences, term_overlap, words
@@ -199,9 +200,13 @@ async def compress(
         _sentence_similarities(decisions, query_vector), _llm_summaries(decisions)
     )
     for d in decisions:
-        summary = summaries.get(id(d))
+        # §C1: items of the stable prefix are compressed independently of the query (cacheable bytes).
+        stable = settings.context_cache_ordering and packaging.is_stable(d.candidate)
+        summary = None if stable else summaries.get(id(d))
         excerpt = ""
-        if summary:
+        if stable:
+            excerpt = compress_text(d.candidate.text, d.allowance, ())
+        elif summary:
             excerpt = truncate_to_tokens(clean(summary), d.allowance)
             if excerpt:
                 d.verdict = replace(d.verdict, reason_detail=f"{d.verdict.reason_detail} · résumé LLM")

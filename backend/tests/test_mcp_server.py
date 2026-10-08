@@ -94,6 +94,7 @@ async def test_tools_registered_exactly_as_contract() -> None:
         "session_id",
         "base_snapshot",
         "save_snapshot",
+        "cache_hints",
     }
     assert "ctx" not in json.dumps([t.input_schema for t in tools.values()])
     assert all(tool.description for tool in tools.values())

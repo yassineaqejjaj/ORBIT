@@ -334,6 +334,9 @@ def context_result(package: ContextPackage) -> dict[str, Any]:
         "tokens_used": data["tokens_used"],
         "token_budget": data["token_budget"],
         "warnings": data["warnings"],
+        "cache_prefix_hash": data.get("cache_prefix_hash"),
+        "cache_prefix_tokens": data.get("cache_prefix_tokens", 0),
+        **({"cache_hints": data["cache_hints"]} if data.get("cache_hints") else {}),
         **_untrusted_notice(),
     }
 
@@ -376,6 +379,9 @@ async def get_context(
     save_snapshot: Annotated[
         str | None, Field(description="Enregistre le contexte comme nouvelle version de ce snapshot")
     ] = None,
+    cache_hints: Annotated[
+        bool, Field(description="Blocs de texte avec points d'arrêt cache_control (format Anthropic)")
+    ] = False,
 ) -> dict[str, Any]:
     """Assemble a governed context package for the task (same engine as ``POST /context``)."""
     from app.context.assembler import assemble_context
@@ -392,6 +398,7 @@ async def get_context(
             base_snapshot=parse_snapshot_ref(base_snapshot),
             save_snapshot=SaveSnapshotRef(name=save_snapshot.strip()) if save_snapshot else None,
             explain=False,
+            cache_hints=cache_hints,
         )
         package = await assemble_context(scope.session, scope.access, body)
         return context_result(package)
