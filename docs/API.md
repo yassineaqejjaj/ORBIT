@@ -132,22 +132,30 @@ Import JSON/CSV — colonnes reconnues : `id|external_id`, `title|summary|subjec
 
 | Méthode | Chemin | Rôle | Corps / Query | Réponse |
 |---|---|---|---|---|
-| GET | `/projects/{slug}/memory` | viewer | `scope?, kind?, status?, q?, include_history=false, page, page_size` | `Page<MemoryItem>` (versions courantes, filtrées par droits) |
+| GET | `/projects/{slug}/memory` | viewer | `scope?, kind?, status?, q?, include_history=false, as_of? (§D2 « tel que connu au »), page, page_size` | `Page<MemoryItem>` (versions courantes, filtrées par droits) |
 | POST | `/projects/{slug}/memory` | editor **(agent)** | `MemoryIn` | `MemoryItem` (agent ⇒ statut `proposed` forcé) |
 | GET | `/projects/{slug}/memory/{id}` | viewer | — | `MemoryDetail` |
-| PATCH | `/projects/{slug}/memory/{id}` | editor | `{title?, content?, tags?, valid_to?, classification?, kind?}` | `MemoryItem` (nouvelle version) |
+| PATCH | `/projects/{slug}/memory/{id}` | editor | `{title?, content?, tags?, valid_to?, classification?, kind?, skill_meta?}` | `MemoryItem` (nouvelle version) |
 | POST | `/projects/{slug}/memory/{id}/validate` | editor | `{reason?}` | `MemoryItem` |
 | POST | `/projects/{slug}/memory/{id}/obsolete` | editor | `{reason}` | `MemoryItem` |
 | POST | `/projects/{slug}/memory/{id}/supersede` | editor | `{by_id, reason?}` | `MemoryItem` (l'ancien) |
 | POST | `/projects/{slug}/memory/{id}/restore` | editor | `{reason?}` | `MemoryItem` |
 | POST | `/projects/{slug}/memory/{id}/forget` | owner (ou sujet pour scope `user`) | `{reason}` | `MemoryItem` |
 | POST | `/projects/{slug}/memory/consolidate` | editor | — | `Job` |
-| GET | `/projects/{slug}/memory/graph` | viewer | `limit=150` | `{nodes: {id,type,label,kind,status}[], edges: {source,target,rel_type}[]}` |
+| GET | `/projects/{slug}/memory/graph` | viewer | `limit=150` | `{nodes: {id,type,label,kind,status}[], edges: {source,target,rel_type,confidence?,detail?,method?}[]}` (nœuds `entity` §D2) |
+| POST | `/projects/{slug}/memory/reflect` | editor | `month?=AAAA-MM` (défaut : mois précédent) | `Job` (§D4 synthèse « ce qui a changé » proposée) |
+| GET | `/projects/{slug}/skills` | viewer | — | `Skill[]` (§D1 procédures servies comme Agent Skills) |
+| GET | `/projects/{slug}/skills/{name}` | viewer | — | `Skill & {skill_md}` (SKILL.md avec métadonnées) |
+| GET | `/projects/{slug}/skills/{name}/download` | viewer | — | zip `<name>/SKILL.md` |
+| GET / POST | `/projects/{slug}/entities` | viewer / editor | `{name, kind?, aliases?}` | `Entity[]` / `Entity` (§D2) |
+| GET | `/projects/{slug}/entities/suggestions` | editor | — | `{a, b, score, reason}[]` (fusions suggérées) |
+| POST | `/projects/{slug}/entities/{id}/merge` · `/unmerge` | editor | `{source_id, reason?}` · `{reason?}` | `Entity` (audités `entity.merge` / `entity.unmerge`) |
 
 ```ts
 MemoryIn = { scope, kind, title, content, classification?, acl_principals?, tags?, subject_user_id?, session_id?,
              valid_from?, valid_to?, confidence?, supersedes_id?, status?: "proposed"|"validated",
-             provenance?: { document_id?, chunk_id?, excerpt?, source_label? }[] }
+             provenance?: { document_id?, chunk_id?, excerpt?, source_label? }[],
+             skill_meta?: { name?, description?, task_types?: Intent[], agent_kinds?: AgentKind[] } }  // kind "procedure"
 ```
 
 ## Sessions (mémoire court terme) **(agent)**
@@ -265,9 +273,10 @@ Metrics = {
 ## MCP (`/mcp`, streamable HTTP, clé API d'agent obligatoire)
 
 Outils :
-- `get_context(task, intent?, token_budget?, scopes?, on_behalf_of?, session_id?, base_snapshot?, save_snapshot?)` → `{context, citations[], exclusion_summary, request_id, snapshot}`
+- `get_context(task, intent?, token_budget?, scopes?, on_behalf_of?, session_id?, base_snapshot?, save_snapshot?, as_of?)` → `{context, citations[], exclusion_summary, request_id, snapshot}`
 - `get_snapshot(name, version?)` → `Snapshot`
 - `search_sources(query, limit?)` → `SearchHit[]`
 - `propose_memory(kind, title, content, scope?, provenance_document_ids?)` → `MemoryItem` (statut `proposed`)
 - `record_turn(session_id, role, content)` → `{turns, expires_at}`
 - `send_feedback(request_id, rating, comment?)` → `{id}`
+- `list_skills(task_type?)` → `{skills: Skill[]}` · `get_skill(name)` → `Skill & {skill_md}` (§D1 façons de faire)
