@@ -109,6 +109,7 @@ Overview = {
 | GET | `/projects/{slug}/documents` | viewer | `source_id?, status?, source_kind?, classification?, q?, page, page_size` | `Page<DocumentSummary>` |
 | POST | `/projects/{slug}/documents/upload` | editor **(agent)** | multipart : `files[]`, `source_id?`, `classification?`, `acl_principals?` (CSV), `tags?` (CSV) | `DocumentSummary[]` (statut `pending`) |
 | POST | `/projects/{slug}/documents/text` | editor **(agent)** | `TextDocumentIn` | `DocumentSummary` |
+| POST | `/projects/{slug}/documents/meeting` | editor **(agent)** | multipart : `file` (transcription `.vtt`/`.srt`/`.docx`/`.txt`/`.md` ou audio si `ORBIT_TRANSCRIPTION_BASE_URL`), `title?`, `meeting_date?` (AAAA-MM-JJ), `participants?` (CSV), `source_id?`, `classification?`, `acl_principals?`, `tags?` — §F1 ; `DocumentDetail.metadata.meeting` = `{date, participants, speakers, turn_count, duration_seconds, turns[{speaker, start, end, text}]}` ; 422 si audio C2/C3 vers un service externe ou trop volumineux | `DocumentSummary` |
 | POST | `/projects/{slug}/documents/import` | editor **(agent)** | multipart : `file` (JSON array ou CSV), `source_kind`, `source_id?` | `{created: number, updated: number, documents: DocumentSummary[]}` |
 | GET | `/projects/{slug}/documents/{id}` | viewer | — | `DocumentDetail` (caviardé si pas d'accès → 404) |
 | PATCH | `/projects/{slug}/documents/{id}` | editor | `{title?, classification?, acl_principals?, tags?}` | `DocumentSummary` (réindexation des métadonnées) |

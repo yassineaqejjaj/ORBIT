@@ -14,17 +14,18 @@ sans identifiants valides, la liste vient de sa documentation et de son code pub
 | Préréglage | Serveur (version épinglée) | Transport | Outils utilisés par ORBIT | Vérifié |
 |---|---|---|---|---|
 | `atlassian` | [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) **0.23.1** (PyPI) | stdio `mcp-atlassian` | `confluence_search`, `confluence_get_page`, `jira_search` (+ `jira_get_issue` requis) | live : 58 outils |
-| `ms365` | [Softeria/ms-365-mcp-server](https://github.com/Softeria/ms-365-mcp-server) **0.158.0** (npm) | stdio `ms-365-mcp-server --read-only --org-mode` | `get-drive-delta`, `download-bytes`, `list-mail-messages`, `list-channel-messages` (sonde `get-drive-root-item` / `get-current-user`) | live : 173 outils |
-| `google_workspace` | [taylorwilsdon/google_workspace_mcp](https://github.com/taylorwilsdon/google_workspace_mcp) **workspace-mcp 2.0.1** (PyPI) | stdio `workspace-mcp --tools drive docs sheets [gmail] --read-only` | `search_drive_files`, `get_drive_file_content`, `search_gmail_messages`, `get_gmail_message_content` | live : 67 outils |
+| `ms365` | [Softeria/ms-365-mcp-server](https://github.com/Softeria/ms-365-mcp-server) **0.158.0** (npm) | stdio `ms-365-mcp-server --read-only --org-mode` | `get-drive-delta`, `download-bytes`, `list-mail-messages`, `list-mail-folder-messages`, `list-shared-mailbox-folder-messages` (§F3), `list-channel-messages` (sonde `get-drive-root-item` / `get-current-user`) | live : 173 outils |
+| `google_workspace` | [taylorwilsdon/google_workspace_mcp](https://github.com/taylorwilsdon/google_workspace_mcp) **workspace-mcp 2.0.1** (PyPI) | stdio `workspace-mcp --tools drive docs sheets [gmail] --read-only` | `search_drive_files`, `get_drive_file_content`, `search_gmail_messages`, `get_gmail_message_content`, `get_gmail_thread_content` (§F3) | live : 67 outils (8 outils Gmail en lecture seule) |
 | `slack` | [korotovsky/slack-mcp-server](https://github.com/korotovsky/slack-mcp-server) **1.3.0** (npm, binaire Go) | stdio `slack-mcp-server --transport stdio` | `conversations_history`, `conversations_replies`, `channels_list` (sonde) | doc : refuse de démarrer sans jeton valide (`invalid_auth`) |
 | `github` | [github/github-mcp-server](https://github.com/github/github-mcp-server) **v1.14.0** | HTTP distant `https://api.githubcopilot.com/mcp/` (Bearer) **ou** binaire local `github-mcp-server stdio --read-only --toolsets repos,issues,pull_requests,discussions` | `list_issues`, `issue_read`, `list_pull_requests`, `list_discussions`, `get_discussion`, `get_file_contents`, `search_repositories` (sonde) | live (image Docker, stdio) : 26 outils ; distant : 401 sans jeton |
 | `linear` | [Linear MCP](https://linear.app/docs/mcp) (distant, géré par Linear) | HTTP `https://mcp.linear.app/mcp/readonly` (Bearer) | `list_issues`, `list_projects` | doc : 401 sans jeton ; Bearer clé d'API documenté (FAQ Linear) |
+| `figma` | [GLips/Figma-Context-MCP](https://github.com/GLips/Figma-Context-MCP) **figma-developer-mcp 0.13.2** (npm) | stdio `figma-developer-mcp --stdio --format=json --skip-image-downloads --no-telemetry` | `get_figma_data` (sonde : `get_figma_data(depth=1)` sur le premier fichier) | live : 2 outils (`get_figma_data`, `download_figma_images`), 8 octobre 2026 |
 | `obsidian` | [MarkusPfundstein/mcp-obsidian](https://github.com/MarkusPfundstein/mcp-obsidian) **0.2.3** (PyPI) + plugin *Local REST API* | stdio `mcp-obsidian` | `obsidian_list_files_in_vault`, `obsidian_list_files_in_dir`, `obsidian_get_file_contents` | live : 15 outils |
 | — (convertisseur) | [microsoft/markitdown](https://github.com/microsoft/markitdown) **markitdown-mcp 0.0.1a7** (PyPI) | stdio `markitdown-mcp` | `convert_to_markdown(uri)` | live : conversion d'un fichier `file://` |
 | `custom` | serveur arbitraire (admins plateforme, `ORBIT_MCP_ALLOW_CUSTOM=true`) | stdio (commande) ou HTTP | `resources/list` + `resources/read` | tests |
 
 Les images Docker du backend (`backend/Dockerfile`, `backend/Dockerfile.railway`) installent **au build** Node.js 24.21.0
-(archive officielle, SHA-256 vérifié), les paquets npm et uv épinglés ci-dessus et le binaire `github-mcp-server` copié depuis
+(archive officielle, SHA-256 vérifié), les paquets npm (dont `figma-developer-mcp`) et uv épinglés ci-dessus et le binaire `github-mcp-server` copié depuis
 `ghcr.io/github/github-mcp-server:v1.14.0` : aucun code n'est téléchargé à l'exécution. En développement hors Docker, ORBIT
 utilise le binaire installé s'il est dans le `PATH`, sinon la version épinglée via `uvx`/`npx` (téléchargement).
 
@@ -54,6 +55,16 @@ utilise le binaire installé s'il est dans le `PATH`, sinon la version épinglé
   fourni par une application Entra ID (`Files.Read.All`, `Mail.Read`, `ChannelMessage.Read.All`), qui **expire (~1 h)**.
   Pour une synchronisation planifiée durable de SharePoint, préférez le connecteur natif F5 (client credentials).
 
+- **E-mails de projet (§F3)** : champ « Dossiers de messagerie projet » (`mail_folders` : `inbox` ou ID de dossier) et,
+  optionnellement, « Boîte partagée du projet » (`shared_mailbox`). Plan : `list-mail-folder-messages(mailFolderId, top=50,
+  skip, filter="receivedDateTime ge <curseur>", select=id,conversationId,receivedDateTime)` (boîte partagée :
+  `list-shared-mailbox-folder-messages(userId, …)`) → une entrée par `conversationId`, puis relecture du fil complet
+  `list-mail-folder-messages(filter="conversationId eq '…'", select=…uniqueBody…, expand="attachments($select=name,size,isInline)")`.
+  **Un document par fil** (`external_id = mail_threads:<conversationId>`) : messages triés par date, réponses citées,
+  blocs « De : / Envoyé : », « -----Original Message----- » et signatures retirés, pièces jointes listées par nom (non
+  téléchargées). Une réponse fait avancer le curseur et produit une nouvelle version du fil. `ORBIT_MAIL_MAX_MESSAGES`
+  borne la lecture par dossier et synchronisation. Scope Graph : `Mail.Read` (+ `Mail.Read.Shared` pour une boîte partagée).
+
 ### 3. Google Workspace — `workspace-mcp`
 
 - **Variables** : `GOOGLE_SERVICE_ACCOUNT_KEY_JSON` (clé JSON d'un compte de service, secret chiffré) et
@@ -64,6 +75,11 @@ utilise le binaire installé s'il est dans le `PATH`, sinon la version épinglé
   extraits par le serveur). Gmail (option) : `search_gmail_messages(query)` puis `get_gmail_message_content(message_id)`.
 - **Identifiants** : console Google Cloud → compte de service + clé JSON ; console d'administration Workspace → délégation au
   niveau du domaine avec les scopes `drive.readonly`, `documents.readonly`, `spreadsheets.readonly` (`gmail.readonly` si Gmail).
+
+- **E-mails de projet (§F3)** : champ « Libellés Gmail du projet » (`gmail_labels`, active l'outil `gmail`). Plan :
+  `search_gmail_messages(query='label:"<libellé>" [after:<curseur>]', page_size=25)` → identifiants de fil (`Thread ID`),
+  puis `get_gmail_thread_content(thread_id)` (texte `=== Message n ===`, en-têtes `From`/`Date`, `--- ATTACHMENTS ---`)
+  → un document par fil, mêmes règles de nettoyage que Microsoft 365.
 
 ### 4. Slack — `slack-mcp-server`
 
@@ -109,7 +125,26 @@ utilise le binaire installé s'il est dans le `PATH`, sinon la version épinglé
   `obsidian_get_file_contents(filepath)` pour chaque note `.md` ; listing complet à chaque passage (déduplication par empreinte,
   notes supprimées oubliées).
 
-### 8. MarkItDown — convertisseur de documents
+### 8. Figma — `figma-developer-mcp` (§F2)
+
+- **Serveur** : Framelink « Figma Context MCP », communautaire et maintenu (publication du 18 juin 2026), en lecture seule.
+  Le serveur MCP officiel Figma (Dev Mode) exige l'application de bureau ou un OAuth interactif : inadapté à une
+  synchronisation planifiée dans un conteneur.
+- **Variables** : `FIGMA_API_KEY` (jeton d'accès personnel). ORBIT force `FRAMELINK_TELEMETRY=off`, `DO_NOT_TRACK=1`,
+  `--no-telemetry` et `--skip-image-downloads` (l'outil d'écriture de fichiers images n'est pas enregistré).
+- **Découverte** (8 octobre 2026, jeton factice) : `initialize` → `Figma MCP Server 0.13.2`, `list_tools` → `get_figma_data
+  (fileKey, nodeId?, depth?)` et `download_figma_images` ; l'appel avec un jeton factice renvoie le 403 de l'API Figma
+  (« Invalid token »). Le format `--format=json` (`{"metadata": {"name"}, "nodes": [CANVAS → FRAME → TEXT.text]}`) a été
+  relevé sur un fichier fictif servi par une fausse API locale.
+- **Plan** : par fichier (`files` : URL `figma.com/design/<clé>/…` ou clé), `get_figma_data(fileKey)` → **un document
+  par page** (`external_id = pages:figma:<clé>:<pageId>`, lien `?node-id=`), frames/sections/composants en titres,
+  textes dans l'ordre ; pages sans texte ignorées ; listing complet (une page supprimée est oubliée).
+- **Limite** : ce serveur n'expose pas les **commentaires** Figma. Les serveurs qui les exposent (`figma-console-mcp`)
+  embarquent 121 outils dont des outils d'écriture et un pont WebSocket local : écartés (moindre privilège).
+- **Identifiants** : *Figma → Settings → Security → Personal access tokens*, portée « File content : Read », compte de
+  service invité en lecteur sur les fichiers synchronisés.
+
+### 9. MarkItDown — convertisseur de documents
 
 - Pas une source : extracteur de **repli** du pipeline d'ingestion (`app/ingestion/extractors/markitdown.py`) pour les formats
   non lus nativement : PowerPoint (`.pptx`, `.ppt`), Excel (`.xlsx`, `.xls`), Outlook (`.msg`, `.eml`), EPUB, OpenDocument

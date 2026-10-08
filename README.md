@@ -289,6 +289,10 @@ Variables d'environnement préfixées `ORBIT_` (voir [`.env.example`](.env.examp
 | `ORBIT_MCP_ALLOW_CUSTOM` | `false` | Autorise des serveurs MCP hors presets (administrateurs uniquement) |
 | `ORBIT_MCP_TIMEOUT_SECONDS` / `ORBIT_MCP_MAX_ITEMS` / `ORBIT_MCP_SYNC_TIMEOUT_SECONDS` | `60` / `500` / `1800` | Limites des synchronisations MCP |
 | `ORBIT_MARKITDOWN_MCP` | `auto` | Conversion MarkItDown des formats non lus nativement (`off` pour désactiver) |
+| `ORBIT_MEETINGS_ENABLED` | `true` | Import de réunions (§F1) : transcriptions VTT, SRT, DOCX Teams/Meet, texte ; locuteurs, horodatages, décisions et actions attribuées |
+| `ORBIT_TRANSCRIPTION_BASE_URL` / `_API_KEY` / `_MODEL` | vide / vide / `whisper-1` | Transcription audio optionnelle via un endpoint compatible OpenAI `/audio/transcriptions` (vide = désactivée) |
+| `ORBIT_TRANSCRIPTION_MAX_MB` / `_TIMEOUT_SECONDS` / `_LOCAL` | `25` / `300` / `false` | Taille maximale de l'audio ; garde-fou : un audio C2/C3 n'est jamais envoyé à un service externe (sauf serveur auto-hébergé déclaré `_LOCAL=true`) |
+| `ORBIT_MAIL_MAX_MESSAGES` | `200` | E-mails de projet (§F3) : messages lus au plus par dossier / libellé et par synchronisation |
 | `ORBIT_SMTP_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_FROM` | vide | Envoi des résumés des changements par e-mail (sinon consultables dans l'application) |
 | `ORBIT_WEBHOOK_TIMEOUT_SECONDS` / `ORBIT_WEBHOOK_MAX_FAILURES` | `10` / `20` | Livraison des webhooks (désactivation après N échecs) |
 | `ORBIT_OTLP_ENDPOINT` | vide | Export OpenTelemetry (Langfuse, Jaeger, Tempo…) |
