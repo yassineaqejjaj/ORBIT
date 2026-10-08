@@ -28,11 +28,12 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
-def set_session_cookie(response: Response, token: str) -> None:
+def set_session_cookie(response: Response, token: str, *, persistent: bool = True) -> None:
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
-        max_age=settings.session_ttl_seconds,
+        # The JWT still expires after the session TTL; a non-persistent cookie also ends with the browser.
+        max_age=settings.session_ttl_seconds if persistent else None,
         httponly=True,
         secure=settings.cookie_secure,
         samesite="lax",
@@ -85,7 +86,7 @@ async def login(body: LoginIn, request: Request, response: Response, session: Se
     await session.commit()
 
     token = create_access_token(user.id, password_hash=user.password_hash)
-    set_session_cookie(response, token)
+    set_session_cookie(response, token, persistent=body.remember)
     return UserOut.model_validate(user)
 
 

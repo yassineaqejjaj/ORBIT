@@ -437,6 +437,8 @@ export interface AuditEvent {
 export interface LoginIn {
   email: string;
   password: string;
+  /** « Rester connecté » (default true); false → browser-session cookie. */
+  remember?: boolean;
 }
 
 export interface UserListParams {

@@ -287,6 +287,11 @@
   --animate-text-shimmer: text-shimmer 2.4s linear infinite;
 }
 
+@keyframes orbit-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-10px) rotate(-1deg); }
+}
+
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }

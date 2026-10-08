@@ -113,3 +113,20 @@ async def test_login_is_audited(admin_client: httpx.AsyncClient, db_session) -> 
         )
     ).all()
     assert rows and rows[0].project_id is None
+
+
+async def test_login_without_remember_sets_session_cookie(client: httpx.AsyncClient) -> None:
+    """« Rester connecté » décoché : cookie de session sans Max-Age (supprimé à la fermeture du navigateur)."""
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@orbit.local", "password": "orbit-admin", "remember": False},
+    )
+    assert response.status_code == 200
+    header = response.headers.get("set-cookie", "").lower()
+    assert "orbit_session=" in header
+    assert "max-age" not in header
+
+    persistent = await client.post(
+        "/api/v1/auth/login", json={"email": "admin@orbit.local", "password": "orbit-admin"}
+    )
+    assert "max-age" in persistent.headers.get("set-cookie", "").lower()
