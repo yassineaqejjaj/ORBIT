@@ -150,6 +150,8 @@ class ContextConfig(ApiModel):
     reranker: str
     embedding_model: str
     llm: str | None = None
+    #: §C4 sentence compression: ``learned-embeddings-mmr`` (+ ``+pruner``) or ``extractive``.
+    compression: str | None = None
 
 
 class CacheControl(ApiModel):

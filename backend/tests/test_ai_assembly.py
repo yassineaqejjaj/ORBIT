@@ -262,3 +262,61 @@ async def test_context_profiles_applied_editable_and_suggested(
 
     reset = await admin_client.delete(f"{API}/{slug}/context/profiles/product")
     assert reset.json()["customized"] is False and reset.json()["token_budget"] == 4000
+
+
+# --- C4 learned sentence-level compression ------------------------------------------------------------
+
+PASSAGE = (
+    "Le salon Atlas ouvre ses portes en mars à Lyon. "
+    "Le check-in se fait par QR code au poste d'accueil, voir ATLAS-107. "
+    "Le check-in se fait par QR code au poste d'accueil du salon Atlas. "
+    "La cafétéria propose des menus végétariens tous les jours. "
+    "Les badges sont imprimés après le scan du QR code, procédure sur https://wiki.example/atlas [2]. "
+    "Le parking est gratuit pour les exposants du salon."
+)
+
+
+def fake_pruner(sentences: list[str], query: str) -> list[float]:
+    """Local pruning model stand-in: keeps only the parking sentence."""
+    return [1.0 if "parking" in s else 0.0 for s in sentences]
+
+
+def test_learned_compression_keeps_citations_and_budget() -> None:
+    from app.context import compression
+    from app.search.tokens import estimate_tokens
+
+    terms = ["check", "qr", "code", "badges"]
+    full = estimate_tokens(PASSAGE)
+    for allowance in (25, 40, 60):
+        assert allowance < full
+        out = compression.compress_text_learned(PASSAGE, allowance, terms)
+        assert out and estimate_tokens(out) <= allowance
+        # Inline references are kept whole or dropped with their sentence, never cut.
+        for anchor in ("ATLAS-107", "https://wiki.example/atlas [2]"):
+            stem = anchor[:6]
+            assert (anchor in out) or (stem not in out)
+        assert "ATLAS-107" in out  # relevant sentence with an anchor wins over its near-duplicate
+        assert out.count("Le check-in se fait par QR code") == 1  # redundancy penalty
+        assert "cafétéria" not in out
+    # Embedding similarities / vectors are used when given (hash vectors are deterministic).
+    sims = [0.0, 0.1, 0.1, 0.9, 0.0, 0.0]
+    assert "cafétéria" in compression.compress_text_learned(PASSAGE, 25, [], sims)
+
+
+async def test_compression_pruner_hook(monkeypatch: Any) -> None:
+    from app.config import settings
+    from app.context import compression
+
+    monkeypatch.setattr(settings, "compression_pruner", "tests.test_ai_assembly:fake_pruner")
+    compression._pruner_cache.clear()
+    assert compression.label() == "learned-embeddings-mmr+pruner"
+    sentences = compression.split_sentences(PASSAGE)
+    scores = await compression.pruner_scores(sentences, "stationnement")
+    assert scores is not None and scores[-1] == 1.0
+    out = compression.compress_text_learned(PASSAGE, 20, [], pruned=scores)
+    assert "parking" in out
+    monkeypatch.setattr(settings, "compression_pruner", "inexistant.module:fn")
+    assert compression.load_pruner() is None and compression.label() == "learned-embeddings-mmr"
+    monkeypatch.setattr(settings, "compression_mode", "extractive")
+    assert compression.label() == "extractive"
+    compression._pruner_cache.clear()

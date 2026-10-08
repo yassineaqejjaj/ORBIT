@@ -559,7 +559,10 @@ async def _run(
 
     with timer.stage("compress"):
         await compression.compress(
-            included, query_terms=understanding.terms, query_vector=understanding.query_vector
+            included,
+            query_terms=understanding.terms,
+            query_vector=understanding.query_vector,
+            query=understanding.task,
         )
 
     progressive = body.mode == "progressive"
@@ -591,6 +594,7 @@ async def _run(
             reranker=reranker_used,
             embedding_model=understanding.embedding_model or settings.embedding_model,
             llm=llm_client.model_label(),
+            compression=compression.label(),
         )
         package = ContextPackage(
             request_id=request_id,

@@ -816,6 +816,8 @@ export interface ContextConfig {
   reranker: string;
   embedding_model: string;
   llm: string | null;
+  /** §C4 sentence compression method (`learned-embeddings-mmr`, `+pruner`, `extractive`). */
+  compression?: string | null;
 }
 
 export interface ContextPackage {
