@@ -64,7 +64,7 @@ from app.errors import ApiError, forbidden, not_found, validation_error
 from app.governance.acl import effective_clearance, effective_principals
 from app.governance.policy import Candidate, GovernanceContext, Verdict, evaluate, format_date_fr
 from app.llm import client as llm_client
-from app.memory import skills
+from app.memory import entities, skills
 from app.models import Agent, ContextRequest, ContextSnapshot, User
 from app.observability.metrics import observe_cache_prefix, observe_context_request
 from app.observability.tracing import current_trace_id, get_tracer
@@ -314,6 +314,9 @@ def _apply_profile_sections(
     return kept
 
 
+KIND_ALIAS = "alias"
+
+
 def _aware(value: datetime | None) -> datetime | None:
     if value is None or value.tzinfo is not None:
         return value
@@ -479,6 +482,10 @@ async def _iterative_retrieve(
     )
     found = len({h.id for h in raw.chunk_hits}) + len({h.id for h in raw.memory_hits})
     extra = rewritten.queries[: settings.query_rewrite_max_queries]
+    if settings.memory_entity_aliases:
+        aliased = await entities.alias_query(session, resolved.project_id, understanding.task)
+        if aliased:  # §D2 the other surface forms of the entities the task mentions
+            extra = [query_rewrite.RewrittenQuery(aliased, KIND_ALIAS), *extra]
     if extra:
         found += await retrieval.search_more(
             session, raw, await _embedded(extra), discount=REWRITE_DISCOUNT, **scope

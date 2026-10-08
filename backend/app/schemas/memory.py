@@ -88,6 +88,7 @@ class Relation(ApiModel):
     confidence: float
     detail: str | None
     method: str | None = None
+    score: float | None = None
     explanation: str | None = None
     created_at: datetime
 
@@ -170,6 +171,9 @@ class GraphEdge(ApiModel):
     source: str
     target: str
     rel_type: RelationType
+    confidence: float | None = None
+    detail: str | None = None
+    method: str | None = None
 
 
 class MemoryGraph(ApiModel):
@@ -195,3 +199,37 @@ class Skill(ApiModel):
 
 class SkillDetail(Skill):
     skill_md: str
+
+
+class EntityAliasOut(ApiModel):
+    alias: str
+    merged_from_id: uuid.UUID | None = None
+
+
+class EntityOut(ApiModel):
+    """§D2 resolved entity and its surface forms."""
+
+    id: uuid.UUID
+    name: str
+    kind: str
+    merged_into_id: uuid.UUID | None
+    aliases: list[EntityAliasOut]
+    created_at: datetime
+
+
+class EntityIn(InputModel):
+    name: str = Field(min_length=1, max_length=200)
+    kind: str = Field(default="concept", max_length=40)
+    aliases: list[str] = Field(default_factory=list, max_length=30)
+
+
+class EntityMergeIn(InputModel):
+    source_id: uuid.UUID
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class EntitySuggestion(ApiModel):
+    a: EntityOut
+    b: EntityOut
+    score: float
+    reason: str

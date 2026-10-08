@@ -170,6 +170,8 @@ class Relation(UUIDPkMixin, CreatedAtMixin, Base):
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: §D3 contradiction detection: ``nli`` | ``llm`` | ``lexical`` and the model's explanation (h004).
     method: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Contradiction probability given by the model (``NULL`` for lexical markers).
+    score: Mapped[float | None] = mapped_column(REAL, nullable=True)
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 

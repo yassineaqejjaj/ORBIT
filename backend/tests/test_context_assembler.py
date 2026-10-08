@@ -26,6 +26,7 @@ from app.enums import (
     Role,
     SourceKind,
 )
+from app.memory import entities
 from app.models import AuditLog, Chunk, ContextDecision, ContextRequest, Document, MemoryItem, Project, User
 from app.schemas import ContextRequestIn
 
@@ -176,7 +177,12 @@ def corpus(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         return 0
 
     monkeypatch.setattr(retrieval, "retrieve", fake_retrieve)
+
+    async def no_alias(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
     monkeypatch.setattr(retrieval, "add_procedures", no_procedures)
+    monkeypatch.setattr(entities, "alias_query", no_alias)
     monkeypatch.setattr(selection, "load_contradictions", no_contradictions)
     return {"chunks": chunks, "decision": decision}
 

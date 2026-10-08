@@ -72,6 +72,10 @@ class Conflict(ApiModel):
     detected_at: datetime
     similarity: float
     detail: str | None
+    #: §D3 detection method (``nli`` | ``llm`` | ``lexical``), model score and explanation.
+    method: str | None = None
+    score: float | None = None
+    explanation: str | None = None
     suggested_winner_id: uuid.UUID
     rationale: str
     status: Literal["open", "resolved", "dismissed"]

@@ -216,3 +216,66 @@ async def test_as_of_memory_list_and_context(admin_client: httpx.AsyncClient, pr
     texts = " ".join(i["excerpt"] for i in package["items"] if i["candidate_type"] == "memory")
     assert "1200" in texts and "1500" not in texts and "800" not in texts
     assert any("telle que connue au" in w for w in package["warnings"])
+
+
+# --- D2 entity resolution -------------------------------------------------------------------------------
+
+
+async def test_entity_merge_unmerge_audited_and_aliases_in_retrieval(
+    admin_client: httpx.AsyncClient, project: JSON
+) -> None:
+    slug = str(project["slug"])
+    full = await admin_client.post(f"{API}/{slug}/entities", json={"name": "Application Mobile Exposants"})
+    short = await admin_client.post(f"{API}/{slug}/entities", json={"name": "AME", "kind": "produit"})
+    other = await admin_client.post(f"{API}/{slug}/entities", json={"name": "Badge visiteur"})
+    assert full.status_code == short.status_code == other.status_code == 201, full.text
+    dup = await admin_client.post(f"{API}/{slug}/entities", json={"name": "ame"})
+    assert dup.status_code == 409
+
+    suggestions = (await admin_client.get(f"{API}/{slug}/entities/suggestions")).json()
+    assert len(suggestions) == 1
+    pair = {suggestions[0]["a"]["name"], suggestions[0]["b"]["name"]}
+    assert pair == {"Application Mobile Exposants", "AME"} and "sigle" in suggestions[0]["reason"]
+
+    target, source = full.json()["id"], short.json()["id"]
+    merged = await admin_client.post(f"{API}/{slug}/entities/{target}/merge", json={"source_id": source})
+    assert merged.status_code == 200, merged.text
+    assert {a["alias"] for a in merged.json()["aliases"]} == {"Application Mobile Exposants", "AME"}
+    listed = (await admin_client.get(f"{API}/{slug}/entities")).json()
+    assert {e["name"] for e in listed} == {"Application Mobile Exposants", "Badge visiteur"}
+    assert (await admin_client.get(f"{API}/{slug}/entities/suggestions")).json() == []
+
+    await _memory(
+        admin_client,
+        slug,
+        kind="fact",
+        title="Disponibilité de l'application mobile exposants",
+        content="Fait : l'Application Mobile Exposants est disponible sur iOS et Android depuis mars.",
+    )
+    await _memory(
+        admin_client,
+        slug,
+        kind="fact",
+        title="Parking",
+        content="Fait : le parking du salon compte 400 places.",
+    )
+    await drain()
+    task = "Sur quelles plateformes l'AME est-elle publiée ?"
+    package = await _context(admin_client, slug, task, include_sources=False)
+    assert "Disponibilité de l'application mobile exposants" in {i["title"] for i in package["items"]}
+    graph = (await admin_client.get(f"{API}/{slug}/memory/graph")).json()
+    entity_nodes = [n for n in graph["nodes"] if n["type"] == "entity"]
+    assert [n["label"] for n in entity_nodes] == ["Application Mobile Exposants"]
+    assert any(e["target"] == target and e["rel_type"] == "mentions" for e in graph["edges"])
+
+    # The alias query is the extra retrieval query of round 1.
+    queries = [q for r in package["timings"]["rounds"] for q in r["queries"]]
+    assert any("Application Mobile Exposants" in str(q) for q in queries)
+
+    unmerged = await admin_client.post(f"{API}/{slug}/entities/{source}/unmerge", json={"reason": "erreur"})
+    assert unmerged.status_code == 200 and [a["alias"] for a in unmerged.json()["aliases"]] == ["AME"]
+    again = await admin_client.post(f"{API}/{slug}/entities/{source}/unmerge", json={})
+    assert again.status_code == 409
+    audit = (await admin_client.get(f"{API}/{slug}/audit", params={"limit": 50})).json()
+    actions = {entry["action"] for entry in audit["items"]}
+    assert {"entity.create", "entity.merge", "entity.unmerge"} <= actions

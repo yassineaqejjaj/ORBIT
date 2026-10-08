@@ -1,7 +1,7 @@
 """Chantier D — memory (docs/AI_CONTEXT_ENGINEERING.md §D).
 
 * memory kind ``procedure`` (§D1 skills) + ``memory_items.skill_meta`` (SKILL.md metadata);
-* ``relations.method`` / ``relations.explanation`` (§D3 model-based contradiction detection);
+* ``relations.method`` / ``relations.score`` / ``relations.explanation`` (§D3 model-based contradiction detection);
 * ``entities`` / ``entity_aliases`` (§D2 entity resolution, audited merge/unmerge);
 * job kind ``reflect`` (§D4 monthly « ce qui a changé » reflection).
 
@@ -39,6 +39,7 @@ def upgrade() -> None:
     op.create_check_constraint(op.f("ck_memory_items_kind"), "memory_items", f"kind IN {_NEW_MEMORY_KINDS}")
     op.add_column("memory_items", sa.Column("skill_meta", postgresql.JSONB(), nullable=True))
     op.add_column("relations", sa.Column("method", sa.Text(), nullable=True))
+    op.add_column("relations", sa.Column("score", sa.REAL(), nullable=True))
     op.add_column("relations", sa.Column("explanation", sa.Text(), nullable=True))
     op.drop_constraint(op.f("ck_ingestion_jobs_kind"), "ingestion_jobs", type_="check")
     op.create_check_constraint(op.f("ck_ingestion_jobs_kind"), "ingestion_jobs", f"kind IN {_NEW_JOB_KINDS}")
@@ -104,6 +105,7 @@ def downgrade() -> None:
     op.drop_constraint(op.f("ck_ingestion_jobs_kind"), "ingestion_jobs", type_="check")
     op.create_check_constraint(op.f("ck_ingestion_jobs_kind"), "ingestion_jobs", f"kind IN {_OLD_JOB_KINDS}")
     op.drop_column("relations", "explanation")
+    op.drop_column("relations", "score")
     op.drop_column("relations", "method")
     op.drop_column("memory_items", "skill_meta")
     op.execute("DELETE FROM memory_items WHERE kind = 'procedure'")
