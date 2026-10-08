@@ -97,8 +97,20 @@ def dense_similarity(candidate: Candidate, query_vector: Sequence[float] | None)
     return max(0.0, min(1.0, (1.0 + sim) / 2.0))
 
 
-def heuristic_score(relevance: float, dense: float, fresh: float, boost: float, overlap: float) -> float:
-    score = W_RRF * relevance + W_DENSE * dense + W_FRESHNESS * fresh + W_TYPE * boost + W_TERMS * overlap
+#: Signal order of a weight vector (§E2 per-project learned weights, ``app.evaluation.learning``).
+DEFAULT_WEIGHTS: tuple[float, float, float, float, float] = (W_RRF, W_DENSE, W_FRESHNESS, W_TYPE, W_TERMS)
+
+
+def heuristic_score(
+    relevance: float,
+    dense: float,
+    fresh: float,
+    boost: float,
+    overlap: float,
+    weights: Sequence[float] | None = None,
+) -> float:
+    w_rrf, w_dense, w_fresh, w_type, w_terms = weights or DEFAULT_WEIGHTS
+    score = w_rrf * relevance + w_dense * dense + w_fresh * fresh + w_type * boost + w_terms * overlap
     return max(0.0, min(1.0, score))
 
 
@@ -113,6 +125,7 @@ def apply_heuristic(
     query_terms: Sequence[str],
     query_vector: Sequence[float] | None,
     now: datetime,
+    weights: Sequence[float] | None = None,
 ) -> None:
     """Compute every signal and the heuristic final score in place."""
     for c in candidates:
@@ -124,7 +137,7 @@ def apply_heuristic(
         if s.dense is None and dense > 0:
             s.dense = dense
         relevance = _session_relevance(c) if c.candidate_type == CandidateType.session else s.rrf_norm
-        s.final = heuristic_score(relevance, dense, s.freshness, s.type_boost, s.term_overlap)
+        s.final = heuristic_score(relevance, dense, s.freshness, s.type_boost, s.term_overlap, weights)
         s.rerank = s.final
         c.score = s.final
 
@@ -189,7 +202,9 @@ def _cross_encode(query: str, passages: list[str]) -> list[float]:
     return [float(score) for score in encoder.rerank(query, passages, batch_size=16)]
 
 
-async def apply_cross_encoder(candidates: Sequence[Candidate], *, query: str) -> bool:
+async def apply_cross_encoder(
+    candidates: Sequence[Candidate], *, query: str, weights: Sequence[float] | None = None
+) -> bool:
     """Blend cross-encoder relevance into the best candidates (after :func:`apply_heuristic`).
 
     Returns ``False`` when the model could not be used (heuristic scores are kept).
@@ -216,7 +231,7 @@ async def apply_cross_encoder(candidates: Sequence[Candidate], *, query: str) ->
         s.cross_encoder = _sigmoid(logit)
         relevance = (1 - CROSS_ENCODER_BLEND) * s.rrf_norm + CROSS_ENCODER_BLEND * s.cross_encoder
         dense = s.dense or 0.0
-        s.final = heuristic_score(relevance, dense, s.freshness or 0.0, s.type_boost, s.term_overlap)
+        s.final = heuristic_score(relevance, dense, s.freshness or 0.0, s.type_boost, s.term_overlap, weights)
         s.rerank = s.cross_encoder
         c.score = s.final
     return True
@@ -238,19 +253,24 @@ async def rerank(
     query_terms: Sequence[str],
     query_vector: Sequence[float] | None,
     now: datetime,
+    weights: Sequence[float] | None = None,
 ) -> str:
-    """Score all candidates in place according to ``ORBIT_RERANKER``. Returns the label actually used."""
+    """Score all candidates in place according to ``ORBIT_RERANKER``. Returns the label actually used.
+
+    ``weights``: per-project learned weights (§E2), in :data:`DEFAULT_WEIGHTS` order."""
     mode = settings.reranker
     if mode == "none":
         apply_none(candidates, now=now)
         label = "none"
     else:
-        apply_heuristic(candidates, query_terms=query_terms, query_vector=query_vector, now=now)
+        apply_heuristic(
+            candidates, query_terms=query_terms, query_vector=query_vector, now=now, weights=weights
+        )
         label = "heuristic-v1"
         if mode == "fastembed":
             label = (
                 reranker_label()
-                if await apply_cross_encoder(candidates, query=query)
+                if await apply_cross_encoder(candidates, query=query, weights=weights)
                 else "heuristic-v1 (repli)"
             )
     apply_trust(candidates)

@@ -573,14 +573,20 @@ async def _run(
         span.set_attribute("orbit.candidates", len(candidates))
 
     with timer.stage("rerank") as span:
+        from app.evaluation import learning
+
+        learned = await learning.current_weights(session, resolved.project_id)
+        weights = None if learned == learning.defaults() else learning.as_tuple(learned)
         reranker_used = await rerank.rerank(
             candidates,
             query=understanding.task,
             query_terms=understanding.terms,
             query_vector=understanding.query_vector,
             now=now,
+            weights=weights,
         )
         span.set_attribute("orbit.reranker", reranker_used)
+        span.set_attribute("orbit.learned_weights", weights is not None)
 
     with timer.stage("govern") as span:
         ctx = _governance_context(resolved, as_of or now)
@@ -807,6 +813,9 @@ async def _run(
     row.latency_ms = round(total)
     row.timings = timings
     package.timings = ContextTimings(**timings)
+    from app.evaluation import judge
+
+    await judge.maybe_enqueue(session, resolved.project_id, request_id)  # §E3 sampled LLM judge
     await session.commit()
     return package
 
