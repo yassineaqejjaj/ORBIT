@@ -120,6 +120,11 @@ Bonnes pratiques :
 6. `propose_memory` propose une décision, un besoin, une contrainte, un risque ou un fait : il reste
    « proposé » jusqu'à validation par un humain.
 7. Terminez par `send_feedback` (note 1–5) avec le `request_id` reçu pour améliorer la sélection.
+8. Contexte à la demande : `get_context` avec `mode="progressive"` renvoie un résumé et un index
+   (identifiants) ; dépliez un élément avec `expand_source`, `get_decision` ou `get_memory_item`, et
+   lancez `search_more` si `sufficiency.verdict` vaut « partial » ou « insufficient » (sous-sujets
+   manquants dans `sufficiency.missing_subtopics`). Si le contexte reste insuffisant, dites que vous
+   ne savez pas plutôt que de deviner. `cache_hints=true` renvoie les blocs `cache_control`.
 
 Les données personnelles sont masquées ([EMAIL], [TÉLÉPHONE]…) et les contenus hors habilitation ne
 sont jamais transmis, pas même leur titre.
