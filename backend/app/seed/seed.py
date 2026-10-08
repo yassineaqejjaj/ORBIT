@@ -279,6 +279,7 @@ class Seeder:
                 await self.optional(f"Attente du worker (phase {phase})", self.wait_for_jobs(phase))
                 await self.optional(f"Validations (phase {phase})", self.apply_validations(phase))
             await self.optional("Mémoire", self.seed_memory())
+            await self.optional("Entités", self.seed_entities())
             await self.optional("Sessions", self.seed_sessions())
             if self.replay_history:
                 await self.optional("Historique des contextes", self.replay_context_history())
@@ -667,6 +668,21 @@ class Seeder:
                 continue
             await self.optional(f"Mémoire {item['key']}", self._seed_memory_item(owner, item))
 
+    async def seed_entities(self) -> None:
+        """§D2 entities and their aliases (« PMR » ↔ « Personne à mobilité réduite »)."""
+        entities = self.manifest.get("entities") or []
+        if not entities:
+            return
+        title("Entités et alias")
+        owner = await self.as_user(self.manifest["project"]["owner"])
+        existing = {e["name"] for e in await owner.get(f"{self.base}/entities") or []}
+        for entity in entities:
+            if entity["name"] in existing:
+                say(f"  = {entity['name']} (existante)")
+                continue
+            await owner.post(f"{self.base}/entities", entity)
+            say(f"  + {entity['name']} ({', '.join(entity.get('aliases', []))})")
+
     async def _seed_memory_item(self, owner: Api, item: dict[str, Any]) -> None:
         author = (
             self.agent_api(item["as_agent"]) if item.get("as_agent") else await self.as_user(item["as_user"])
@@ -687,6 +703,8 @@ class Seeder:
                 body["subject_user_id"] = self.user_id(item["subject"])
             if item.get("session_id"):
                 body["session_id"] = item["session_id"]
+            if item.get("skill_meta"):
+                body["skill_meta"] = item["skill_meta"]
             found = await author.post(f"{self.base}/memory", body)
             say(
                 f"  + [{item['scope']}/{item['kind']}] {item['title']} "

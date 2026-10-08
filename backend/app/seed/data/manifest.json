@@ -161,11 +161,20 @@
      "title": "Capacité du plateau de Lille (mise à jour)",
      "content": "Le plateau de Lille compte 150 postes réservables dans Atlas.",
      "tags": ["capacite", "plateau"]},
+    {"key": "proc-dod", "scope": "project", "kind": "procedure", "status": "validated", "as_user": "camille",
+     "title": "Définition de terminé d'une user story",
+     "content": "Une user story Atlas est terminée quand : 1. les critères d'acceptation sont vérifiés par le PO ; 2. les tests automatisés passent en intégration continue ; 3. la revue de code est faite par un pair ; 4. l'accessibilité RGAA AA est contrôlée sur les écrans modifiés ; 5. la documentation utilisateur est à jour.",
+     "tags": ["procedure", "definition-of-done"],
+     "skill_meta": {"name": "definition-de-termine-user-story", "description": "Critères à vérifier avant de déclarer une user story Atlas terminée.",
+                    "task_types": ["specification", "validation", "engineering"], "agent_kinds": ["product", "engineering"]}},
     {"key": "short-expired", "scope": "short_term", "kind": "summary", "as_agent": "design", "session_id": "atlas-atelier-maquettes",
      "expire": true,
      "title": "Notes de session : atelier maquettes de la carte",
      "content": "Session de travail de l'Agent Design sur les maquettes de la carte des étages : légende des états de poste, zoom par zone, alternative en liste pour l'accessibilité.",
      "tags": ["session", "maquettes"]}
+  ],
+  "entities": [
+    {"name": "Personne à mobilité réduite", "kind": "public", "aliases": ["PMR"]}
   ],
   "sessions": [
     {"id": "atlas-spec-redaction", "agent": "produit", "turns": [
