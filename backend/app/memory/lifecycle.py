@@ -65,7 +65,7 @@ from app.enums import (
 )
 from app.errors import conflict, validation_error
 from app.governance.acl import merge_acls, user_principal
-from app.memory import short_term, skills
+from app.memory import contradiction, short_term, skills
 from app.memory.conflicts import cosine as cosine_similarity
 from app.memory.conflicts import (
     divergences,
@@ -1222,8 +1222,13 @@ async def _flag_conflict(
     similarity: float,
     markers: Sequence[str],
     actor: ActorLike,
+    *,
+    method: str = "lexical",
+    score: float | None = None,
+    explanation: str | None = None,
 ) -> Relation | None:
-    """Relation ``contradicts`` + ``conflict_detected`` events on both items (idempotent)."""
+    """Relation ``contradicts`` + ``conflict_detected`` events on both items (idempotent); §D3 the
+    detection method, model score and explanation are stored on the relation."""
     if await _relation_between(session, a.id, b.id, RelationType.contradicts, both_ways=True):
         return None
     detail = f"Similarité {format_similarity(similarity)} · {join_markers(markers)}"
@@ -1236,6 +1241,9 @@ async def _flag_conflict(
         dst_id=b.id,
         confidence=round(_clamp(similarity), 3),
         detail=detail,
+        method=method,
+        score=score,
+        explanation=explanation or join_markers(markers),
     )
     session.add(relation)
     for this, other in ((a, b), (b, a)):
@@ -1251,6 +1259,8 @@ async def _flag_conflict(
                 "with_title": other.title,
                 "similarity": round(similarity, 3),
                 "markers": list(markers),
+                "method": method,
+                "score": score,
             },
         )
     await audit.record(
@@ -1358,9 +1368,23 @@ async def detect_relations(
                         created.append(relation)
                 continue
         if similarity > CONFLICT_SIMILARITY:
-            markers = divergences(item.content, candidate.content)
-            if markers:
-                relation = await _flag_conflict(session, item, candidate, similarity, markers, system)
+            if await _relation_between(
+                session, item.id, candidate.id, RelationType.contradicts, both_ways=True
+            ):
+                continue
+            verdict = await contradiction.judge(item, candidate)
+            if verdict.contradicts:
+                relation = await _flag_conflict(
+                    session,
+                    item,
+                    candidate,
+                    similarity,
+                    verdict.markers or [verdict.explanation],
+                    system,
+                    method=verdict.method,
+                    score=verdict.score,
+                    explanation=verdict.explanation,
+                )
                 if relation is not None:
                     created.append(relation)
     return created

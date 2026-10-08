@@ -5,15 +5,21 @@ network (hash embeddings, fake LLM through MockTransport, stub NLI)."""
 from __future__ import annotations
 
 import io
+import json
 import zipfile
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
 
-from app.memory import skills
+from app.config import settings
+from app.llm import guardrail
+from app.memory import contradiction, skills
 from app.memory.extractor import classify_sentence
 from tests.test_api_documents import drain
+from tests.test_feature_llm import FakeLLM, fake_llm  # noqa: F401
 from tests.test_mcp_server import AgentSetup, agent_setup, mcp_client, payload  # noqa: F401
 
 API = "/api/v1/projects"
@@ -279,3 +285,71 @@ async def test_entity_merge_unmerge_audited_and_aliases_in_retrieval(
     audit = (await admin_client.get(f"{API}/{slug}/audit", params={"limit": 50})).json()
     actions = {entry["action"] for entry in audit["items"]}
     assert {"entity.create", "entity.merge", "entity.unmerge"} <= actions
+
+
+# --- D3 model-based contradictions ----------------------------------------------------------------------
+
+
+def stub_nli(premise: str, hypothesis: str) -> float:
+    """Stub local NLI model: « en présentiel » vs « à distance » contradict."""
+    text = f"{premise} {hypothesis}".lower()
+    return 0.93 if "présentiel" in text and "distance" in text else 0.05
+
+
+def _item(content: str, classification: int = 1) -> SimpleNamespace:
+    return SimpleNamespace(title=content[:40], content=content, classification=classification)
+
+
+A_ONSITE = _item("La formation des hôtesses Atlas a lieu en présentiel au siège.")
+B_REMOTE = _item("La formation des hôtesses Atlas se déroule à distance, en visioconférence.")
+
+
+async def test_contradiction_nli_path(monkeypatch: Any) -> None:
+    monkeypatch.setattr(settings, "memory_nli_model", "tests.test_ai_memory:stub_nli")
+    verdict = await contradiction.judge(A_ONSITE, B_REMOTE)
+    assert verdict.contradicts and verdict.method == "nli" and verdict.score == 0.93
+    assert "NLI" in verdict.explanation and not verdict.markers  # no lexical marker: the model found it
+    lexical_only = await contradiction.judge(_item("Le salon ouvre à 9 h."), _item("Le salon ouvre à 10 h."))
+    assert lexical_only.contradicts and lexical_only.method == "lexical" and lexical_only.score == 0.05
+    monkeypatch.setattr(settings, "memory_contradiction_mode", "lexical")
+    assert not (await contradiction.judge(A_ONSITE, B_REMOTE)).contradicts
+
+
+async def test_contradiction_llm_judge_and_guardrail(
+    monkeypatch: Any,
+    fake_llm: Callable[..., FakeLLM],  # noqa: F811
+) -> None:
+    monkeypatch.setattr(settings, "memory_nli_model", "")
+    reply = json.dumps({"contradiction": True, "score": 0.88, "explanation": "Présentiel contre distanciel."})
+    fake = fake_llm(lambda _prompt: reply, llm_max_classification=1)
+    verdict = await contradiction.judge(A_ONSITE, B_REMOTE)
+    assert verdict.contradicts and verdict.method == "llm" and verdict.score == 0.88
+    assert "Présentiel contre distanciel" in verdict.explanation and len(fake.requests) == 1
+
+    # C2 / C3 content never leaves ORBIT: lexical fallback, nothing sent, skip counted.
+    before = guardrail.skip_count()
+    for level in (2, 3):
+        secret = await contradiction.judge(_item(A_ONSITE.content, level), _item(B_REMOTE.content, level))
+        assert not secret.contradicts and secret.method == "lexical"
+    assert len(fake.requests) == 1 and guardrail.skip_count() == before + 2
+
+
+async def test_conflict_stores_method_score_and_explanation(
+    admin_client: httpx.AsyncClient, project: JSON, monkeypatch: Any
+) -> None:
+    monkeypatch.setattr(settings, "memory_nli_model", "tests.test_ai_memory:stub_nli")
+    slug = str(project["slug"])
+    first = await _memory(
+        admin_client, slug, kind="fact", title="Formation des hôtesses Atlas", content=A_ONSITE.content
+    )
+    await _memory(
+        admin_client, slug, kind="fact", title="Formation des hôtesses Atlas", content=B_REMOTE.content
+    )
+    await drain()
+    conflicts = (await admin_client.get(f"{API}/{slug}/conflicts")).json()
+    assert len(conflicts) == 1
+    assert conflicts[0]["method"] == "nli" and round(conflicts[0]["score"], 3) == 0.93
+    assert "probabilité de contradiction 0,93" in conflicts[0]["explanation"]
+    detail = (await admin_client.get(f"{API}/{slug}/memory/{first['id']}")).json()
+    relation = next(r for r in detail["relations"] if r["rel_type"] == "contradicts")
+    assert relation["method"] == "nli" and round(relation["score"], 3) == 0.93
