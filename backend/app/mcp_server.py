@@ -994,6 +994,9 @@ def build_mcp_server() -> MCPServer:
     )
     for name, description, fn, hints in TOOL_SPECS:
         server.add_tool(fn, name=name, title=hints.title, description=description, annotations=hints)
+    from app import mcp_resources
+
+    mcp_resources.register(server)  # §E4 resources, prompts, elicitation
     return server
 
 
