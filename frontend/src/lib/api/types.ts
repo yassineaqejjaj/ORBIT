@@ -146,7 +146,34 @@ export interface Source {
   created_at: ISODateString;
   updated_at: ISODateString;
   last_ingested_at: ISODateString | null;
+  /** Explicit trust (null = default of the kind) and effective level (AI security §A3). */
+  trust?: SourceTrust | null;
+  effective_trust?: SourceTrust;
   counts: SourceCounts;
+}
+
+export type SourceTrust = "high" | "medium" | "low";
+
+/** One prompt-injection signal of a chunk (AI security §A1). */
+export interface InjectionReason {
+  code: string;
+  label: string;
+  weight: number;
+  excerpt: string;
+}
+
+/** GET /projects/{slug}/documents/quarantine (owners). */
+export interface QuarantinedChunk {
+  id: UUID;
+  document_id: UUID;
+  document_title: string;
+  version: number;
+  ordinal: number;
+  section: string | null;
+  text: string;
+  injection_score: number;
+  injection_reasons: InjectionReason[];
+  created_at: ISODateString;
 }
 
 export interface DocumentSummary {
@@ -200,6 +227,13 @@ export interface ChunkView {
   pii: PiiEntity[];
   classification: Classification;
   status: ChunkStatus;
+  injection_score?: number;
+  injection_reasons?: InjectionReason[];
+  quarantined?: boolean;
+  quarantine_released_at?: ISODateString | null;
+  /** Contextual-retrieval preamble indexed with the chunk (AI_CONTEXT_ENGINEERING §B1). */
+  context_preamble?: string | null;
+  context_source?: "llm" | "deterministic" | null;
 }
 
 /** Known pipeline step names; unknown names are allowed (`string`). */
@@ -207,7 +241,9 @@ export type JobStepNameValue =
   | "extract"
   | "pii"
   | "classify"
+  | "visual"
   | "chunk"
+  | "contextualize"
   | "embed"
   | "index"
   | "extract_memory"
@@ -275,8 +311,64 @@ export interface MemoryItem {
   created_by_id: UUID | null;
   created_by_label: string | null;
   provenance_count: number;
+  skill_meta?: SkillMeta | null;
+  /** §F1 meeting action item. */
+  action_meta?: ActionMeta | null;
   created_at: ISODateString;
   updated_at: ISODateString;
+}
+
+/** §F1 action item of a meeting: owner, due date (ISO when resolved), speaker and timestamp. */
+export interface ActionMeta {
+  owner?: string | null;
+  due_date?: string | null;
+  due_text?: string | null;
+  speaker?: string | null;
+  timestamp?: string | null;
+}
+
+/** §D1 procedure (skill) metadata. Empty lists = applies to every task / agent kind. */
+export interface SkillMeta {
+  name: string;
+  description: string;
+  task_types: Intent[];
+  agent_kinds: AgentKind[];
+}
+
+export interface Skill extends SkillMeta {
+  title: string;
+  memory_id: UUID;
+  lineage_id: UUID;
+  version: number;
+  status: MemoryStatus;
+  classification: Classification;
+  updated_at: ISODateString;
+}
+
+export interface SkillDetail extends Skill {
+  skill_md: string;
+}
+
+/** §D2 entity resolution. */
+export interface EntityAlias {
+  alias: string;
+  merged_from_id: UUID | null;
+}
+
+export interface Entity {
+  id: UUID;
+  name: string;
+  kind: string;
+  merged_into_id: UUID | null;
+  aliases: EntityAlias[];
+  created_at: ISODateString;
+}
+
+export interface EntitySuggestion {
+  a: Entity;
+  b: Entity;
+  score: number;
+  reason: string;
 }
 
 export interface Provenance {
@@ -311,6 +403,9 @@ export interface Relation {
   other_title: string | null;
   confidence: number;
   detail: string | null;
+  method?: string | null;
+  score?: number | null;
+  explanation?: string | null;
   created_at: ISODateString;
 }
 
@@ -458,6 +553,8 @@ export interface SourceCreateIn {
   default_classification?: Classification;
   default_acl?: string[];
   config?: JsonObject;
+  /** Owners only (AI security §A3). */
+  trust?: SourceTrust;
 }
 
 export type SourceUpdateIn = Partial<SourceCreateIn>;
@@ -479,6 +576,39 @@ export interface DocumentUploadIn {
   acl_principals?: string[];
   /** Sent as CSV. */
   tags?: string[];
+}
+
+/** Multipart fields of `POST /documents/meeting` (§F1). */
+export interface MeetingImportIn {
+  file: File;
+  title?: string;
+  /** AAAA-MM-JJ */
+  meeting_date?: string;
+  /** Sent as CSV. */
+  participants?: string[];
+  source_id?: UUID;
+  classification?: Classification;
+  tags?: string[];
+}
+
+/** One speaker turn of `DocumentDetail.metadata.meeting.turns` (seconds). */
+export interface MeetingTurn {
+  speaker: string | null;
+  text: string;
+  start?: number;
+  end?: number;
+}
+
+/** `DocumentDetail.metadata.meeting` of an imported meeting (§F1). */
+export interface MeetingMeta {
+  date?: string | null;
+  participants?: string[];
+  audio?: boolean;
+  format?: string;
+  speakers?: string[];
+  turn_count?: number;
+  duration_seconds?: number | null;
+  turns?: MeetingTurn[];
 }
 
 export interface TextDocumentIn {
@@ -557,6 +687,8 @@ export interface MemoryListParams extends PageParams {
   q?: string;
   /** Default false. */
   include_history?: boolean;
+  /** §D2 « tel que connu au » (ISO date). */
+  as_of?: string;
 }
 
 export interface MemoryProvenanceIn {
@@ -582,6 +714,7 @@ export interface MemoryIn {
   supersedes_id?: UUID;
   status?: "proposed" | "validated";
   provenance?: MemoryProvenanceIn[];
+  skill_meta?: Partial<SkillMeta>;
 }
 
 export interface MemoryUpdateIn {
@@ -591,6 +724,7 @@ export interface MemoryUpdateIn {
   valid_to?: ISODateString | null;
   classification?: Classification;
   kind?: MemoryKind;
+  skill_meta?: Partial<SkillMeta>;
 }
 
 export interface ReasonIn {
@@ -608,7 +742,7 @@ export interface SupersedeIn {
 
 export interface MemoryGraphNode {
   id: UUID;
-  type: RelationNodeType;
+  type: RelationNodeType | "entity";
   label: string;
   kind: MemoryKind | SourceKind | null;
   status: MemoryStatus | DocumentStatus | ChunkStatus | null;
@@ -618,6 +752,9 @@ export interface MemoryGraphEdge {
   source: UUID;
   target: UUID;
   rel_type: RelationType;
+  confidence?: number | null;
+  detail?: string | null;
+  method?: string | null;
 }
 
 export interface MemoryGraph {
@@ -691,6 +828,10 @@ export interface ContextRequestIn {
   base_snapshot?: SnapshotRef;
   save_snapshot?: { name: string };
   explain?: boolean;
+  /** §C2 `progressive`: summary + index of sources and decisions with ids. */
+  mode?: "full" | "progressive";
+  /** §C1: return Anthropic `cache_control` text blocks. */
+  cache_hints?: boolean;
 }
 
 export interface Scores {
@@ -743,8 +884,25 @@ export interface ExcludedItem {
   related_citation?: string | null;
 }
 
+export type RetrievalQueryKind = "task" | "multi" | "hyde" | "expansion" | "subtopic" | (string & {});
+
+export interface RetrievalQuery {
+  text: string;
+  kind: RetrievalQueryKind;
+}
+
+/** One round of iterative retrieval (AI_CONTEXT_ENGINEERING §B4). */
+export interface RetrievalRound {
+  round: number;
+  queries: RetrievalQuery[];
+  new_items: number;
+  uncovered: string[];
+  ms: number;
+}
+
 export interface ContextTimings {
   understand: number;
+  rewrite?: number;
   retrieve: number;
   fuse: number;
   rerank: number;
@@ -753,6 +911,7 @@ export interface ContextTimings {
   compress: number;
   package: number;
   total: number;
+  rounds?: RetrievalRound[];
 }
 
 export interface ContextConfig {
@@ -760,6 +919,8 @@ export interface ContextConfig {
   reranker: string;
   embedding_model: string;
   llm: string | null;
+  /** §C4 sentence compression method (`learned-embeddings-mmr`, `+pruner`, `extractive`). */
+  compression?: string | null;
 }
 
 export interface ContextPackage {
@@ -782,6 +943,78 @@ export interface ContextPackage {
   snapshot: { id: UUID; name: string; version: number } | null;
   config: ContextConfig;
   warnings: string[];
+  /** §C1 prompt cache: SHA-256 of the stable prefix of `context` (null when the layout is disabled). */
+  cache_prefix_hash?: string | null;
+  cache_prefix_tokens?: number;
+  /** A request of this project served the same prefix within the cache window. */
+  cache_prefix_reused?: boolean;
+  /** Anthropic text blocks (requested with `cache_hints: true`); `cache_control` closes the prefix. */
+  cache_hints?: { type: "text"; text: string; cache_control: { type: "ephemeral" } | null }[] | null;
+  /** §C2: `progressive` = summary + index; details through the MCP tools named in `index[].tool`. */
+  mode?: "full" | "progressive";
+  index?: ContextIndexEntry[];
+  /** §C3 profile applied (agent requests and « agir en tant que » simulations). */
+  profile?: AppliedProfile | null;
+  /** §C5 is the served context enough to answer the task? */
+  sufficiency?: ContextSufficiency | null;
+}
+
+export interface ContextSufficiency {
+  score: number;
+  verdict: "sufficient" | "partial" | "insufficient";
+  missing_subtopics: string[];
+  covered_subtopics: string[];
+  explanation: string;
+}
+
+export type ContextProfileSection =
+  | "decisions"
+  | "requirements"
+  | "constraints"
+  | "procedures"
+  | "facts"
+  | "preferences"
+  | "sources"
+  | "session";
+
+/** §C3 context profile of an agent kind. */
+export interface AppliedProfile {
+  kind: AgentKind;
+  sections: ContextProfileSection[];
+  token_budget: number | null;
+  min_relevance: number | null;
+  sufficient_threshold: number | null;
+  customized: boolean;
+}
+
+export interface ProfileSuggestion {
+  kind: AgentKind;
+  feedback_count: number;
+  avg_rating: number | null;
+  changes: Partial<Pick<AppliedProfile, "token_budget" | "min_relevance" | "sections">>;
+  rationale: string[];
+}
+
+export interface ContextProfileView extends AppliedProfile {
+  default: AppliedProfile;
+  suggestion: ProfileSuggestion;
+}
+
+export interface ContextProfileIn {
+  sections: ContextProfileSection[];
+  token_budget: number | null;
+  min_relevance: number | null;
+  sufficient_threshold: number | null;
+}
+
+export interface ContextIndexEntry {
+  citation: string;
+  id: string;
+  candidate_type: CandidateType;
+  title: string;
+  memory_kind: MemoryKind | null;
+  tool: "expand_source" | "get_decision" | "get_memory_item" | (string & {});
+  tokens_full: number;
 }
 
 export interface FeedbackItemFlag {
@@ -963,6 +1196,16 @@ export interface Metrics {
   /** understand/retrieve/… */
   stage_latency_avg: Record<string, number>;
   ingestion: MetricsIngestion;
+  /** §C1 prompt-cache reuse of stable prefixes. */
+  cache?: MetricsCache;
+}
+
+export interface MetricsCache {
+  packages: number;
+  reused: number;
+  reuse_rate: number;
+  avg_prefix_tokens: number;
+  reused_prefix_tokens: number;
 }
 
 export interface AuditListParams {

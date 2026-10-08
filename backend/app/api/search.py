@@ -81,6 +81,7 @@ async def search(
         chunk, document, kind = entry
         if (
             chunk.status != ChunkStatus.active
+            or chunk.quarantined  # §A1: never served while in quarantine
             or document.status == DocumentStatus.forgotten
             or chunk.version != document.current_version
             or not viewer.can_view(document)

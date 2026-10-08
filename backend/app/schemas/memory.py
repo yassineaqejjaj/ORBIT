@@ -10,6 +10,8 @@ from pydantic import Field
 
 from app.enums import (
     ActorType,
+    AgentKind,
+    Intent,
     MemoryEventType,
     MemoryKind,
     MemoryScope,
@@ -46,6 +48,9 @@ class MemoryItem(ApiModel):
     rationale: str | None = None
     decided_by: str | None = None
     confidence_reason: str | None = None
+    skill_meta: dict[str, Any] | None = None
+    #: §F1 action item: ``{"owner", "due_date", "due_text", "speaker", "timestamp"}``.
+    action_meta: dict[str, Any] | None = None
     created_by_label: str = ""
     provenance_count: int = 0
     created_at: datetime
@@ -84,6 +89,9 @@ class Relation(ApiModel):
     other_title: str | None = None
     confidence: float
     detail: str | None
+    method: str | None = None
+    score: float | None = None
+    explanation: str | None = None
     created_at: datetime
 
 
@@ -102,6 +110,15 @@ class ProvenanceIn(InputModel):
     source_label: str | None = Field(default=None, max_length=300)
 
 
+class SkillMetaIn(InputModel):
+    """§D1 procedure metadata (Agent Skills ``SKILL.md`` front matter + injection rules)."""
+
+    name: str | None = Field(default=None, max_length=64, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    description: str | None = Field(default=None, max_length=1024)
+    task_types: list[Intent] = Field(default_factory=list, max_length=10)
+    agent_kinds: list[AgentKind] = Field(default_factory=list, max_length=10)
+
+
 class MemoryIn(InputModel):
     scope: MemoryScope
     kind: MemoryKind
@@ -118,6 +135,7 @@ class MemoryIn(InputModel):
     supersedes_id: uuid.UUID | None = None
     status: Literal["proposed", "validated"] | None = None
     provenance: list[ProvenanceIn] | None = Field(default=None, max_length=50)
+    skill_meta: SkillMetaIn | None = None
 
 
 class MemoryUpdateIn(InputModel):
@@ -127,6 +145,7 @@ class MemoryUpdateIn(InputModel):
     valid_to: datetime | None = None
     classification: ClassificationLevel | None = None
     kind: MemoryKind | None = None
+    skill_meta: SkillMetaIn | None = None
 
 
 class ReasonIn(InputModel):
@@ -154,8 +173,65 @@ class GraphEdge(ApiModel):
     source: str
     target: str
     rel_type: RelationType
+    confidence: float | None = None
+    detail: str | None = None
+    method: str | None = None
 
 
 class MemoryGraph(ApiModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
+
+
+class Skill(ApiModel):
+    """§D1 procedure served as an Agent Skill."""
+
+    name: str
+    description: str
+    task_types: list[str]
+    agent_kinds: list[str]
+    title: str
+    memory_id: uuid.UUID
+    lineage_id: uuid.UUID
+    version: int
+    status: MemoryStatus
+    classification: int
+    updated_at: datetime
+
+
+class SkillDetail(Skill):
+    skill_md: str
+
+
+class EntityAliasOut(ApiModel):
+    alias: str
+    merged_from_id: uuid.UUID | None = None
+
+
+class EntityOut(ApiModel):
+    """§D2 resolved entity and its surface forms."""
+
+    id: uuid.UUID
+    name: str
+    kind: str
+    merged_into_id: uuid.UUID | None
+    aliases: list[EntityAliasOut]
+    created_at: datetime
+
+
+class EntityIn(InputModel):
+    name: str = Field(min_length=1, max_length=200)
+    kind: str = Field(default="concept", max_length=40)
+    aliases: list[str] = Field(default_factory=list, max_length=30)
+
+
+class EntityMergeIn(InputModel):
+    source_id: uuid.UUID
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class EntitySuggestion(ApiModel):
+    a: EntityOut
+    b: EntityOut
+    score: float
+    reason: str

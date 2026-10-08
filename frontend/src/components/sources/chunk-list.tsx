@@ -70,6 +70,15 @@ function ChunkCard({ chunk, redacted, canSeeOriginal }: { chunk: ChunkView; reda
           ))}
           {chunk.classification >= 2 ? <ClassificationBadge level={chunk.classification} showLabel={false} /> : null}
           {chunk.status !== "active" ? <StatusBadge kind="chunk" status={chunk.status} /> : null}
+          {chunk.quarantined ? (
+            <Badge
+              tone="danger"
+              size="sm"
+              title={(chunk.injection_reasons ?? []).map((r) => r.label).join(" · ") || "Injection de prompt suspectée"}
+            >
+              Quarantaine
+            </Badge>
+          ) : null}
           <span className="text-xs tabular-nums text-muted-foreground">{formatTokens(chunk.token_count)}</span>
         </span>
       </header>
@@ -84,6 +93,14 @@ function ChunkCard({ chunk, redacted, canSeeOriginal }: { chunk: ChunkView; reda
           <RedactedText text={chunk.text_redacted || chunk.text} />
         )}
       </div>
+      {chunk.context_preamble ? (
+        <p className="mt-2 border-l-2 border-primary/40 pl-2 text-xs text-muted-foreground" title="Indexé avec l'extrait, jamais servi aux agents">
+          <span className="font-medium text-foreground">
+            Préambule contextuel {chunk.context_source === "llm" ? "(LLM)" : "(déterministe)"} :
+          </span>{" "}
+          <span className="whitespace-pre-wrap break-words">{chunk.context_preamble}</span>
+        </p>
+      ) : null}
     </article>
   );
 }

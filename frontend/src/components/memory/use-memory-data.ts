@@ -9,6 +9,7 @@ import { useMemoryGraph, useMemoryList } from "@/lib/api/hooks";
 import { queryKeys } from "@/lib/api/query-keys";
 import type { MemoryGraph, MemoryItem, MemoryListParams, Page } from "@/lib/api/types";
 import { MEMORY_STATUSES, type MemoryKind, type MemoryScope, type MemoryStatus } from "@/lib/enums";
+import { dateInputToIso } from "./memory-dates";
 
 export const MEMORY_PAGE_SIZE = 30;
 /** Per-kind fetch size when several kinds are selected (the API filters one kind at a time). */
@@ -20,6 +21,8 @@ export interface MemoryFilters {
   kinds: MemoryKind[];
   q: string;
   history: boolean;
+  /** §D2 « tel que connu au » (YYYY-MM-DD). */
+  asOf?: string;
 }
 
 function baseParams(filters: Omit<MemoryFilters, "status" | "kinds">): MemoryListParams {
@@ -28,6 +31,7 @@ function baseParams(filters: Omit<MemoryFilters, "status" | "kinds">): MemoryLis
   const q = filters.q.trim();
   if (q) params.q = q;
   if (filters.history) params.include_history = true;
+  if (filters.asOf) params.as_of = dateInputToIso(filters.asOf, "end");
   return params;
 }
 

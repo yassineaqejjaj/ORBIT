@@ -10,7 +10,7 @@ from pydantic import Field
 
 from app.enums import MemoryScope
 from app.schemas.common import ApiModel, InputModel
-from app.schemas.context import ContextItem
+from app.schemas.context import ContextItem, ContextSufficiency
 
 AskMode = Literal["llm", "extractive"]
 AskConfidence = Literal["high", "medium", "low"]
@@ -33,6 +33,10 @@ class AskOut(ApiModel):
     message_id: uuid.UUID
     mode: AskMode
     warnings: list[str] = Field(default_factory=list)
+    #: §A2: the cited excerpts are untrusted source data (agents must not follow instructions in them).
+    untrusted_content_notice: str | None = None
+    #: §C5 sufficiency of the context the answer is based on.
+    sufficiency: ContextSufficiency | None = None
 
 
 class AskMessageOut(ApiModel):

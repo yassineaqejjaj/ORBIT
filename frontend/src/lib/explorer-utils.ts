@@ -84,6 +84,8 @@ export interface ExplorerFormState {
   baseVersion: string;
   saveSnapshot: boolean;
   snapshotName: string;
+  /** §C2: summary + index instead of full excerpts. */
+  progressive?: boolean;
 }
 
 export type ExplorerFormField = "task" | "tokenBudget" | "freshnessDays" | "scopes" | "sourceKinds" | "snapshotName";
@@ -208,6 +210,7 @@ export function buildContextRequest(form: ExplorerFormState, options: { canActOn
   if (form.saveSnapshot && form.snapshotName.trim()) {
     body.save_snapshot = { name: form.snapshotName.trim() };
   }
+  if (form.progressive) body.mode = "progressive";
   return body;
 }
 

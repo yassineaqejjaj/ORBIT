@@ -21,7 +21,7 @@ import {
   type NodeProps,
   type NodeTypes,
 } from "@xyflow/react";
-import { ChevronDown, ChevronUp, Network } from "lucide-react";
+import { ChevronDown, ChevronUp, Network, Tags } from "lucide-react";
 
 import { EnumIcon } from "@/components/domain/enum-icon";
 import { SourceKindIcon } from "@/components/domain/source-kind-icon";
@@ -120,9 +120,11 @@ function useNodeFocus(id: string) {
 
 type MemoryNodeData = { label: string; kind: string | null; status: string | null };
 type SourceNodeData = { label: string; kind: string | null; status: string | null; nodeType: "document" | "chunk" };
+type EntityNodeData = { label: string; kind: string | null };
 type MemoryFlowNode = Node<MemoryNodeData, "memory">;
 type SourceFlowNode = Node<SourceNodeData, "source">;
-type FlowNode = MemoryFlowNode | SourceFlowNode;
+type EntityFlowNode = Node<EntityNodeData, "entity">;
+type FlowNode = MemoryFlowNode | SourceFlowNode | EntityFlowNode;
 
 const HANDLE_CLASS = "!size-1.5 !min-h-0 !min-w-0 !border-0 !bg-transparent";
 
@@ -189,11 +191,38 @@ function SourceNode({ id, data }: NodeProps<SourceFlowNode>) {
   );
 }
 
-const NODE_TYPES: NodeTypes = { memory: MemoryNode, source: SourceNode };
+/** §D2 resolved entity (person, product, public…) named by the linked memory items. */
+function EntityNode({ id, data }: NodeProps<EntityFlowNode>) {
+  const { faded, selected, focused } = useNodeFocus(id);
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-1.5 rounded-md border border-dashed border-violet-400/70 bg-card px-2.5 text-[11.5px] font-medium shadow-xs transition-[opacity,box-shadow] duration-150",
+        faded && "opacity-20",
+        (selected || focused) && "shadow-md ring-2 ring-ring",
+      )}
+      style={{ width: NODE_WIDTH, height: MEMORY_HEIGHT }}
+      title={`Entité${data.kind ? ` (${data.kind})` : ""} — ${data.label}`}
+    >
+      <Handles />
+      <Tags className="size-3.5 shrink-0 text-violet-500" aria-hidden />
+      <span className="min-w-0 flex-1 truncate">{data.label}</span>
+    </div>
+  );
+}
+
+const NODE_TYPES: NodeTypes = { memory: MemoryNode, source: SourceNode, entity: EntityNode };
 
 /* -------------------------------------------------------------------------- */
 /* Graph → flow                                                               */
 /* -------------------------------------------------------------------------- */
+
+/** Relation label; model-detected contradictions show their method and score (§D3). */
+function edgeLabel(e: MemoryGraphEdge): string {
+  const base = getMeta(RELATION_TYPE_META, e.rel_type).label;
+  if (e.rel_type !== "contradicts" || !e.method || e.method === "lexical") return base;
+  return `${base} · ${e.method === "nli" ? "NLI" : "LLM"}`;
+}
 
 function groupOf(node: MemoryGraphNode): LayoutGroup {
   if (node.type === "memory") return "memory";
@@ -228,6 +257,9 @@ function buildNodes(graph: MemoryGraph): Built {
     const position = layout.positions.get(n.id) ?? { x: 0, y: 0 };
     if (n.type === "memory") {
       return { id: n.id, type: "memory", position, data: { label: n.label, kind: n.kind, status: n.status } };
+    }
+    if (n.type === "entity") {
+      return { id: n.id, type: "entity", position, data: { label: n.label, kind: n.kind } };
     }
     return {
       id: n.id,
@@ -283,6 +315,10 @@ function GraphLegend({ dark }: { dark: boolean }) {
             <span className="flex items-center gap-2">
               <span className="h-3.5 w-6 shrink-0 rounded-[4px] border border-border-strong bg-card" aria-hidden />
               Document source
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="h-3.5 w-6 shrink-0 rounded-[4px] border border-dashed border-violet-400 bg-card" aria-hidden />
+              Entité (alias résolus)
             </span>
             <span className="flex flex-wrap items-center gap-1">
               {MEMORY_KINDS.map((kind) => (
@@ -376,7 +412,7 @@ function GraphCanvas({
           sourceHandle,
           targetHandle,
           type: "default",
-          label: showLabel ? getMeta(RELATION_TYPE_META, e.rel_type).label : undefined,
+          label: showLabel ? edgeLabel(e) : undefined,
           labelStyle: { fill: color, fontSize: 10, fontWeight: 600 },
           labelBgStyle: { fill: labelBg, fillOpacity: 0.92 },
           labelBgPadding: [4, 2] as [number, number],
@@ -442,6 +478,7 @@ function GraphCanvas({
           nodeColor={(node) => {
             const n = node as FlowNode;
             if (n.type === "source") return dark ? "#334155" : "#cbd5e1";
+            if (n.type === "entity") return "#8b5cf6";
             return TONE_HEX[getMeta(MEMORY_KIND_META, n.data.kind).tone];
           }}
           nodeBorderRadius={8}

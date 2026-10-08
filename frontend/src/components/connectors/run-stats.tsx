@@ -9,6 +9,7 @@ import {
   ListTodo,
   MessagesSquare,
   NotebookPen,
+  PenTool,
   Plug,
   Ticket,
   type LucideIcon,
@@ -30,6 +31,7 @@ const MCP_ICONS: Record<string, LucideIcon> = {
   github: GitBranch,
   linear: ListTodo,
   obsidian: NotebookPen,
+  figma: PenTool,
   plug: Plug,
 };
 
@@ -42,6 +44,7 @@ const PRESET_ICONS: Record<string, string> = {
   github: "github",
   linear: "linear",
   obsidian: "obsidian",
+  figma: "figma",
   custom: "plug",
 };
 

@@ -26,6 +26,7 @@ from app.enums import (
     Role,
     SourceKind,
 )
+from app.memory import entities
 from app.models import AuditLog, Chunk, ContextDecision, ContextRequest, Document, MemoryItem, Project, User
 from app.schemas import ContextRequestIn
 
@@ -172,7 +173,16 @@ def corpus(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     async def no_contradictions(*_args: Any, **_kwargs: Any) -> list[tuple[str, str]]:
         return []
 
+    async def no_procedures(*_args: Any, **_kwargs: Any) -> int:
+        return 0
+
     monkeypatch.setattr(retrieval, "retrieve", fake_retrieve)
+
+    async def no_alias(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(retrieval, "add_procedures", no_procedures)
+    monkeypatch.setattr(entities, "alias_query", no_alias)
     monkeypatch.setattr(selection, "load_contradictions", no_contradictions)
     return {"chunks": chunks, "decision": decision}
 
@@ -230,7 +240,7 @@ async def _run(resolved: Any) -> tuple[Any, FakeSession]:
 async def test_pipeline_persists_every_decision_and_redacts_for_viewer(corpus: dict[str, Any]) -> None:
     package, session = await _run(_resolved(ContextRequestIn(task="Authentification Atlas ?")))
 
-    assert set(package.timings.model_dump()) == set(assembler.STAGES) | {"total"}
+    assert set(package.timings.model_dump()) == set(assembler.STAGES) | {"total", "rounds"}
     assert package.timings.total >= 0
     assert [i.citation for i in package.items] == [f"S{n}" for n in range(1, len(package.items) + 1)]
     assert package.items[0].memory_kind == MemoryKind.decision  # decisions come first

@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { ExclusionsChart, InclusionsChart, StageLatencyChart } from "./breakdown-charts";
 import { LatencyChart, RequestsChart, TokensChart } from "./daily-charts";
 import { DailyTable } from "./daily-table";
+import { CacheStats } from "./cache-stats";
 import { IngestionStats } from "./ingestion-stats";
 import { KpiGrid } from "./kpi-grid";
 import { RequestLog } from "./request-log";
@@ -261,6 +262,8 @@ export function ObservabilityView() {
         </div>
 
         <IngestionStats ingestion={data?.ingestion} loading={loading} />
+
+        <CacheStats cache={data?.cache} loading={loading} />
 
         {metrics.isError && data ? (
           <p className="text-xs text-muted-foreground" role="status">

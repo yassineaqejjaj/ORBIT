@@ -41,9 +41,10 @@ from app.enums import (
     MemoryStatus,
     RelationType,
     SourceKind,
+    SourceTrust,
 )
 from app.ingestion.queue import PermanentJobError, track_step
-from app.memory import lifecycle
+from app.memory import lifecycle, poisoning
 from app.memory.conflicts import content_terms, fold, kind_family, normalize_text
 from app.memory.llm_extraction import (
     LLMExtractionStats,
@@ -77,7 +78,8 @@ _SENTENCE_SPLIT = re.compile(r"(?<=[.!?;])\s+(?=[A-ZÉÈÊÀÂÎÔÛÇ«\"(\[])"
 
 _LABEL = re.compile(
     r"^(?P<label>d[ée]cisions?|besoins?|exigences?|user\s+story|contraintes?|risques?|"
-    r"points?\s+de\s+vigilance|faits?)\s*(?:n[°o]\s*\d+\s*)?\s*[:：]\s*(?P<body>.+)$",
+    r"points?\s+de\s+vigilance|faits?|proc[ée]dures?|checklists?|conventions?|"
+    r"d[ée]finition\s+(?:de\s+(?:termin[ée]|fini|pr[êe]t)|of\s+done)|dod|gabarits?)\s*(?:n[°o]\s*\d+\s*)?\s*[:：]\s*(?P<body>.+)$",
     re.IGNORECASE,
 )
 _LABEL_KINDS: tuple[tuple[str, MemoryKind], ...] = (
@@ -89,10 +91,23 @@ _LABEL_KINDS: tuple[tuple[str, MemoryKind], ...] = (
     ("risque", MemoryKind.risk),
     ("point", MemoryKind.risk),
     ("fait", MemoryKind.fact),
+    ("procedure", MemoryKind.procedure),
+    ("checklist", MemoryKind.procedure),
+    ("convention", MemoryKind.procedure),
+    ("definition", MemoryKind.procedure),
+    ("dod", MemoryKind.procedure),
+    ("gabarit", MemoryKind.procedure),
 )
 _SECTION_KINDS: tuple[tuple[re.Pattern[str], MemoryKind], ...] = (
     (re.compile(r"\b(?:releve des )?decisions?\b"), MemoryKind.decision),
     (re.compile(r"\brisques?\b|\bpoints? de vigilance\b"), MemoryKind.risk),
+    (
+        re.compile(
+            r"\bdefinitions? (?:of done|de (?:termine|fini|pret))\b|\bconventions?\b|\bchecklists?\b|"
+            r"\bprocedures?\b|\bbonnes pratiques\b|\bfacons de faire\b|\bgabarits?\b"
+        ),
+        MemoryKind.procedure,
+    ),
     (re.compile(r"\bcontraintes?\b"), MemoryKind.constraint),
     (re.compile(r"\bbesoins?\b|\bexigences?\b|\buser stories\b|\battentes\b"), MemoryKind.requirement),
 )
@@ -127,6 +142,14 @@ _USERS_WANT = re.compile(
     r"|\bil faut (?:pouvoir|permettre)\b|\bbesoin (?:de|d')\b"
 )
 _RISK = re.compile(r"\brisques? (?:de|d'|que|qu'|d'une?|majeur|principal|identifie)\b|\bpoint de vigilance\b")
+#: §D1 procedural statements (definitions of done, conventions, checklists, mandatory steps).
+_PROCEDURE = re.compile(
+    r"\b(?:est (?:consideree? |considerees? )?terminee?s? (?:quand|lorsque|si|des que)|definition of done|"
+    r"definition de (?:termine|fini|pret)|par convention|la convention (?:est|veut)|"
+    r"avant (?:de |chaque )(?:livrer|merger|deployer|livraison|mise en production|release)|"
+    r"chaque (?:pull request|pr|merge request|livraison|user story|ticket|story) doit|"
+    r"etapes? (?:a suivre|obligatoires?))\b"
+)
 _CONSTRAINT = re.compile(
     r"\b(?:ne doit pas|ne doivent pas|doit|doivent|obligatoire(?:ment)?|imperati(?:f|ve|vement)|interdit|"
     r"exige que|au plus tard|au maximum|au minimum|conformite|conforme (?:a|au|aux))\b"
@@ -165,6 +188,8 @@ class Statement:
     rationale: str | None = None
     decided_by: str | None = None
     confidence_reason: str | None = None
+    #: §F1 meeting action item (owner, due date, speaker, timestamp).
+    action_meta: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)
@@ -374,6 +399,8 @@ def classify_sentence(
         return None  # « Il confirme… », « Elle valide… »: meaningless out of their paragraph
     if section_kind is not None:
         return Statement(section_kind, make_title(text), text, 0.7, False, f"section:{section_kind.value}")
+    if _PROCEDURE.search(folded):
+        return Statement(MemoryKind.procedure, make_title(text), text, 0.65, False, "procedure_phrase")
     if _USERS_WANT.search(folded):
         return Statement(MemoryKind.requirement, make_title(text), text, 0.68, False, "users_want")
     if _RISK.search(folded):
@@ -393,6 +420,11 @@ def is_meeting_record(document: Document, first_text: str = "") -> bool:
     return bool(_MEETING.search(fold(head)) or _MEETING_CR.search(head))
 
 
+_TRUST_CONFIDENCE_DELTA: dict[SourceTrust, float] = {
+    SourceTrust.high: 0.0,
+    SourceTrust.medium: 0.0,
+    SourceTrust.low: -0.1,
+}
 _SOURCE_CONFIDENCE_DELTA: dict[SourceKind, float] = {
     SourceKind.agent_trace: -0.15,
     SourceKind.url: -0.1,
@@ -474,6 +506,7 @@ async def _load(session: AsyncSession, job: IngestionJob) -> tuple[Document, Sou
                 Chunk.document_id == document.id,
                 Chunk.version == document.current_version,
                 Chunk.status == ChunkStatus.active,
+                Chunk.quarantined.is_(False),
             )
             .order_by(Chunk.ordinal)
         )
@@ -485,19 +518,37 @@ async def _collect_candidates(
     document: Document, source: Source, chunks: Sequence[Chunk], result: ExtractionResult
 ) -> list[Candidate]:
     source_kind = SourceKind(source.kind)
-    meeting = source_kind == SourceKind.note and is_meeting_record(document, chunks[0].text if chunks else "")
-    delta = _SOURCE_CONFIDENCE_DELTA.get(source_kind, 0.0)
+    transcript = (document.metadata_ or {}).get("meeting")
+    transcript = transcript if isinstance(transcript, dict) and transcript.get("turns") is not None else None
+    meeting = transcript is not None or (
+        source_kind == SourceKind.note and is_meeting_record(document, chunks[0].text if chunks else "")
+    )
+    turn_state = None
+    if transcript is not None:  # §F1: speaker-attributed decisions and action items
+        from app.memory import meeting_extraction
+
+        turn_state = meeting_extraction.TurnState()
+        speakers = [str(s) for s in transcript.get("speakers") or []]
+        meeting_date = meeting_extraction.parse_meeting_date(transcript.get("date"))
+    trust = source.effective_trust
+    # §A3: low-trust sources lower the confidence and are never promoted to validated automatically.
+    delta = _SOURCE_CONFIDENCE_DELTA.get(source_kind, 0.0) + _TRUST_CONFIDENCE_DELTA[trust]
     candidates: list[Candidate] = []
     by_text: dict[str, Candidate] = {}
     for chunk in chunks:
-        rules = extract_statements(chunk.text_redacted, section=chunk.section, source_kind=source_kind)
+        if turn_state is not None:
+            rules = meeting_extraction.extract_meeting_statements(
+                chunk.text_redacted, speakers, turn_state, meeting_date
+            )
+        else:
+            rules = extract_statements(chunk.text_redacted, section=chunk.section, source_kind=source_kind)
         cards = await extract_cards(document, chunk, source_kind, result.llm)
         card_statements = [st for st in (_card_statement(card) for card in cards or []) if st is not None]
         if cards is not None:
             result.used_llm = True
         statements = merge_statements(card_statements, rules)
         for statement in statements:
-            validated = meeting and statement.explicit_decision
+            validated = meeting and statement.explicit_decision and trust != SourceTrust.low
             statement.confidence = round(
                 max(0.3, min(0.95, statement.confidence + delta + (0.1 if validated else 0))), 2
             )
@@ -796,6 +847,10 @@ async def extract_from_document(session: AsyncSession, job: IngestionJob) -> dic
                 item.rationale = statement.rationale
                 item.decided_by = statement.decided_by
                 item.confidence_reason = statement.confidence_reason
+            elif statement.decided_by:
+                item.decided_by = statement.decided_by
+            if statement.action_meta:
+                item.action_meta = statement.action_meta
             result.created.append(item)
 
         for item in result.created:
@@ -819,6 +874,10 @@ async def extract_from_document(session: AsyncSession, job: IngestionJob) -> dic
                 details=result.counters(),
             )
         await session.flush()
+        if result.created:
+            signals = await poisoning.check_and_record(session, document.project_id)  # §A3
+            if signals:
+                await session.flush()
         step.detail = result.detail()
         logger.info(
             "Memory extraction for document %s: %s in %.0f ms",

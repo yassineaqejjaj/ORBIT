@@ -37,6 +37,7 @@ export const queryKeys = {
     overview: (slug: string) => [...projectRoot(slug), "overview"] as const,
     members: (slug: string) => [...projectRoot(slug), "members"] as const,
     agents: (slug: string) => [...projectRoot(slug), "agents"] as const,
+    contextProfiles: (slug: string) => [...projectRoot(slug), "context-profiles"] as const,
     sources: (slug: string) => [...projectRoot(slug), "sources"] as const,
 
     documents: {
@@ -61,6 +62,9 @@ export const queryKeys = {
       detail: (slug: string, id: string) => [...projectRoot(slug), "memory", "detail", id] as const,
       graph: (slug: string, limit?: number) =>
         [...projectRoot(slug), "memory", "graph", { limit: limit ?? null }] as const,
+      skills: (slug: string) => [...projectRoot(slug), "memory", "skills"] as const,
+      entities: (slug: string) => [...projectRoot(slug), "memory", "entities"] as const,
+      entitySuggestions: (slug: string) => [...projectRoot(slug), "memory", "entity-suggestions"] as const,
     },
 
     sessions: {

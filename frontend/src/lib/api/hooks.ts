@@ -21,10 +21,16 @@ import {
 
 import { saveBlob, type ApiError } from "./client";
 import * as api from "./endpoints";
+import type { AgentKind } from "@/lib/enums";
 import { queryKeys } from "./query-keys";
 import type {
+  Entity,
+  EntitySuggestion,
+  Skill,
   Agent,
   AgentCreateIn,
+  ContextProfileIn,
+  ContextProfileView,
   AgentCreated,
   AuditEvent,
   AuditListParams,
@@ -42,6 +48,7 @@ import type {
   DocumentSummary,
   DocumentUpdateIn,
   DocumentUploadIn,
+  MeetingImportIn,
   Job,
   JobListParams,
   JobWithDocument,
@@ -243,6 +250,26 @@ export function useUpdateProject(slug: string, options?: MutationOpts<Project, P
   );
 }
 
+export function useContextProfiles(slug: string, options?: QueryOpts<ContextProfileView[]>) {
+  return useQuery<ContextProfileView[], ApiError>({
+    queryKey: queryKeys.project.contextProfiles(slug),
+    queryFn: ({ signal }) => api.listContextProfiles(slug, { signal }),
+    enabled: Boolean(slug),
+    ...options,
+  });
+}
+
+export function useUpdateContextProfile(
+  slug: string,
+  options?: MutationOpts<ContextProfileView, { kind: AgentKind; body: ContextProfileIn | null }>,
+) {
+  return useApiMutation<ContextProfileView, { kind: AgentKind; body: ContextProfileIn | null }>(
+    ({ kind, body }) => (body ? api.updateContextProfile(slug, kind, body) : api.resetContextProfile(slug, kind)),
+    (qc) => inv(qc, queryKeys.project.contextProfiles(slug)),
+    options,
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /* Members                                                                    */
 /* -------------------------------------------------------------------------- */
@@ -403,6 +430,14 @@ export function useUploadDocuments(slug: string, options?: MutationOpts<Document
   );
 }
 
+export function useImportMeeting(slug: string, options?: MutationOpts<DocumentSummary, MeetingImportIn>) {
+  return useApiMutation<DocumentSummary, MeetingImportIn>(
+    (input) => api.importMeeting(slug, input),
+    (qc) => invalidateIngestion(qc, slug),
+    options,
+  );
+}
+
 export function useCreateTextDocument(slug: string, options?: MutationOpts<DocumentSummary, TextDocumentIn>) {
   return useApiMutation<DocumentSummary, TextDocumentIn>(
     (body) => api.createTextDocument(slug, body),
@@ -537,6 +572,51 @@ export function useMemoryGraph(slug: string, limit = 150, options?: QueryOpts<Me
     enabled: Boolean(slug),
     ...options,
   });
+}
+
+export function useSkills(slug: string, options?: QueryOpts<Skill[]>) {
+  return useQuery<Skill[], ApiError>({
+    queryKey: queryKeys.project.memory.skills(slug),
+    queryFn: ({ signal }) => api.listSkills(slug, { signal }),
+    enabled: Boolean(slug),
+    ...options,
+  });
+}
+
+export function useEntities(slug: string, options?: QueryOpts<Entity[]>) {
+  return useQuery<Entity[], ApiError>({
+    queryKey: queryKeys.project.memory.entities(slug),
+    queryFn: ({ signal }) => api.listEntities(slug, { signal }),
+    enabled: Boolean(slug),
+    ...options,
+  });
+}
+
+export function useEntitySuggestions(slug: string, options?: QueryOpts<EntitySuggestion[]>) {
+  return useQuery<EntitySuggestion[], ApiError>({
+    queryKey: queryKeys.project.memory.entitySuggestions(slug),
+    queryFn: ({ signal }) => api.listEntitySuggestions(slug, { signal }),
+    enabled: Boolean(slug),
+    ...options,
+  });
+}
+
+export function useMergeEntity(slug: string) {
+  return useApiMutation<Entity, { targetId: UUID; sourceId: UUID }>(
+    ({ targetId, sourceId }) => api.mergeEntity(slug, targetId, { source_id: sourceId }),
+    (qc) => invalidateMemory(qc, slug),
+  );
+}
+
+export function useUnmergeEntity(slug: string) {
+  return useApiMutation<Entity, UUID>(
+    (entityId) => api.unmergeEntity(slug, entityId),
+    (qc) => invalidateMemory(qc, slug),
+  );
+}
+
+export function useReflectMemory(slug: string) {
+  return useApiMutation<Job, string | undefined>((month) => api.reflectMemory(slug, month), null);
 }
 
 export function useCreateMemory(slug: string, options?: MutationOpts<MemoryItem, MemoryIn>) {

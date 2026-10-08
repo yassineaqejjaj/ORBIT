@@ -4,16 +4,18 @@ import * as React from "react";
 import { DatabaseZap, PencilLine } from "lucide-react";
 import { toast } from "sonner";
 
+import { useHasRole } from "@/components/auth/require-role";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, fieldDescribedBy } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { errorMessage } from "@/lib/api/client";
 import { useCreateSource, useUpdateSource } from "@/lib/api/hooks";
 import type { Source } from "@/lib/api/types";
-import type { Classification, SourceKind } from "@/lib/enums";
+import { DEFAULT_SOURCE_TRUST, SOURCE_TRUST_META, type Classification, type SourceKind, type SourceTrustLevel } from "@/lib/enums";
 import { AclPicker } from "./acl-picker";
 import { aclToPrincipals, DEFAULT_ACL_VALUE, isAclValid, principalsToAcl, type AclValue } from "./acl";
 import { ClassificationSelect, type ClassificationChoice } from "./classification-select";
@@ -50,6 +52,8 @@ export function SourceDialog({ slug, open, onOpenChange, source, onSaved }: Sour
   const [acl, setAcl] = React.useState<AclValue>(DEFAULT_ACL_VALUE);
   const [aclError, setAclError] = React.useState<string | undefined>();
   const [errors, setErrors] = React.useState<Errors>({});
+  const isOwner = useHasRole("owner");
+  const [trust, setTrust] = React.useState<SourceTrustLevel | "default">("default");
 
   React.useEffect(() => {
     if (!open) {
@@ -63,6 +67,7 @@ export function SourceDialog({ slug, open, onOpenChange, source, onSaved }: Sour
     setClassification(source?.default_classification ?? 1);
     setAcl(source ? principalsToAcl(source.default_acl) : DEFAULT_ACL_VALUE);
     setAclError(undefined);
+    setTrust(source?.trust ?? "default");
     setErrors({});
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initialize when the dialog opens
   }, [open, source]);
@@ -87,6 +92,7 @@ export function SourceDialog({ slug, open, onOpenChange, source, onSaved }: Sour
       description: description.trim(),
       default_classification: classification,
       default_acl: aclToPrincipals(acl),
+      ...(isOwner && trust !== "default" && trust !== source?.trust ? { trust } : {}),
     };
     try {
       const saved = source ? await update.mutateAsync({ id: source.id, body }) : await create.mutateAsync(body);
@@ -157,6 +163,32 @@ export function SourceDialog({ slug, open, onOpenChange, source, onSaved }: Sour
           >
             <ClassificationSelect id="source-classification" value={classification} onChange={onClassification} disabled={busy} />
           </Field>
+
+          {isOwner ? (
+            <Field
+              id="source-trust"
+              label="Confiance"
+              hint="Pondère le classement et la promotion en mémoire (sécurité IA). Réservé aux propriétaires."
+            >
+              <SimpleSelect
+                id="source-trust"
+                value={trust}
+                onValueChange={setTrust}
+                disabled={busy}
+                options={[
+                  {
+                    value: "default",
+                    label: `Par défaut du type (${SOURCE_TRUST_META[DEFAULT_SOURCE_TRUST[kind]].label.toLowerCase()})`,
+                  },
+                  ...(["high", "medium", "low"] as const).map((level) => ({
+                    value: level,
+                    label: SOURCE_TRUST_META[level].label,
+                    description: SOURCE_TRUST_META[level].description,
+                  })),
+                ]}
+              />
+            </Field>
+          ) : null}
 
           <Field id="source-acl" label="Accès par défaut">
             <AclPicker

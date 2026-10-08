@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -48,6 +49,18 @@ class ContextRequestIn(InputModel):
     save_snapshot: SaveSnapshotRef | None = None
     explain: bool | None = Field(
         default=None, description="Défaut : true pour un humain, false pour un agent"
+    )
+    mode: Literal["full", "progressive"] = Field(
+        default="full",
+        description="progressive : résumé + index (identifiants) ; détail via expand_source, get_decision…",
+    )
+    cache_hints: bool = Field(
+        default=False,
+        description="Contexte découpé en blocs avec points d'arrêt cache_control (format Anthropic)",
+    )
+    as_of: datetime | None = Field(
+        default=None,
+        description="Mémoire « telle que connue au » : versions connues et valides à cette date (§D2)",
     )
 
 
@@ -97,8 +110,27 @@ class ExcludedItem(ApiModel):
     related_citation: str | None = None
 
 
+class RetrievalQuery(ApiModel):
+    text: str
+    #: ``task``, ``multi``, ``hyde``, ``expansion`` or ``subtopic``.
+    kind: str
+
+
+class RetrievalRound(ApiModel):
+    """One round of iterative retrieval (docs/AI_CONTEXT_ENGINEERING.md §B4)."""
+
+    round: int
+    queries: list[RetrievalQuery] = []
+    #: New items (chunks + memory) found by this round.
+    new_items: int = 0
+    #: Sub-topics still uncovered after this round.
+    uncovered: list[str] = []
+    ms: float = 0
+
+
 class ContextTimings(ApiModel):
     understand: float = 0
+    rewrite: float = 0
     retrieve: float = 0
     fuse: float = 0
     rerank: float = 0
@@ -107,6 +139,8 @@ class ContextTimings(ApiModel):
     compress: float = 0
     package: float = 0
     total: float = 0
+    #: Retrieval rounds (§B3 rewrites in round 1, §B4 targeted rounds), within ``retrieve``.
+    rounds: list[RetrievalRound] = []
 
 
 class ContextSnapshotInfo(ApiModel):
@@ -120,6 +154,56 @@ class ContextConfig(ApiModel):
     reranker: str
     embedding_model: str
     llm: str | None = None
+    #: §C4 sentence compression: ``learned-embeddings-mmr`` (+ ``+pruner``) or ``extractive``.
+    compression: str | None = None
+
+
+class CacheControl(ApiModel):
+    type: Literal["ephemeral"] = "ephemeral"
+
+
+class CacheHintBlock(ApiModel):
+    """One Anthropic Messages API text block; ``cache_control`` marks the end of the cacheable prefix."""
+
+    type: Literal["text"] = "text"
+    text: str
+    cache_control: CacheControl | None = None
+
+
+class ContextIndexEntry(ApiModel):
+    """§C2 progressive mode: one served item and how to expand it."""
+
+    citation: str
+    id: str
+    candidate_type: CandidateType
+    title: str
+    memory_kind: MemoryKind | None = None
+    #: MCP tool returning the detail (``expand_source``, ``get_decision``, ``get_memory_item``).
+    tool: str
+    #: Tokens of the full item text (what expanding costs).
+    tokens_full: int
+
+
+class ContextSufficiency(ApiModel):
+    """§C5: is the served context enough to answer the task?"""
+
+    score: float
+    verdict: Literal["sufficient", "partial", "insufficient"]
+    #: Sub-topics (chantier B decomposition, or the task itself) no served item covers.
+    missing_subtopics: list[str] = Field(default_factory=list)
+    covered_subtopics: list[str] = Field(default_factory=list)
+    explanation: str = ""
+
+
+class AppliedProfile(ApiModel):
+    """§C3 context profile of the requesting agent's kind, as applied to this package."""
+
+    kind: str
+    sections: list[str]
+    token_budget: int | None = None
+    min_relevance: float | None = None
+    sufficient_threshold: float | None = None
+    customized: bool = False
 
 
 class ContextPackage(ApiModel):
@@ -139,6 +223,16 @@ class ContextPackage(ApiModel):
     snapshot: ContextSnapshotInfo | None = None
     config: ContextConfig
     warnings: list[str] = Field(default_factory=list)
+    #: §C1: SHA-256 of the stable prefix of ``context`` and its size; ``cache_prefix_reused`` when a
+    #: request of this project served the same prefix within ``ORBIT_CONTEXT_CACHE_TTL_SECONDS``.
+    cache_prefix_hash: str | None = None
+    cache_prefix_tokens: int = 0
+    cache_prefix_reused: bool = False
+    cache_hints: list[CacheHintBlock] | None = None
+    mode: Literal["full", "progressive"] = "full"
+    index: list[ContextIndexEntry] = Field(default_factory=list)
+    profile: AppliedProfile | None = None
+    sufficiency: ContextSufficiency | None = None
 
 
 class ItemFlag(InputModel):
@@ -192,3 +286,31 @@ class ContextRequestSummary(ApiModel):
     snapshot: SnapshotRef | None
     rating: float | None
     created_at: datetime
+
+
+ProfileSection = Literal[
+    "decisions", "requirements", "constraints", "facts", "preferences", "sources", "session"
+]
+
+
+class ContextProfileIn(InputModel):
+    """§C3 editable profile of one agent kind (``null`` = project default)."""
+
+    sections: list[ProfileSection] = Field(min_length=1, max_length=7)
+    token_budget: int | None = Field(default=None, ge=500, le=32000)
+    min_relevance: float | None = Field(default=None, ge=0, le=1)
+    sufficient_threshold: float | None = Field(default=None, ge=0, le=1)
+
+
+class ProfileSuggestion(ApiModel):
+    kind: str
+    feedback_count: int
+    avg_rating: float | None = None
+    #: Suggested values (``token_budget``, ``min_relevance``, ``sections``); empty = no change.
+    changes: dict[str, Any] = Field(default_factory=dict)
+    rationale: list[str] = Field(default_factory=list)
+
+
+class ContextProfileView(AppliedProfile):
+    default: AppliedProfile
+    suggestion: ProfileSuggestion

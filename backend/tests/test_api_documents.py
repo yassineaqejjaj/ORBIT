@@ -117,11 +117,12 @@ async def test_text_ingest_visibility_and_search(admin_client: httpx.AsyncClient
     assert detail["status"] == "indexed", detail
     assert detail["chunk_count"] >= 1 and detail["chunks"]
     ingest_job = next(j for j in detail["jobs"] if j["kind"] == "ingest")  # extract_memory is chained
-    assert [s["name"] for s in ingest_job["steps"]][:6] == [
+    assert [s["name"] for s in ingest_job["steps"]][:7] == [
         "extract",
         "pii",
         "classify",
         "chunk",
+        "contextualize",
         "embed",
         "index",
     ]

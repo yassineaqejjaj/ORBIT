@@ -8,7 +8,9 @@ fall back to the deterministic path.
 
 from __future__ import annotations
 
+import base64
 import re
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
@@ -30,7 +32,15 @@ def headers(api_key: str) -> dict[str, str]:
     return {"Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": API_VERSION}
 
 
-def build_body(model: str, system: str, user: str, *, max_tokens: int, json_mode: bool) -> dict[str, Any]:
+def build_body(
+    model: str,
+    system: str,
+    user: str,
+    *,
+    max_tokens: int,
+    json_mode: bool,
+    images: Sequence[tuple[bytes, str]] = (),
+) -> dict[str, Any]:
     if json_mode:
         system = f"{system}\n\nRéponds uniquement avec un objet JSON valide, sans texte autour."
     body: dict[str, Any] = {
@@ -39,6 +49,17 @@ def build_body(model: str, system: str, user: str, *, max_tokens: int, json_mode
         "system": system,
         "messages": [{"role": "user", "content": user}],
     }
+    if images:
+        # Vision (§B5): base64 image blocks before the text.
+        blocks: list[dict[str, Any]] = [
+            {
+                "type": "image",
+                "source": {"type": "base64", "media_type": mime, "data": base64.b64encode(data).decode()},
+            }
+            for data, mime in images
+        ]
+        blocks.append({"type": "text", "text": user})
+        body["messages"] = [{"role": "user", "content": blocks}]
     if _EFFORT_MODELS.match(model):
         # Extraction / grounded answers are routine tasks: low effort keeps latency and cost down.
         body["output_config"] = {"effort": "low"}
@@ -70,10 +91,11 @@ async def create_message(
     max_tokens: int,
     json_mode: bool,
     timeout_seconds: float,
+    images: Sequence[tuple[bytes, str]] = (),
 ) -> tuple[str, int, int]:
     response = await client.post(
         "/v1/messages",
-        json=build_body(model, system, user, max_tokens=max_tokens, json_mode=json_mode),
+        json=build_body(model, system, user, max_tokens=max_tokens, json_mode=json_mode, images=images),
         timeout=timeout_seconds,
     )
     response.raise_for_status()

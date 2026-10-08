@@ -109,6 +109,7 @@ Overview = {
 | GET | `/projects/{slug}/documents` | viewer | `source_id?, status?, source_kind?, classification?, q?, page, page_size` | `Page<DocumentSummary>` |
 | POST | `/projects/{slug}/documents/upload` | editor **(agent)** | multipart : `files[]`, `source_id?`, `classification?`, `acl_principals?` (CSV), `tags?` (CSV) | `DocumentSummary[]` (statut `pending`) |
 | POST | `/projects/{slug}/documents/text` | editor **(agent)** | `TextDocumentIn` | `DocumentSummary` |
+| POST | `/projects/{slug}/documents/meeting` | editor **(agent)** | multipart : `file` (transcription `.vtt`/`.srt`/`.docx`/`.txt`/`.md` ou audio si `ORBIT_TRANSCRIPTION_BASE_URL`), `title?`, `meeting_date?` (AAAA-MM-JJ), `participants?` (CSV), `source_id?`, `classification?`, `acl_principals?`, `tags?` — §F1 ; `DocumentDetail.metadata.meeting` = `{date, participants, speakers, turn_count, duration_seconds, turns[{speaker, start, end, text}]}` ; 422 si audio C2/C3 vers un service externe ou trop volumineux | `DocumentSummary` |
 | POST | `/projects/{slug}/documents/import` | editor **(agent)** | multipart : `file` (JSON array ou CSV), `source_kind`, `source_id?` | `{created: number, updated: number, documents: DocumentSummary[]}` |
 | GET | `/projects/{slug}/documents/{id}` | viewer | — | `DocumentDetail` (caviardé si pas d'accès → 404) |
 | PATCH | `/projects/{slug}/documents/{id}` | editor | `{title?, classification?, acl_principals?, tags?}` | `DocumentSummary` (réindexation des métadonnées) |
@@ -132,22 +133,30 @@ Import JSON/CSV — colonnes reconnues : `id|external_id`, `title|summary|subjec
 
 | Méthode | Chemin | Rôle | Corps / Query | Réponse |
 |---|---|---|---|---|
-| GET | `/projects/{slug}/memory` | viewer | `scope?, kind?, status?, q?, include_history=false, page, page_size` | `Page<MemoryItem>` (versions courantes, filtrées par droits) |
+| GET | `/projects/{slug}/memory` | viewer | `scope?, kind?, status?, q?, include_history=false, as_of? (§D2 « tel que connu au »), page, page_size` | `Page<MemoryItem>` (versions courantes, filtrées par droits) |
 | POST | `/projects/{slug}/memory` | editor **(agent)** | `MemoryIn` | `MemoryItem` (agent ⇒ statut `proposed` forcé) |
 | GET | `/projects/{slug}/memory/{id}` | viewer | — | `MemoryDetail` |
-| PATCH | `/projects/{slug}/memory/{id}` | editor | `{title?, content?, tags?, valid_to?, classification?, kind?}` | `MemoryItem` (nouvelle version) |
+| PATCH | `/projects/{slug}/memory/{id}` | editor | `{title?, content?, tags?, valid_to?, classification?, kind?, skill_meta?}` | `MemoryItem` (nouvelle version) |
 | POST | `/projects/{slug}/memory/{id}/validate` | editor | `{reason?}` | `MemoryItem` |
 | POST | `/projects/{slug}/memory/{id}/obsolete` | editor | `{reason}` | `MemoryItem` |
 | POST | `/projects/{slug}/memory/{id}/supersede` | editor | `{by_id, reason?}` | `MemoryItem` (l'ancien) |
 | POST | `/projects/{slug}/memory/{id}/restore` | editor | `{reason?}` | `MemoryItem` |
 | POST | `/projects/{slug}/memory/{id}/forget` | owner (ou sujet pour scope `user`) | `{reason}` | `MemoryItem` |
 | POST | `/projects/{slug}/memory/consolidate` | editor | — | `Job` |
-| GET | `/projects/{slug}/memory/graph` | viewer | `limit=150` | `{nodes: {id,type,label,kind,status}[], edges: {source,target,rel_type}[]}` |
+| GET | `/projects/{slug}/memory/graph` | viewer | `limit=150` | `{nodes: {id,type,label,kind,status}[], edges: {source,target,rel_type,confidence?,detail?,method?}[]}` (nœuds `entity` §D2) |
+| POST | `/projects/{slug}/memory/reflect` | editor | `month?=AAAA-MM` (défaut : mois précédent) | `Job` (§D4 synthèse « ce qui a changé » proposée) |
+| GET | `/projects/{slug}/skills` | viewer | — | `Skill[]` (§D1 procédures servies comme Agent Skills) |
+| GET | `/projects/{slug}/skills/{name}` | viewer | — | `Skill & {skill_md}` (SKILL.md avec métadonnées) |
+| GET | `/projects/{slug}/skills/{name}/download` | viewer | — | zip `<name>/SKILL.md` |
+| GET / POST | `/projects/{slug}/entities` | viewer / editor | `{name, kind?, aliases?}` | `Entity[]` / `Entity` (§D2) |
+| GET | `/projects/{slug}/entities/suggestions` | editor | — | `{a, b, score, reason}[]` (fusions suggérées) |
+| POST | `/projects/{slug}/entities/{id}/merge` · `/unmerge` | editor | `{source_id, reason?}` · `{reason?}` | `Entity` (audités `entity.merge` / `entity.unmerge`) |
 
 ```ts
 MemoryIn = { scope, kind, title, content, classification?, acl_principals?, tags?, subject_user_id?, session_id?,
              valid_from?, valid_to?, confidence?, supersedes_id?, status?: "proposed"|"validated",
-             provenance?: { document_id?, chunk_id?, excerpt?, source_label? }[] }
+             provenance?: { document_id?, chunk_id?, excerpt?, source_label? }[],
+             skill_meta?: { name?, description?, task_types?: Intent[], agent_kinds?: AgentKind[] } }  // kind "procedure"
 ```
 
 ## Sessions (mémoire court terme) **(agent)**
@@ -240,6 +249,9 @@ SnapshotItem = { key /* "chunk:<id>" | "memory:<lineage_id>" */, citation, candi
 | GET | `/projects/{slug}/metrics` | viewer | `days=14` | `Metrics` |
 | GET | `/projects/{slug}/audit` | viewer | `action?, page` | `Page<AuditEvent>` |
 | GET | `/projects/{slug}/traces/export` | owner | `days=30` | NDJSON (une ligne par requête : requête, décisions, timings, feedback) |
+| GET | `/projects/{slug}/compliance/report` | owner | `format=json\|html`, `request_id`, `memory_id`, `from`, `to` | Rapport de traçabilité IA (AI Act) : contexte, sources, décisions, modèle, garde-fous ; audité |
+| GET | `/projects/{slug}/documents/quarantine` | owner | — | Fragments en quarantaine (score, signaux) |
+| POST | `/projects/{slug}/documents/{id}/chunks/{chunk_id}/release` | owner | — | Libère un fragment de la quarantaine (audité, ré-extraction mémoire) |
 
 ```ts
 Metrics = {
@@ -262,9 +274,41 @@ Metrics = {
 ## MCP (`/mcp`, streamable HTTP, clé API d'agent obligatoire)
 
 Outils :
-- `get_context(task, intent?, token_budget?, scopes?, on_behalf_of?, session_id?, base_snapshot?, save_snapshot?)` → `{context, citations[], exclusion_summary, request_id, snapshot}`
+- `get_context(task, intent?, token_budget?, scopes?, on_behalf_of?, session_id?, base_snapshot?, save_snapshot?, as_of?)` → `{context, citations[], exclusion_summary, request_id, snapshot}`
 - `get_snapshot(name, version?)` → `Snapshot`
 - `search_sources(query, limit?)` → `SearchHit[]`
 - `propose_memory(kind, title, content, scope?, provenance_document_ids?)` → `MemoryItem` (statut `proposed`)
 - `record_turn(session_id, role, content)` → `{turns, expires_at}`
 - `send_feedback(request_id, rating, comment?)` → `{id}`
+- `list_skills(task_type?)` → `{skills: Skill[]}` · `get_skill(name)` → `Skill & {skill_md}` (§D1 façons de faire)
+
+Au-delà des outils (§E4, SDK `mcp` 2.2) :
+- *resources* : `orbit://about` (index statique) ; modèles `orbit://decisions{?limit}`, `orbit://decisions/{decision_id}`,
+  `orbit://snapshots{?limit}`, `orbit://snapshots/{name}/{version}`, `orbit://skills{?task_type}`, `orbit://skills/{name}` (SKILL.md) —
+  même authentification, visibilité et balisage « données non fiables » que les outils ;
+- *prompts* : `rediger_spec(sujet)`, `preparer_revue(sujet?)`, `resumer_changements(jours?)` (contexte gouverné intégré) ;
+- *elicitation* : `preparer_revue` sans sujet renvoie un `InputRequiredResult` (formulaire « sujet ») aux clients en protocole
+  `2026-07-28` (aller-retour sans état) ; les clients plus anciens reçoivent un sujet par défaut.
+
+## Évaluation & interopérabilité (§E)
+
+Sous `/api/v1/projects/{slug}/evaluation` :
+- `GET|POST /sets` · `GET|DELETE /sets/{id}` · `POST /sets/{id}/cases` `{question, expected:[{type:"memory"|"document", id, title?}]}` ·
+  `DELETE /sets/{id}/cases/{case_id}` · `POST /sets/{id}/generate` `{limit?}` (génération assistée depuis les décisions validées) ;
+- `POST /sets/{id}/runs` `{k?, min_recall?}` → 202 (tâche `evaluate`) · `GET /runs?set_id=` · `GET /runs/{id}` (métriques
+  `recall`, `ndcg`, `sufficiency`, `citation_faithfulness`, détail par question) · `GET /compare?base=&target=` · `GET /settings` ;
+- `GET /ranking-weights` (poids en vigueur, défauts, bornes, journal) · `POST /ranking-weights/learn` · `POST /ranking-weights/{change_id}/revert` ·
+  `POST /ranking-weights/reset` (owner) ;
+- `GET /judgements` (verdicts du LLM-juge, moyenne glissante, alertes) · `GET /judgements/export?days=` (NDJSON FORGE, owner, audité).
+
+CLI (CI) : `python -m app.admin eval --project <slug> [--set <nom>] [--k 5] [--min-recall 0.6] [--as <email>] [--json]` → code 0 si tous
+les jeux passent, 1 sous le seuil, 2 en cas d'erreur d'usage.
+
+A2A (protocole **0.3.0**) : `GET /.well-known/agent-card.json` (alias `/.well-known/agent.json`) ·
+`POST /api/v1/projects/{slug}/a2a/handoffs` `{snapshot:"nom@version", audience:"agent:<id>"|"user:<id>"|URL}` → `{handoff_id, token, expires_at}`
+(JWS compact HS256, `typ` `orbit-context-handoff+jwt`) · `POST /api/v1/projects/{slug}/a2a/handoffs/receive` `{token}` → snapshot filtré selon
+les droits du destinataire ; 401 signature invalide/expirée, 403 destinataire ou projet différent, 409 rejeu ou snapshot modifié.
+
+OpenTelemetry GenAI (§E6) : spans `chat {model}` (`gen_ai.operation.name=chat`, `gen_ai.provider.name`, `gen_ai.request.*`, `gen_ai.usage.*`),
+`context.retrieve` (`gen_ai.operation.name=retrieval`, `gen_ai.data_source.id`), spans MCP du SDK (`mcp.method.name`, `gen_ai.tool.name`) enrichis de
+`gen_ai.agent.id|name` et `mcp.resource.uri`, juge (`gen_ai.evaluation.*`).

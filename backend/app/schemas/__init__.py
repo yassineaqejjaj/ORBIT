@@ -72,7 +72,15 @@ from app.schemas.memory import (
     Relation,
     SupersedeIn,
 )
-from app.schemas.metrics import AgentUsage, IngestionMetrics, Metrics, MetricsPoint, MetricsTotals, TopSource
+from app.schemas.metrics import (
+    AgentUsage,
+    CacheMetrics,
+    IngestionMetrics,
+    Metrics,
+    MetricsPoint,
+    MetricsTotals,
+    TopSource,
+)
 from app.schemas.projects import (
     Alert,
     Member,
@@ -113,6 +121,7 @@ __all__ = [
     "ApiModel",
     "AuditEvent",
     "BaseSnapshotRef",
+    "CacheMetrics",
     "ChunkView",
     "ClassificationLevel",
     "ContextConfig",

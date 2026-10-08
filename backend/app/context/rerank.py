@@ -20,17 +20,28 @@ import asyncio
 import logging
 import math
 import threading
+import time
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
+
+from prometheus_client import Histogram
 
 from app.config import settings
 from app.context.textutils import cosine, term_overlap
 from app.enums import CandidateType, MemoryKind, MemoryStatus
 from app.governance import freshness
 from app.governance.policy import Candidate
+from app.search.reranker_models import PERMISSIVE_LICENSES, ensure_registered, license_of
 
 logger = logging.getLogger("orbit.context.rerank")
+
+#: Cross-encoder latency (§B2: measured, exposed to Prometheus and in the rerank stage timing).
+CROSS_ENCODER_LATENCY = Histogram(
+    "orbit_reranker_latency_seconds",
+    "Cross-encoder reranking latency per context request",
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1.5, 3.0, 8.0),
+)
 
 W_RRF = 0.55
 W_DENSE = 0.20
@@ -40,9 +51,9 @@ W_TERMS = 0.05
 
 #: Weight of the cross-encoder relevance vs. the fused retrieval rank when ``ORBIT_RERANKER=fastembed``.
 CROSS_ENCODER_BLEND = 0.5
-#: Only the best candidates (by heuristic score) are sent to the cross-encoder (latency bound).
-CROSS_ENCODER_TOP_N = 30
-CROSS_ENCODER_MAX_CHARS = 1200
+#: Only the best candidates (by heuristic score) are sent to the cross-encoder, truncated: latency grows
+#: super-linearly with the passage length (measured on the demo data, Apple M5, mMARCO MiniLM-L12:
+#: 30 × 1200 chars ≈ 1.1 s, 20 × 800 chars ≈ 370 ms) — ``ORBIT_RERANKER_TOP_N`` / ``_MAX_CHARS``.
 CROSS_ENCODER_TIMEOUT_SECONDS = 8.0
 
 TYPE_BOOST_CHUNK = 0.5
@@ -55,6 +66,8 @@ _TYPE_BOOST_MEMORY: dict[MemoryKind, float] = {
     MemoryKind.fact: 0.65,
     MemoryKind.preference: 0.6,
     MemoryKind.summary: 0.6,
+    MemoryKind.procedure: 0.75,
+    MemoryKind.action: 0.7,
 }
 #: Proposed (not yet validated) memory items are slightly less authoritative.
 PROPOSED_FACTOR = 0.9
@@ -85,8 +98,20 @@ def dense_similarity(candidate: Candidate, query_vector: Sequence[float] | None)
     return max(0.0, min(1.0, (1.0 + sim) / 2.0))
 
 
-def heuristic_score(relevance: float, dense: float, fresh: float, boost: float, overlap: float) -> float:
-    score = W_RRF * relevance + W_DENSE * dense + W_FRESHNESS * fresh + W_TYPE * boost + W_TERMS * overlap
+#: Signal order of a weight vector (§E2 per-project learned weights, ``app.evaluation.learning``).
+DEFAULT_WEIGHTS: tuple[float, float, float, float, float] = (W_RRF, W_DENSE, W_FRESHNESS, W_TYPE, W_TERMS)
+
+
+def heuristic_score(
+    relevance: float,
+    dense: float,
+    fresh: float,
+    boost: float,
+    overlap: float,
+    weights: Sequence[float] | None = None,
+) -> float:
+    w_rrf, w_dense, w_fresh, w_type, w_terms = weights or DEFAULT_WEIGHTS
+    score = w_rrf * relevance + w_dense * dense + w_fresh * fresh + w_type * boost + w_terms * overlap
     return max(0.0, min(1.0, score))
 
 
@@ -101,6 +126,7 @@ def apply_heuristic(
     query_terms: Sequence[str],
     query_vector: Sequence[float] | None,
     now: datetime,
+    weights: Sequence[float] | None = None,
 ) -> None:
     """Compute every signal and the heuristic final score in place."""
     for c in candidates:
@@ -112,7 +138,7 @@ def apply_heuristic(
         if s.dense is None and dense > 0:
             s.dense = dense
         relevance = _session_relevance(c) if c.candidate_type == CandidateType.session else s.rrf_norm
-        s.final = heuristic_score(relevance, dense, s.freshness, s.type_boost, s.term_overlap)
+        s.final = heuristic_score(relevance, dense, s.freshness, s.type_boost, s.term_overlap, weights)
         s.rerank = s.final
         c.score = s.final
 
@@ -142,6 +168,14 @@ def _load_encoder() -> Any:
             try:
                 from fastembed.rerank.cross_encoder import TextCrossEncoder
 
+                ensure_registered(settings.reranker_model)
+                licence = license_of(settings.reranker_model)
+                if licence is not None and licence.lower() not in PERMISSIVE_LICENSES:
+                    logger.warning(
+                        "Cross-encoder %s is licensed %s (not permissive): check your usage rights",
+                        settings.reranker_model,
+                        licence,
+                    )
                 kwargs: dict[str, Any] = {"model_name": settings.reranker_model}
                 if settings.model_cache_dir:
                     kwargs["cache_dir"] = settings.model_cache_dir
@@ -169,7 +203,9 @@ def _cross_encode(query: str, passages: list[str]) -> list[float]:
     return [float(score) for score in encoder.rerank(query, passages, batch_size=16)]
 
 
-async def apply_cross_encoder(candidates: Sequence[Candidate], *, query: str) -> bool:
+async def apply_cross_encoder(
+    candidates: Sequence[Candidate], *, query: str, weights: Sequence[float] | None = None
+) -> bool:
     """Blend cross-encoder relevance into the best candidates (after :func:`apply_heuristic`).
 
     Returns ``False`` when the model could not be used (heuristic scores are kept).
@@ -178,10 +214,11 @@ async def apply_cross_encoder(candidates: Sequence[Candidate], *, query: str) ->
         (c for c in candidates if c.candidate_type != CandidateType.session),
         key=lambda c: c.score,
         reverse=True,
-    )[:CROSS_ENCODER_TOP_N]
+    )[: settings.reranker_top_n]
     if not pool:
         return True
-    passages = [f"{c.title}\n{c.text}"[:CROSS_ENCODER_MAX_CHARS] for c in pool]
+    passages = [f"{c.title}\n{c.text}"[: settings.reranker_max_chars] for c in pool]
+    started = time.perf_counter()
     try:
         raw = await asyncio.wait_for(
             asyncio.to_thread(_cross_encode, query, passages), timeout=CROSS_ENCODER_TIMEOUT_SECONDS
@@ -189,12 +226,13 @@ async def apply_cross_encoder(candidates: Sequence[Candidate], *, query: str) ->
     except Exception as exc:
         logger.warning("Cross-encoder reranking skipped: %s", exc)
         return False
+    CROSS_ENCODER_LATENCY.observe(time.perf_counter() - started)
     for c, logit in zip(pool, raw, strict=True):
         s = c.scores
         s.cross_encoder = _sigmoid(logit)
         relevance = (1 - CROSS_ENCODER_BLEND) * s.rrf_norm + CROSS_ENCODER_BLEND * s.cross_encoder
         dense = s.dense or 0.0
-        s.final = heuristic_score(relevance, dense, s.freshness or 0.0, s.type_boost, s.term_overlap)
+        s.final = heuristic_score(relevance, dense, s.freshness or 0.0, s.type_boost, s.term_overlap, weights)
         s.rerank = s.cross_encoder
         c.score = s.final
     return True
@@ -216,15 +254,47 @@ async def rerank(
     query_terms: Sequence[str],
     query_vector: Sequence[float] | None,
     now: datetime,
+    weights: Sequence[float] | None = None,
 ) -> str:
-    """Score all candidates in place according to ``ORBIT_RERANKER``. Returns the label actually used."""
+    """Score all candidates in place according to ``ORBIT_RERANKER``. Returns the label actually used.
+
+    ``weights``: per-project learned weights (§E2), in :data:`DEFAULT_WEIGHTS` order."""
     mode = settings.reranker
     if mode == "none":
         apply_none(candidates, now=now)
-        return "none"
-    apply_heuristic(candidates, query_terms=query_terms, query_vector=query_vector, now=now)
-    if mode == "fastembed":
-        if await apply_cross_encoder(candidates, query=query):
-            return reranker_label()
-        return "heuristic-v1 (repli)"
-    return "heuristic-v1"
+        label = "none"
+    else:
+        apply_heuristic(
+            candidates, query_terms=query_terms, query_vector=query_vector, now=now, weights=weights
+        )
+        label = "heuristic-v1"
+        if mode == "fastembed":
+            label = (
+                reranker_label()
+                if await apply_cross_encoder(candidates, query=query, weights=weights)
+                else "heuristic-v1 (repli)"
+            )
+    apply_trust(candidates)
+    return label
+
+
+def trust_factor(trust: str) -> float:
+    """Score multiplier of a source trust level (§A3): high 1.0, medium 1 - p/2, low 1 - p."""
+    penalty = settings.trust_ranking_penalty
+    if trust == "low":
+        return 1.0 - penalty
+    if trust == "medium":
+        return 1.0 - penalty / 2
+    return 1.0
+
+
+def apply_trust(candidates: Sequence[Candidate]) -> None:
+    """Weight every final score by the trust of its source (session turns are not weighted)."""
+    for c in candidates:
+        if c.candidate_type == CandidateType.session:
+            continue
+        factor = trust_factor(c.trust)
+        c.scores.trust = factor
+        if factor != 1.0:
+            c.scores.final = max(0.0, min(1.0, c.scores.final * factor))
+            c.score = c.scores.final

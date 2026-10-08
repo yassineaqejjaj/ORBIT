@@ -263,6 +263,7 @@ async def test_governed_package_for_viewer(world: dict[str, Any], db_session: As
     # Shape of the contract.
     assert set(package["timings"]) == {
         "understand",
+        "rewrite",
         "retrieve",
         "fuse",
         "rerank",
@@ -271,7 +272,9 @@ async def test_governed_package_for_viewer(world: dict[str, Any], db_session: As
         "compress",
         "package",
         "total",
+        "rounds",
     }
+    assert package["timings"]["rounds"][0]["round"] == 1
     assert package["config"]["retrieval"].startswith("hybrid-bm25-knn-rrf-v1")
     assert package["tokens_used"] <= package["token_budget"] == 4000
     assert package["candidates_count"] == len(package["items"]) + len(package["excluded"])

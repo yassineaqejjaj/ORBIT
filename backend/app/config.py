@@ -61,7 +61,10 @@ class Settings(BaseSettings):
     #: Local cache for fastembed models (baked into the Docker image). Falls back to FASTEMBED_CACHE_PATH.
     model_cache_dir: str = ""
     reranker: Literal["heuristic", "fastembed", "none"] = "heuristic"
-    reranker_model: str = "jinaai/jina-reranker-v2-base-multilingual"
+    reranker_model: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+    #: Candidates scored by the cross-encoder and passage length sent (latency bound, §B2).
+    reranker_top_n: int = Field(default=20, ge=1, le=200)
+    reranker_max_chars: int = Field(default=800, ge=100, le=8000)
 
     # --- Optional LLM (OpenAI-compatible) ---------------------------------------------------------
     llm_base_url: str = ""
@@ -103,6 +106,123 @@ class Settings(BaseSettings):
     markitdown_mcp: Literal["auto", "off"] = "auto"
     #: Command of the MarkItDown MCP server (stdio).
     markitdown_mcp_command: str = "markitdown-mcp"
+
+    # --- Sources (docs/AI_CONTEXT_ENGINEERING.md §F) ---------------------------------------------
+    #: Meeting import (§F1): transcripts (VTT/SRT/DOCX/text) and optional audio transcription.
+    meetings_enabled: bool = True
+    #: OpenAI-compatible ``/audio/transcriptions`` endpoint (Whisper, faster-whisper…); empty = off.
+    transcription_base_url: str = ""
+    transcription_api_key: str = ""
+    transcription_model: str = "whisper-1"
+    transcription_timeout_seconds: float = 300.0
+    #: Maximum audio file size sent for transcription (MB).
+    transcription_max_mb: int = Field(default=25, ge=1, le=500)
+    #: True when the transcription server is self-hosted: C2/C3 audio may then be transcribed. Otherwise the
+    #: LLM guardrail ceiling (``ORBIT_LLM_MAX_CLASSIFICATION``) applies — C2/C3 audio never leaves ORBIT.
+    transcription_local: bool = False
+    #: Project e-mails (§F3): maximum messages read per mailbox folder / label and per synchronisation.
+    mail_max_messages: int = Field(default=200, ge=1, le=5000)
+
+    # --- AI security (docs/AI_CONTEXT_ENGINEERING.md §A) -----------------------------------------
+    #: Prompt-injection detector at ingestion (score + reasons per chunk, quarantine above the threshold).
+    injection_detection: bool = True
+    injection_threshold: float = Field(default=0.6, gt=0.0, le=1.0)
+    #: Optional local classifier on top of the rules (``local``); never an external call.
+    injection_classifier: Literal["off", "local"] = "off"
+    #: Spotlighting: served content wrapped in untrusted-data delimiters + header instruction.
+    spotlighting: bool = True
+    #: Ranking penalty of low-trust sources (medium = half of it); 0 disables trust in ranking.
+    trust_ranking_penalty: float = Field(default=0.15, ge=0.0, le=1.0)
+    #: Poisoning alert: at least N memory proposals/facts from one source or agent within the window.
+    poisoning_alert_threshold: int = Field(default=8, ge=1)
+    poisoning_window_hours: int = Field(default=24, ge=1)
+
+    # --- Retrieval (docs/AI_CONTEXT_ENGINEERING.md §B) -------------------------------------------
+    #: Contextual-retrieval preamble per chunk: ``auto`` (LLM when the guardrail allows, else
+    #: deterministic), ``deterministic`` (never an LLM) or ``off``.
+    contextual_retrieval: Literal["auto", "deterministic", "off"] = "auto"
+    #: Maximum chunks of one document contextualised by the LLM (the rest is deterministic).
+    contextual_llm_max_chunks: int = Field(default=64, ge=0, le=2000)
+    #: Chunks processed per progressive re-index job (existing projects without preamble).
+    contextual_reindex_batch: int = Field(default=200, ge=10, le=5000)
+    #: Query rewriting: ``auto`` (multi-query, decomposition, HyDE with the LLM when allowed, else
+    #: deterministic expansion from synonyms and project entities), ``deterministic`` (default: no
+    #: LLM call — nor its latency — on the context hot path) or ``off``.
+    query_rewrite: Literal["auto", "deterministic", "off"] = "deterministic"
+    #: HyDE (hypothetical answer embedded as an extra query) when the LLM is used for rewriting.
+    query_rewrite_hyde: bool = True
+    #: Maximum extra queries per context request (rewrites, sub-questions, expansions).
+    query_rewrite_max_queries: int = Field(default=4, ge=0, le=8)
+    #: Iterative retrieval: rounds (1 = single pass; ≤ 3) re-searching uncovered sub-topics.
+    retrieval_max_rounds: int = Field(default=3, ge=1, le=3)
+    #: Visual documents: images of PDF/PPTX described and indexed (``auto``: vision LLM when the
+    #: guardrail allows, else OCR when installed, else alternative text) or ``off``.
+    visual_extraction: Literal["auto", "off"] = "auto"
+    #: Vision LLM for image descriptions (requires a multimodal ``ORBIT_LLM_MODEL``).
+    visual_llm: bool = True
+    visual_max_images: int = Field(default=20, ge=0, le=200)
+    #: Images smaller than this (pixels on the shorter side) are ignored (logos, icons, bullets).
+    visual_min_size: int = Field(default=96, ge=1)
+
+    # --- Context assembly (docs/AI_CONTEXT_ENGINEERING.md §C) ------------------------------------
+    #: §C1 prompt-cache-aware layout: stable prefix (notice, decisions, constraints, snapshot items)
+    #: first, variable items and the task after it; ``cache_prefix_hash`` exposed in the package.
+    context_cache_ordering: bool = True
+    #: Window in which a previous request with the same prefix hash counts as a cache reuse.
+    context_cache_ttl_seconds: int = Field(default=300, ge=1, le=86_400)
+    #: §C2 ``progressive`` mode: tokens of each item's teaser in the summary index.
+    context_progressive_excerpt_tokens: int = Field(default=40, ge=8, le=400)
+    #: §C3 per-agent-kind context profiles (budget, sections, order, thresholds) applied to agents.
+    context_profiles: bool = True
+    #: §C4 sentence-level compression: ``learned`` (embedding relevance + redundancy + optional local
+    #: pruning model) or ``extractive`` (term overlap + position).
+    compression_mode: Literal["learned", "extractive"] = "learned"
+    #: Optional local pruning model hook ``package.module:function`` (sentences, query) -> scores in [0, 1].
+    compression_pruner: str = ""
+    #: §C5 context sufficiency: score thresholds of the ``sufficient`` / ``partial`` verdicts.
+    context_sufficiency: bool = True
+    sufficiency_sufficient_threshold: float = Field(default=0.75, ge=0, le=1)
+    sufficiency_partial_threshold: float = Field(default=0.4, ge=0, le=1)
+    #: « Demander à ORBIT » answers « je ne sais pas » when the context is insufficient.
+    ask_abstain_when_insufficient: bool = True
+
+    # --- Memory (docs/AI_CONTEXT_ENGINEERING.md §D) ----------------------------------------------
+    #: §D1 procedures served as skills and injected in the « Façons de faire » section.
+    memory_skills: bool = True
+    #: Max procedures anchored in a context when their task types / agent kinds match the request.
+    skills_context_max: int = Field(default=3, ge=0, le=20)
+    #: §D2 entity aliases used to expand retrieval queries.
+    memory_entity_aliases: bool = True
+    #: §D3 contradiction detection: ``auto`` (NLI hook if configured, else LLM judge if the guardrail
+    #: allows, else lexical markers), ``nli``, ``llm`` or ``lexical`` (lexical markers always the fallback).
+    memory_contradiction_mode: Literal["auto", "nli", "llm", "lexical"] = "auto"
+    #: Optional local NLI hook ``package.module:function`` (premise, hypothesis) -> P(contradiction).
+    memory_nli_model: str = ""
+    #: Model contradiction probability above which a conflict is flagged.
+    memory_contradiction_threshold: float = Field(default=0.7, ge=0, le=1)
+    #: §D4 monthly reflection « ce qui a changé » (proposed long-term summary, human validation).
+    memory_reflection: bool = True
+
+    # --- Evaluation & interoperability (docs/AI_CONTEXT_ENGINEERING.md §E) -------------------------
+    #: §E1 evaluation bench: default k of recall@k / nDCG@k and blocking recall threshold (CI, UI badge).
+    eval_k: int = Field(default=5, ge=1, le=50)
+    eval_min_recall: float = Field(default=0.6, ge=0, le=1)
+    #: §E2 bounded learning of the ranking weights from feedback (max absolute change per weight).
+    ranking_learning: bool = True
+    ranking_learning_max_delta: float = Field(default=0.1, ge=0, le=0.3)
+    ranking_learning_rate: float = Field(default=0.2, ge=0, le=1)
+    ranking_learning_min_signals: int = Field(default=5, ge=1)
+    #: §E3 LLM judge on a sample of served contexts (guardrail applies; never C2/C3 to an external LLM).
+    judge_sample_rate: float = Field(default=0.0, ge=0, le=1)
+    judge_alert_threshold: float = Field(default=0.5, ge=0, le=1)
+    judge_window_days: int = Field(default=7, ge=1, le=90)
+    judge_min_samples: int = Field(default=3, ge=1)
+    #: §E5 A2A: Agent Card + signed snapshot handoff (HMAC-SHA256 JWS; secret defaults to the JWT secret).
+    a2a_enabled: bool = True
+    a2a_signing_secret: str = ""
+    a2a_handoff_ttl_seconds: int = Field(default=600, ge=30, le=86400)
+    #: §E6 OpenTelemetry GenAI semantic conventions: record prompt/completion contents on spans (off).
+    otel_genai_capture_content: bool = False
 
     # --- Observability ---------------------------------------------------------------------------
     otlp_endpoint: str = ""

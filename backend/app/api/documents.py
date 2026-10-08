@@ -65,7 +65,7 @@ from app.schemas import (
     page_params,
 )
 from app.schemas.common import make_page
-from app.schemas.documents import ChunkView, DocumentVersion, PiiEntity
+from app.schemas.documents import ChunkView, DocumentVersion, PiiEntity, QuarantinedChunk
 from app.search import opensearch
 from app.services import audit
 from app.services.audit import AuditAction
@@ -216,6 +216,89 @@ async def upload_documents(
 
 
 @router.post(
+    "/meeting",
+    response_model=DocumentSummary,
+    status_code=status.HTTP_201_CREATED,
+    summary="Importer une réunion (transcription VTT/SRT/DOCX/texte ou audio)",
+)
+async def import_meeting(
+    access: AgentEditorAccess,
+    session: SessionDep,
+    file: UploadFile = File(..., description="Transcription (.vtt, .srt, .docx, .txt, .md) ou audio"),
+    title: str | None = Form(default=None, max_length=500),
+    meeting_date: str | None = Form(default=None, description="AAAA-MM-JJ"),
+    participants: str | None = Form(default=None, description="CSV des participants"),
+    source_id: uuid.UUID | None = Form(default=None),
+    classification: int | None = Form(default=None, ge=0, le=3),
+    acl_principals: str | None = Form(default=None),
+    tags: str | None = Form(default=None),
+) -> DocumentSummary:
+    """§F1: the transcript is parsed by the pipeline (speakers, timestamps); audio is transcribed first
+    through ``ORBIT_TRANSCRIPTION_*`` behind the classification guardrail and the size limit."""
+    from datetime import date as date_type
+
+    from app.ingestion import meetings, transcription
+
+    if not settings.meetings_enabled:
+        raise validation_error("L'import de réunions est désactivé (ORBIT_MEETINGS_ENABLED=false)")
+    name = file.filename or "reunion"
+    audio = meetings.audio_mime(file.filename, file.content_type)
+    limit = max(settings.max_upload_bytes, transcription.max_bytes()) if audio else settings.max_upload_bytes
+    data = await file.read(limit + 1)
+    if not data:
+        raise validation_error(f"Le fichier « {name} » est vide")
+    if meeting_date:
+        try:
+            date_type.fromisoformat(meeting_date)
+        except ValueError as exc:
+            raise validation_error("Date de réunion invalide (format attendu AAAA-MM-JJ)") from exc
+    source = await resolve_source(
+        session, access.project_id, source_id, SourceKind.note, access.principal.actor
+    )
+    if audio:
+        level = max(
+            int(classification if classification is not None else 0), int(source.default_classification)
+        )
+        try:
+            transcription.check(len(data), level)
+        except transcription.TranscriptionError as exc:
+            raise validation_error(str(exc)) from exc
+        mime_type = audio
+    else:
+        if len(data) > settings.max_upload_bytes:
+            raise _too_large(name)
+        mime_type = detect_mime_type(file.filename, file.content_type, data)
+        if not (meetings.is_transcript_file(mime_type, file.filename) or mime_type.startswith("text/")) and (
+            not (file.filename or "").lower().endswith(".docx")
+        ):
+            raise validation_error(
+                f"Format non pris en charge pour « {name} » : transcription .vtt, .srt, .docx, .txt ou .md, "
+                "ou fichier audio (.mp3, .m4a, .wav, .webm, .ogg, .flac)"
+            )
+    people = [p.strip() for p in (participants or "").split(",") if p.strip()][:100]
+    outcome = await ingest_content(
+        session,
+        access,
+        source,
+        ContentIn(
+            title=(title or "").strip() or title_from_filename(file.filename),
+            mime_type=mime_type,
+            data=data,
+            filename=file.filename or None,
+            classification=classification,
+            acl_principals=parse_acl_field(acl_principals),
+            tags=parse_tags_csv(tags) or ["réunion"],
+            metadata={
+                "meeting": {"date": meeting_date or None, "participants": people, "audio": bool(audio)}
+            },
+        ),
+    )
+    await session.commit()
+    await session.refresh(outcome.document)
+    return await serialize_summary(session, outcome.document)
+
+
+@router.post(
     "/text", response_model=DocumentSummary, status_code=status.HTTP_201_CREATED, summary="Ingérer un texte"
 )
 async def create_text_document(
@@ -349,6 +432,12 @@ def _chunk_view(chunk: Chunk, *, can_see_pii: bool) -> ChunkView:
         pii=entities,
         classification=chunk.classification,
         status=chunk.status,
+        injection_score=float(chunk.injection_score or 0.0),
+        injection_reasons=list(chunk.injection_reasons or []),
+        quarantined=bool(chunk.quarantined),
+        quarantine_released_at=chunk.quarantine_released_at,
+        context_preamble=chunk.context_preamble,
+        context_source=chunk.context_source,
     )
 
 
@@ -363,6 +452,41 @@ async def _derived_memory(session: AsyncSession, access: ProjectAccess, document
         )
     )
     return await serialize_items(session, items)
+
+
+@router.get(
+    "/quarantine",
+    response_model=list[QuarantinedChunk],
+    summary="Fragments en quarantaine (injection de prompt suspectée, propriétaires)",
+)
+async def list_quarantine(access: OwnerAccess, session: SessionDep) -> list[QuarantinedChunk]:
+    rows = await session.execute(
+        select(Chunk, Document.title)
+        .join(Document, Document.id == Chunk.document_id)
+        .where(
+            Chunk.project_id == access.project_id,
+            Chunk.quarantined.is_(True),
+            Chunk.status == ChunkStatus.active,
+            Document.status != DocumentStatus.forgotten,
+        )
+        .order_by(Chunk.injection_score.desc(), Chunk.created_at.desc())
+        .limit(200)
+    )
+    return [
+        QuarantinedChunk(
+            id=c.id,
+            document_id=c.document_id,
+            document_title=title,
+            version=c.version,
+            ordinal=c.ordinal,
+            section=c.section,
+            text=c.text_redacted,
+            injection_score=float(c.injection_score or 0.0),
+            injection_reasons=list(c.injection_reasons or []),
+            created_at=c.created_at,
+        )
+        for c, title in rows.tuples()
+    ]
 
 
 @router.get("/{document_id}", response_model=DocumentDetail, summary="Détail d'un document")
@@ -591,6 +715,46 @@ async def forget_document(
         logger.warning("Immediate index purge of forgotten document %s failed: %s", document.id, exc)
     await session.refresh(document)
     return await serialize_summary(session, document)
+
+
+@router.post(
+    "/{document_id}/chunks/{chunk_id}/release",
+    response_model=ChunkView,
+    summary="Libérer un fragment de la quarantaine (propriétaire, audité)",
+)
+async def release_quarantine(
+    document_id: uuid.UUID, chunk_id: uuid.UUID, access: OwnerAccess, session: SessionDep
+) -> ChunkView:
+    document = await get_visible_document(session, DocumentViewer.from_access(access), document_id)
+    chunk = await session.get(Chunk, chunk_id)
+    if chunk is None or chunk.document_id != document.id:
+        raise not_found("Fragment introuvable")
+    if not chunk.quarantined:
+        raise conflict("Ce fragment n'est pas en quarantaine")
+    chunk.quarantined = False
+    chunk.quarantine_released_at = utcnow()
+    chunk.quarantine_released_by = access.principal.user_id
+    await audit.record(
+        session,
+        access.project_id,
+        access.principal,
+        AuditAction.quarantine_release,
+        "chunk",
+        chunk.id,
+        summary=f"Fragment n°{chunk.ordinal + 1} de « {document.title} » libéré de la quarantaine",
+        details={
+            "document_id": str(document.id),
+            "version": chunk.version,
+            "score": float(chunk.injection_score or 0.0),
+            "reasons": [r.get("code") for r in chunk.injection_reasons or []],
+        },
+    )
+    # The released extract may now feed the memory (extraction skipped quarantined chunks).
+    await enqueue_job(
+        session, access.project_id, JobKind.extract_memory, document.id, payload={"version": chunk.version}
+    )
+    await session.commit()
+    return _chunk_view(chunk, can_see_pii=DocumentViewer.from_access(access).can_see_pii)
 
 
 # --- Raw file -----------------------------------------------------------------------------------------

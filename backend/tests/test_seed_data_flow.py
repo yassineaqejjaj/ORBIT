@@ -295,7 +295,7 @@ async def test_seed_runs_the_whole_scenario(fake: FakeOrbit, tmp_path: Any) -> N
         k["api_key"] in fake.keys for k in keys.values()
     )
 
-    assert len(fake.documents) == 12 + 5 + 8 + 3 + 11  # records + text documents (spec = 1 document)
+    assert len(fake.documents) == 12 + 5 + 8 + 3 + 12  # records + text documents (spec = 1 document)
     spec = next(d for d in fake.documents if d["external_id"] == "spec-fonctionnelle-atlas")
     assert spec["current_version"] == 2
 

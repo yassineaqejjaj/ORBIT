@@ -47,6 +47,8 @@ export type IconName =
   | "BookOpen"
   | "Heart"
   | "ScrollText"
+  | "ClipboardCheck"
+  | "ListTodo"
   | "TriangleAlert"
   | "Package"
   | "Palette"
@@ -199,14 +201,28 @@ export const JOB_STATUS_META: Record<JobStatus, EnumMeta> = {
 };
 
 /** Canonical ingestion pipeline steps (ARCHITECTURE §7). */
-export const JOB_STEP_NAMES = ["extract", "pii", "classify", "chunk", "embed", "index", "extract_memory"] as const;
+export const JOB_STEP_NAMES = [
+  "extract",
+  "pii",
+  "classify",
+  "visual",
+  "chunk",
+  "contextualize",
+  "embed",
+  "index",
+  "extract_memory",
+] as const;
+/** Steps recorded only for some documents (images present). */
+export const OPTIONAL_JOB_STEPS: ReadonlySet<string> = new Set(["visual"]);
 export type JobStepName = (typeof JOB_STEP_NAMES)[number];
 
 export const JOB_STEP_META: Record<JobStepName, EnumMeta> = {
   extract: { label: "Extraction", tone: "blue", description: "Extraction et normalisation du texte" },
   pii: { label: "Données personnelles", tone: "pink", description: "Détection et caviardage des données personnelles" },
   classify: { label: "Classification", tone: "amber", description: "Niveau de classification C0–C3" },
+  visual: { label: "Éléments visuels", tone: "orange", description: "Images des PDF/PPTX décrites (LLM vision, OCR ou texte alternatif)" },
   chunk: { label: "Découpage", tone: "sky", description: "Découpage structurel en extraits" },
+  contextualize: { label: "Contextualisation", tone: "teal", description: "Préambule contextuel de chaque extrait (LLM ou déterministe)" },
   embed: { label: "Vectorisation", tone: "violet", description: "Calcul des embeddings" },
   index: { label: "Indexation", tone: "teal", description: "Indexation OpenSearch (BM25 + k-NN)" },
   extract_memory: { label: "Extraction mémoire", tone: "green", description: "Décisions, besoins, contraintes, risques, faits" },
@@ -263,6 +279,8 @@ export const MEMORY_KINDS = [
   "preference",
   "summary",
   "risk",
+  "procedure",
+  "action",
 ] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
 
@@ -274,6 +292,18 @@ export const MEMORY_KIND_META: Record<MemoryKind, EnumMeta & { icon: IconName }>
   preference: { label: "Préférence", tone: "violet", icon: "Heart" },
   summary: { label: "Synthèse", tone: "sky", icon: "ScrollText" },
   risk: { label: "Risque", tone: "red", icon: "TriangleAlert" },
+  procedure: {
+    label: "Procédure",
+    tone: "green",
+    icon: "ClipboardCheck",
+    description: "Façon de faire : définition de « terminé », convention, checklist (servie comme skill)",
+  },
+  action: {
+    label: "Action",
+    tone: "amber",
+    icon: "ListTodo",
+    description: "Action décidée en réunion : responsable et échéance",
+  },
 };
 
 export const MEMORY_STATUSES = ["proposed", "validated", "superseded", "obsolete", "forgotten"] as const;
@@ -381,6 +411,7 @@ export const REASON_CODES = [
   "EXCLUDED_LOW_SCORE",
   "EXCLUDED_BUDGET",
   "EXCLUDED_FORGOTTEN",
+  "EXCLUDED_QUARANTINE",
 ] as const;
 export type ReasonCode = (typeof REASON_CODES)[number];
 
@@ -416,6 +447,13 @@ export const REASON_CODE_META: Record<ReasonCode, ReasonCodeMeta> = {
     included: false,
   },
   EXCLUDED_FORGOTTEN: { label: "Exclu — oubli sélectif", short: "Oublié", tone: "red", group: "governance", included: false },
+  EXCLUDED_QUARANTINE: {
+    label: "Exclu — quarantaine (injection suspectée)",
+    short: "Quarantaine",
+    tone: "red",
+    group: "governance",
+    included: false,
+  },
   EXCLUDED_STALE: { label: "Exclu — information périmée", short: "Périmé", tone: "amber", group: "quality", included: false },
   EXCLUDED_SUPERSEDED: { label: "Exclu — remplacé", short: "Remplacé", tone: "amber", group: "quality", included: false },
   EXCLUDED_CONFLICT: { label: "Exclu — contradiction résolue", short: "Conflit", tone: "amber", group: "quality", included: false },
@@ -445,6 +483,7 @@ export const REASON_CODE_ORDER: readonly ReasonCode[] = [
   "EXCLUDED_FORGOTTEN",
   "EXCLUDED_ACL",
   "EXCLUDED_CLASSIFICATION",
+  "EXCLUDED_QUARANTINE",
   "EXCLUDED_SCOPE",
   "EXCLUDED_EXPIRED",
   "EXCLUDED_STALE",
@@ -458,6 +497,7 @@ export const REASON_CODE_ORDER: readonly ReasonCode[] = [
 /** Context assembly stages, in execution order (ARCHITECTURE §9). */
 export const CONTEXT_STAGES = [
   "understand",
+  "rewrite",
   "retrieve",
   "fuse",
   "rerank",
@@ -470,7 +510,8 @@ export type ContextStage = (typeof CONTEXT_STAGES)[number];
 
 export const CONTEXT_STAGE_META: Record<ContextStage, EnumMeta> = {
   understand: { label: "Compréhension", tone: "sky", description: "Normalisation, intention, termes clés, embedding" },
-  retrieve: { label: "Recherche", tone: "blue", description: "BM25 + k-NN sources et mémoire, session, snapshot" },
+  rewrite: { label: "Réécriture", tone: "violet", description: "Multi-requêtes, décomposition, HyDE ou expansion par synonymes et entités" },
+  retrieve: { label: "Recherche", tone: "blue", description: "BM25 + k-NN sources et mémoire, session, snapshot — en 1 à 3 tours" },
   fuse: { label: "Fusion", tone: "violet", description: "Reciprocal Rank Fusion (k=60)" },
   rerank: { label: "Reclassement", tone: "pink", description: "Score combiné pertinence / fraîcheur / type" },
   govern: { label: "Gouvernance", tone: "red", description: "Oubli, ACL, classification, périmètre, fraîcheur…" },
@@ -608,3 +649,30 @@ export function aclPrincipalLabel(principal: string, userNames?: Record<string, 
   if (principal.startsWith("role:")) return `Rôle ${principal.slice(5)}`;
   return principal;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Source trust (AI security §A3)                                             */
+/* -------------------------------------------------------------------------- */
+
+export type SourceTrustLevel = "high" | "medium" | "low";
+
+export const SOURCE_TRUST_META: Record<SourceTrustLevel, EnumMeta> = {
+  high: { label: "Confiance élevée", tone: "teal", description: "Contenus maîtrisés : aucun ajustement du classement." },
+  medium: { label: "Confiance moyenne", tone: "neutral", description: "Légère pénalité de classement." },
+  low: {
+    label: "Confiance faible",
+    tone: "amber",
+    description: "Pénalité de classement, jamais promu automatiquement en mémoire validée.",
+  },
+};
+
+/** Default trust of each source kind (mirrors the backend `DEFAULT_SOURCE_TRUST`). */
+export const DEFAULT_SOURCE_TRUST: Record<SourceKind, SourceTrustLevel> = {
+  document: "high",
+  note: "medium",
+  ticket: "medium",
+  crm: "medium",
+  feedback: "low",
+  agent_trace: "low",
+  url: "low",
+};

@@ -13,6 +13,7 @@ import {
   GitBranch,
   Layers,
   ListChecks,
+  Mic,
   PencilLine,
   RefreshCw,
   Tag,
@@ -54,9 +55,10 @@ import { DocumentStatusBadge, isDocumentActive } from "./document-status";
 import { DocumentVersions } from "./document-versions";
 import { EditDocumentDialog } from "./edit-document-dialog";
 import { JobStepsInline } from "./job-steps";
+import { MeetingTimeline, meetingOf } from "./meeting-timeline";
 import { useUrlParams } from "./use-url-params";
 
-const TABS = ["content", "processing", "versions", "memory", "metadata"] as const;
+const TABS = ["content", "meeting", "processing", "versions", "memory", "metadata"] as const;
 type DocumentTab = (typeof TABS)[number];
 
 const MIME_EXTENSIONS: Record<string, string> = {
@@ -216,6 +218,7 @@ export function DocumentDetailView() {
 
   const doc = document.data;
   const forgotten = doc.status === "forgotten";
+  const meeting = meetingOf(doc.metadata);
   const active = isDocumentActive(doc.status) || doc.jobs.some((j) => j.status === "queued" || j.status === "running");
   const latestJob = [...doc.jobs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
   const totalTokens = doc.chunks.reduce((acc, c) => acc + c.token_count, 0);
@@ -425,6 +428,12 @@ export function DocumentDetailView() {
             <Layers aria-hidden />
             Contenu
           </TabsTrigger>
+          {meeting && !forgotten ? (
+            <TabsTrigger value="meeting" count={meeting.speakers?.length}>
+              <Mic aria-hidden />
+              Réunion
+            </TabsTrigger>
+          ) : null}
           <TabsTrigger value="processing" count={doc.jobs.length}>
             <ListChecks aria-hidden />
             Traitement
@@ -449,6 +458,11 @@ export function DocumentDetailView() {
             <ChunkList chunks={doc.chunks} version={doc.current_version} canSeeOriginal={canEdit} />
           )}
         </TabsContent>
+        {meeting && !forgotten ? (
+          <TabsContent value="meeting">
+            <MeetingTimeline meeting={meeting} />
+          </TabsContent>
+        ) : null}
         <TabsContent value="processing">
           <DocumentProcessing jobs={doc.jobs} />
         </TabsContent>

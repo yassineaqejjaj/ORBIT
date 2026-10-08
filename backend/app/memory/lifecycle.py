@@ -65,7 +65,7 @@ from app.enums import (
 )
 from app.errors import conflict, validation_error
 from app.governance.acl import merge_acls, user_principal
-from app.memory import short_term
+from app.memory import contradiction, reflection, short_term, skills
 from app.memory.conflicts import cosine as cosine_similarity
 from app.memory.conflicts import (
     divergences,
@@ -133,6 +133,7 @@ VERSIONED_FIELDS: tuple[str, ...] = (
     "kind",
     "scope",
     "confidence",
+    "skill_meta",
 )
 _RELATION_FIELDS = ("title", "content", "kind")
 
@@ -524,6 +525,9 @@ async def create_item(
         valid_to=data.valid_to,
         created_by_type=resolved.type,
         created_by_id=resolved.id,
+        skill_meta=skills.normalize_meta(data.skill_meta, data.title, data.content)
+        if kind == MemoryKind.procedure
+        else None,
     )
     session.add(item)
     await session.flush()
@@ -581,6 +585,10 @@ async def create_item(
         await supersede(session, old, item, resolved, reason=None)
     elif detect:
         await detect_relations(session, item, vector=vector)
+    if resolved.type == ActorType.agent and project_id is not None:
+        from app.memory import poisoning  # local import: poisoning depends on the models only
+
+        await poisoning.check_and_record(session, project_id)  # §A3 burst of agent proposals
     return item
 
 
@@ -633,6 +641,8 @@ async def new_version(
             value = _clamp(value)
         elif field == "tags":
             value = list(value)
+        elif field == "skill_meta":
+            value = skills.normalize_meta(value, requested.get("title") or current.title)
         old_value = getattr(current, field)
         if old_value != value:
             values[field] = value
@@ -1212,8 +1222,13 @@ async def _flag_conflict(
     similarity: float,
     markers: Sequence[str],
     actor: ActorLike,
+    *,
+    method: str = "lexical",
+    score: float | None = None,
+    explanation: str | None = None,
 ) -> Relation | None:
-    """Relation ``contradicts`` + ``conflict_detected`` events on both items (idempotent)."""
+    """Relation ``contradicts`` + ``conflict_detected`` events on both items (idempotent); §D3 the
+    detection method, model score and explanation are stored on the relation."""
     if await _relation_between(session, a.id, b.id, RelationType.contradicts, both_ways=True):
         return None
     detail = f"Similarité {format_similarity(similarity)} · {join_markers(markers)}"
@@ -1226,6 +1241,9 @@ async def _flag_conflict(
         dst_id=b.id,
         confidence=round(_clamp(similarity), 3),
         detail=detail,
+        method=method,
+        score=score,
+        explanation=explanation or join_markers(markers),
     )
     session.add(relation)
     for this, other in ((a, b), (b, a)):
@@ -1241,6 +1259,8 @@ async def _flag_conflict(
                 "with_title": other.title,
                 "similarity": round(similarity, 3),
                 "markers": list(markers),
+                "method": method,
+                "score": score,
             },
         )
     await audit.record(
@@ -1348,9 +1368,23 @@ async def detect_relations(
                         created.append(relation)
                 continue
         if similarity > CONFLICT_SIMILARITY:
-            markers = divergences(item.content, candidate.content)
-            if markers:
-                relation = await _flag_conflict(session, item, candidate, similarity, markers, system)
+            if await _relation_between(
+                session, item.id, candidate.id, RelationType.contradicts, both_ways=True
+            ):
+                continue
+            verdict = await contradiction.judge(item, candidate)
+            if verdict.contradicts:
+                relation = await _flag_conflict(
+                    session,
+                    item,
+                    candidate,
+                    similarity,
+                    verdict.markers or [verdict.explanation],
+                    system,
+                    method=verdict.method,
+                    score=verdict.score,
+                    explanation=verdict.explanation,
+                )
                 if relation is not None:
                     created.append(relation)
     return created
@@ -1581,5 +1615,6 @@ async def run_periodic_maintenance(session: AsyncSession) -> dict[str, int]:
         "expired_short_term": await _expire_short_term(session, now),
         "decayed_long_term": await _decay_long_term(session, now),
         "consolidations_enqueued": await _trigger_consolidations(session, now),
+        "reflections_enqueued": await reflection.trigger_reflections(session, now),
     }
     return {key: value for key, value in counters.items() if value}

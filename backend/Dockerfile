@@ -39,6 +39,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 ARG NODE_VERSION=24.21.0
 ARG MS365_MCP_VERSION=0.158.0
 ARG SLACK_MCP_VERSION=1.3.0
+ARG FIGMA_MCP_VERSION=0.13.2
 ARG MCP_ATLASSIAN_VERSION=0.23.1
 ARG WORKSPACE_MCP_VERSION=2.0.1
 ARG MCP_OBSIDIAN_VERSION=0.2.3
@@ -55,6 +56,7 @@ RUN apt-get update \
     && rm "${NODE_TAR}" \
     && npm install -g --omit=dev --no-fund --no-audit \
         "@softeria/ms-365-mcp-server@${MS365_MCP_VERSION}" "slack-mcp-server@${SLACK_MCP_VERSION}" \
+        "figma-developer-mcp@${FIGMA_MCP_VERSION}" \
     && npm cache clean --force \
     && apt-get purge -y curl xz-utils && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* /root/.npm
 ENV UV_TOOL_DIR=/opt/mcp-tools \
@@ -67,8 +69,8 @@ RUN for tool in "mcp-atlassian==${MCP_ATLASSIAN_VERSION}" "workspace-mcp==${WORK
 
 # 2. Embedding model (and optionally the cross-encoder reranker) baked into the image
 ARG ORBIT_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-ARG PRELOAD_RERANKER=false
-ARG ORBIT_RERANKER_MODEL=jinaai/jina-reranker-v2-base-multilingual
+ARG PRELOAD_RERANKER=true
+ARG ORBIT_RERANKER_MODEL=cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
 ENV ORBIT_EMBEDDING_MODEL=${ORBIT_EMBEDDING_MODEL}
 COPY docker/preload_models.py /tmp/preload_models.py
 RUN python /tmp/preload_models.py \

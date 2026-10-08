@@ -88,6 +88,11 @@
      "title": "Politique de télétravail 2026", "external_id": "rh-politique-teletravail-2026", "author": "Nadia Haddad",
      "offset_days": 25, "classification": 1, "acl": ["project:*"], "tags": ["rh", "teletravail"],
      "demonstrates": "contrainte transverse (2 jours sur site)"},
+    {"key": "astuces-salles", "phase": 2, "mode": "text", "source": "veille", "file": "veille/astuces-reservation-salles.md",
+     "title": "Astuces de réservation des salles (forum externe)", "external_id": "veille-astuces-reservation-salles",
+     "uri": "https://forum.flexoffice.example/astuces-reservation-salles", "author": "Forum Flex Office",
+     "offset_days": 4, "classification": 0, "acl": ["project:*"], "tags": ["veille", "forum"],
+     "demonstrates": "EXCLUDED_QUARANTINE (injection de prompt fictive, libérable par un propriétaire)"},
     {"key": "budget", "phase": 2, "mode": "text", "source": "direction", "file": "direction/budget-negociation-atlas.md",
      "title": "Budget et négociation contrat Atlas", "external_id": "dir-budget-negociation", "author": "Julien Roux",
      "offset_days": 20, "classification": 3, "acl": ["role:owner"], "tags": ["budget", "contrat"],
@@ -109,7 +114,8 @@
     {"key": "cr-sprint6", "phase": 3, "mode": "text", "source": "cr", "file": "notes/cr-sprint-review-6.md",
      "title": "CR sprint review 6", "external_id": "cr-sprint-review-6", "author": "Camille Martin",
      "offset_days": 4, "classification": 1, "acl": ["project:*"], "tags": ["compte-rendu", "sprint-review"],
-     "demonstrates": "fraîcheur, décision QR code, risque d'adoption"}
+     "demonstrates": "fraîcheur, décision QR code, risque d'adoption"},
+    {"key": "reunion-point-pilote", "phase": 3, "mode": "meeting", "source": "cr", "file": "notes/reunion-point-pilote.vtt", "title": "Réunion — point d'avancement du pilote", "offset_days": 2, "classification": 1, "acl": ["project:*"], "tags": ["réunion", "transcription"], "participants": ["Camille Martin", "Inès Moreau", "Léo Bernard"], "demonstrates": "import de réunion (VTT) : locuteurs, horodatages, décisions et action attribuées"}
   ],
   "validations": [
     {"after_phase": 1, "kind": "decision", "contains": ["mobile native"], "reason": "Décision actée lors du kick-off."},
@@ -156,11 +162,34 @@
      "title": "Capacité du plateau de Lille (mise à jour)",
      "content": "Le plateau de Lille compte 150 postes réservables dans Atlas.",
      "tags": ["capacite", "plateau"]},
+    {"key": "proc-dod", "scope": "project", "kind": "procedure", "status": "validated", "as_user": "camille",
+     "title": "Définition de terminé d'une user story",
+     "content": "Une user story Atlas est terminée quand : 1. les critères d'acceptation sont vérifiés par le PO ; 2. les tests automatisés passent en intégration continue ; 3. la revue de code est faite par un pair ; 4. l'accessibilité RGAA AA est contrôlée sur les écrans modifiés ; 5. la documentation utilisateur est à jour.",
+     "tags": ["procedure", "definition-of-done"],
+     "skill_meta": {"name": "definition-de-termine-user-story", "description": "Critères à vérifier avant de déclarer une user story Atlas terminée.",
+                    "task_types": ["specification", "validation", "engineering"], "agent_kinds": ["product", "engineering"]}},
     {"key": "short-expired", "scope": "short_term", "kind": "summary", "as_agent": "design", "session_id": "atlas-atelier-maquettes",
      "expire": true,
      "title": "Notes de session : atelier maquettes de la carte",
      "content": "Session de travail de l'Agent Design sur les maquettes de la carte des étages : légende des états de poste, zoom par zone, alternative en liste pour l'accessibilité.",
      "tags": ["session", "maquettes"]}
+  ],
+  "entities": [
+    {"name": "Personne à mobilité réduite", "kind": "public", "aliases": ["PMR"]}
+  ],
+  "eval_sets": [
+    {"name": "Référence Atlas", "generate": 3, "run": true,
+     "description": "Questions de référence du projet Atlas (données fictives) : contraintes et façons de faire attendues dans le contexte.",
+     "cases": [
+      {"question": "Quel niveau d'accessibilité les applications doivent-elles respecter ?",
+       "expected": [{"scope": "long_term", "title": "Toutes les applications Nordalis respectent le RGAA niveau AA"}]},
+      {"question": "Où les données personnelles du portail peuvent-elles être hébergées ?",
+       "expected": [{"scope": "long_term", "title": "Hébergement des données personnelles dans l'UE obligatoire"}]},
+      {"question": "Combien de postes compte le plateau de Lille ?",
+       "expected": [{"scope": "project", "title": "Capacité du plateau de Lille"}]},
+      {"question": "Quand une user story est-elle considérée comme terminée ?",
+       "expected": [{"scope": "project", "title": "Définition de terminé d'une user story"}]}
+    ]}
   ],
   "sessions": [
     {"id": "atlas-spec-redaction", "agent": "produit", "turns": [

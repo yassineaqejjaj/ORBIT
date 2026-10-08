@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Database, FileText, ListChecks, Waypoints } from "lucide-react";
+import { Database, FileText, ListChecks, ShieldAlert, Waypoints } from "lucide-react";
 
-import { RequireRole } from "@/components/auth/require-role";
+import { RequireRole, useHasRole } from "@/components/auth/require-role";
 import { PageHeader } from "@/components/ui/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCurrentProject } from "@/hooks/use-current-project";
@@ -11,23 +11,25 @@ import { useSources } from "@/lib/api/hooks";
 import { AddContentMenu } from "./add-content-menu";
 import { DocumentsPanel } from "./documents-panel";
 import { JobsPanel } from "./jobs-panel";
+import { QuarantinePanel } from "./quarantine-panel";
 import { SourcesPanel } from "./sources-panel";
 import { useUrlParams } from "./use-url-params";
 
-const TABS = ["documents", "sources", "jobs"] as const;
+const TABS = ["documents", "sources", "jobs", "quarantine"] as const;
 type SourcesTab = (typeof TABS)[number];
 
 function isTab(value: string | null): value is SourcesTab {
   return value !== null && (TABS as readonly string[]).includes(value);
 }
 
-/** Sources screen: Documents | Sources | Traitements (tab kept in `?tab=`). */
+/** Sources screen: Documents | Sources | Traitements | Quarantaine (owners) — tab kept in `?tab=`. */
 export function SourcesView() {
   const { slug } = useCurrentProject();
   const { get, set } = useUrlParams();
   const tabParam = get("tab");
   const tab: SourcesTab = isTab(tabParam) ? tabParam : "documents";
   const sources = useSources(slug);
+  const isOwner = useHasRole("owner");
 
   return (
     <div className="grid grid-cols-1 gap-2">
@@ -56,6 +58,12 @@ export function SourcesView() {
             <ListChecks aria-hidden />
             Traitements
           </TabsTrigger>
+          {isOwner ? (
+            <TabsTrigger value="quarantine">
+              <ShieldAlert aria-hidden />
+              Quarantaine
+            </TabsTrigger>
+          ) : null}
         </TabsList>
         <TabsContent value="documents">
           <DocumentsPanel slug={slug} sources={sources.data} sourcesLoading={sources.isPending} />
@@ -73,6 +81,11 @@ export function SourcesView() {
         <TabsContent value="jobs">
           <JobsPanel slug={slug} />
         </TabsContent>
+        {isOwner ? (
+          <TabsContent value="quarantine">
+            <QuarantinePanel slug={slug} />
+          </TabsContent>
+        ) : null}
       </Tabs>
     </div>
   );

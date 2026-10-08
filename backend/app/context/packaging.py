@@ -1,10 +1,10 @@
 """``package`` stage (ARCHITECTURE §9.8): structured Markdown with stable citations.
 
 Sections (only non-empty ones, in this order): ``## Décisions en vigueur``, ``## Besoins
-utilisateurs``, ``## Contraintes & risques``, ``## Faits & connaissances``, ``## Préférences
-utilisateur``, ``## Extraits de sources``, ``## Session en cours``, then ``## Sources`` listing every
-citation: ``[S1] Titre — type · v2 · 12/09/2026 · uri``. Every bullet ends with its ``[Sx]`` marker;
-citations are numbered in presentation order.
+utilisateurs``, ``## Contraintes & risques``, ``## Façons de faire``, ``## Faits & connaissances``,
+``## Préférences utilisateur``, ``## Extraits de sources``, ``## Session en cours``, then ``## Sources``
+listing every citation: ``[S1] Titre — type · v2 · 12/09/2026 · uri``. Every bullet ends with its
+``[Sx]`` marker; citations are numbered in presentation order.
 
 The per-item overhead helpers give an upper bound of the tokens a bullet and its source line cost,
 used by the budget filler so that the final Markdown never exceeds the token budget.
@@ -12,10 +12,13 @@ used by the budget filler so that the final Markdown never exceeds the token bud
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from app.config import settings
+from app.context import spotlight
 from app.context.textutils import fold, one_line
 from app.enums import (
     MEMORY_KIND_LABELS,
@@ -37,6 +40,7 @@ SECTIONS: tuple[tuple[str, str], ...] = (
     ("decisions", "Décisions en vigueur"),
     ("requirements", "Besoins utilisateurs"),
     ("constraints", "Contraintes & risques"),
+    ("procedures", "Façons de faire"),
     ("facts", "Faits & connaissances"),
     ("preferences", "Préférences utilisateur"),
     ("sources", "Extraits de sources"),
@@ -44,6 +48,7 @@ SECTIONS: tuple[tuple[str, str], ...] = (
 )
 SECTION_TITLES = dict(SECTIONS)
 SOURCES_HEADING = "Sources"
+INDEX_HEADING = "Index des sources et décisions"
 EMPTY_CONTEXT = "_Aucun élément pertinent et autorisé n'a été retenu pour cette tâche._"
 TASK_PREVIEW_CHARS = 200
 #: Placeholder citation used to estimate the cost of a bullet before numbering.
@@ -76,6 +81,8 @@ def section_for(c: Candidate) -> str:
         return "constraints"
     if kind == MemoryKind.preference:
         return "preferences"
+    if kind == MemoryKind.procedure:
+        return "procedures"
     return "facts"
 
 
@@ -84,7 +91,7 @@ def section_for(c: Candidate) -> str:
 
 def sanitize(value: str) -> str:
     """Single-line text that can never forge a citation marker (``[S`` is defused)."""
-    return one_line(value).replace("[S", "[ S")
+    return spotlight.neutralize(one_line(value).replace("[S", "[ S"))
 
 
 def _starts_with_title(title: str, excerpt: str) -> bool:
@@ -173,10 +180,21 @@ def section_header_tokens(section: str) -> int:
     return estimate_tokens(f"\n## {SECTION_TITLES.get(section, section)}\n\n") + 1
 
 
+def spotlight_overhead_tokens() -> int:
+    if not spotlight.enabled():
+        return 0
+    return estimate_tokens(f"{spotlight.NOTICE}\n{spotlight.OPEN}\n{spotlight.CLOSE}\n") + 2
+
+
 def base_overhead_tokens(task: str = "", intent: Intent = Intent.general) -> int:
     return (
-        estimate_tokens(preamble(task or "x" * TASK_PREVIEW_CHARS, intent))
+        max(
+            estimate_tokens(preamble(task or "x" * TASK_PREVIEW_CHARS, intent)),
+            estimate_tokens(CACHE_HEADER)
+            + estimate_tokens(task_block(task or "x" * TASK_PREVIEW_CHARS, intent)),
+        )
         + estimate_tokens(f"\n## {SOURCES_HEADING}\n\n")
+        + spotlight_overhead_tokens()
         + 2
     )
 
@@ -190,6 +208,16 @@ class Packaged:
     tokens_used: int
     ordered: list[Decision] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    #: §C1: the request-independent beginning of ``markdown`` (empty when the layout is disabled).
+    prefix: str = ""
+
+    @property
+    def prefix_hash(self) -> str | None:
+        return hashlib.sha256(self.prefix.encode("utf-8")).hexdigest() if self.prefix else None
+
+    @property
+    def prefix_tokens(self) -> int:
+        return estimate_tokens(self.prefix) if self.prefix else 0
 
 
 def assign_citations(included: Sequence[Decision]) -> list[Decision]:
@@ -215,12 +243,28 @@ def classification_warnings(included: Sequence[Decision]) -> list[str]:
     return [w for w in (classification_warning(level) for level in levels) if w]
 
 
-def render(task: str, intent: Intent, included: Sequence[Decision]) -> Packaged:
+def render(
+    task: str,
+    intent: Intent,
+    included: Sequence[Decision],
+    *,
+    progressive: bool = False,
+    section_order: Sequence[str] | None = None,
+) -> Packaged:
     """Assemble the Markdown context. ``included`` must carry their excerpts (compression done)."""
+    if settings.context_cache_ordering or progressive or section_order:
+        return render_cache_aware(
+            task, intent, included, progressive=progressive, section_order=section_order
+        )
     ordered = assign_citations(included)
     lines: list[str] = [preamble(task, intent)]
     if not ordered:
         lines.append(EMPTY_CONTEXT)
+    spotlighted = bool(ordered) and spotlight.enabled()
+    if spotlighted:
+        # §A2: everything below comes from the sources — untrusted data, never instructions.
+        lines.append(spotlight.NOTICE)
+        lines.append(spotlight.OPEN)
     for name, title in SECTIONS:
         members = [d for d in ordered if section_for(d.candidate) == name]
         if not members:
@@ -232,10 +276,148 @@ def render(task: str, intent: Intent, included: Sequence[Decision]) -> Packaged:
         lines.append(f"\n## {SOURCES_HEADING}\n")
         for d in ordered:
             lines.append(source_line(d.candidate, d.citation or ""))
+    if spotlighted:
+        lines.append(spotlight.CLOSE)
     markdown = "\n".join(lines).rstrip() + "\n"
     return Packaged(
         markdown=markdown,
         tokens_used=estimate_tokens(markdown),
         ordered=ordered,
         warnings=classification_warnings(ordered),
+    )
+
+
+# --- §C1 prompt-cache-aware layout -------------------------------------------------------------------
+
+#: Sections whose items belong to the stable prefix (snapshot items are stable whatever their section).
+STABLE_SECTIONS = frozenset({"decisions", "constraints", "procedures"})
+CACHE_HEADER = (
+    "# Contexte ORBIT\n\n"
+    "_Chaque élément cite sa source [Sx] (liste en fin de document). "
+    "La tâche et son intention figurent en fin de document._\n"
+)
+
+
+def is_stable(c: Candidate) -> bool:
+    """Items of the stable prefix: decisions in force, constraints & risks, snapshot (pinned) items."""
+    return bool(c.pinned) or section_for(c) in STABLE_SECTIONS
+
+
+def task_block(task: str, intent: Intent) -> str:
+    task_line = one_line(task)
+    if len(task_line) > TASK_PREVIEW_CHARS:
+        task_line = task_line[: TASK_PREVIEW_CHARS - 1].rstrip() + "…"
+    return f"\n## Tâche\n\n{task_line}\n\n_Intention : {INTENT_LABELS.get(intent, intent.value)}._"
+
+
+def _ordered_sections(section_order: Sequence[str] | None) -> list[tuple[str, str]]:
+    """Profile order first (§C3), then any remaining section in the default order."""
+    names = [n for n in (section_order or ()) if n in SECTION_TITLES]
+    names += [n for n, _ in SECTIONS if n not in names]
+    return [(n, SECTION_TITLES[n]) for n in names]
+
+
+def _render_sections(
+    lines: list[str], members: Sequence[Decision], section_order: Sequence[str] | None = None
+) -> None:
+    for name, title in _ordered_sections(section_order):
+        group = [d for d in members if section_for(d.candidate) == name]
+        if not group:
+            continue
+        lines.append(f"\n## {title}\n")
+        for d in group:
+            lines.append(bullet(d.candidate, d.excerpt, d.citation or ""))
+
+
+def index_ref(c: Candidate) -> str | None:
+    """Identifier an agent passes to the §C2 tools (chunk id, memory item id)."""
+    if c.candidate_type == CandidateType.chunk:
+        return c.id
+    if c.candidate_type == CandidateType.memory and c.memory_item_id is not None:
+        return str(c.memory_item_id)
+    return None
+
+
+def expand_tool(c: Candidate) -> str | None:
+    if c.candidate_type == CandidateType.chunk:
+        return "expand_source"
+    if c.candidate_type == CandidateType.memory:
+        return "get_decision" if c.memory_kind == MemoryKind.decision else "get_memory_item"
+    return None
+
+
+def index_line(c: Candidate, citation: str) -> str:
+    """Progressive mode: the source line plus the identifier and the tool that expands it."""
+    ref, tool = index_ref(c), expand_tool(c)
+    suffix = f" · id={ref} → {tool}" if ref and tool else ""
+    return source_line(c, citation) + suffix
+
+
+def progressive_summary(ordered: Sequence[Decision]) -> str:
+    counts = []
+    for name, title in SECTIONS:
+        n = sum(1 for d in ordered if section_for(d.candidate) == name)
+        if n:
+            counts.append(f"{title.lower()} : {n}")
+    return (
+        "\n## Résumé (contexte progressif)\n\n"
+        f"{len(ordered)} élément{'s' if len(ordered) > 1 else ''} retenu{'s' if len(ordered) > 1 else ''}"
+        f"{' — ' + ' · '.join(counts) if counts else ''}. Chaque élément n'est servi qu'en aperçu : l'index "
+        "ci-dessous donne son identifiant et l'outil MCP qui renvoie le détail (expand_source, "
+        "get_decision, get_memory_item) ; search_more lance une recherche complémentaire."
+    )
+
+
+def render_cache_aware(
+    task: str,
+    intent: Intent,
+    included: Sequence[Decision],
+    *,
+    progressive: bool = False,
+    section_order: Sequence[str] | None = None,
+) -> Packaged:
+    """Stable prefix (header, untrusted-data notice, stable items in a request-independent order) then
+    variable items, the source list and the task: two requests serving the same stable items share a
+    byte-identical prefix, which a prompt cache (e.g. Anthropic ``cache_control``) can reuse."""
+    position = {id(d): index for index, d in enumerate(included)}
+    section_rank = {name: index for index, (name, _title) in enumerate(_ordered_sections(section_order))}
+    stable = sorted(
+        (d for d in included if is_stable(d.candidate)),
+        key=lambda d: (section_rank[section_for(d.candidate)], d.candidate.key),
+    )
+    variable = sorted(
+        (d for d in included if not is_stable(d.candidate)),
+        key=lambda d: (section_rank[section_for(d.candidate)], position[id(d)]),
+    )
+    ordered = [*stable, *variable]
+    for index, decision in enumerate(ordered, start=1):
+        decision.citation = f"S{index}"
+        decision.order = index
+    lines: list[str] = [CACHE_HEADER]
+    spotlighted = spotlight.enabled()
+    if spotlighted:
+        lines.append(spotlight.NOTICE)
+        lines.append(spotlight.OPEN)
+    _render_sections(lines, stable, section_order)
+    prefix = "\n".join(lines) + "\n"
+    rest: list[str] = []
+    if not ordered:
+        rest.append(EMPTY_CONTEXT)
+    elif progressive:
+        rest.append(progressive_summary(ordered))
+    _render_sections(rest, variable, section_order)
+    if ordered:
+        rest.append(f"\n## {INDEX_HEADING if progressive else SOURCES_HEADING}\n")
+        line = index_line if progressive else source_line
+        rest.extend(line(d.candidate, d.citation or "") for d in ordered)
+    if spotlighted:
+        rest.append(spotlight.CLOSE)
+    rest.append(task_block(task, intent))
+    markdown = prefix + "\n".join(rest).rstrip() + "\n"
+    return Packaged(
+        markdown=markdown,
+        tokens_used=estimate_tokens(markdown),
+        ordered=ordered,
+        warnings=classification_warnings(ordered),
+        prefix=prefix if settings.context_cache_ordering else "",
     )

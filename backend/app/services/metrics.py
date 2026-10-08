@@ -20,7 +20,7 @@ from decimal import Decimal
 from typing import Any
 
 import orjson
-from sqlalchemy import Date, and_, cast, exists, func, literal, literal_column, select, text, tuple_
+from sqlalchemy import Date, Integer, and_, cast, exists, func, literal, literal_column, select, text, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -44,6 +44,7 @@ from app.enums import (
     SourceKind,
 )
 from app.governance.acl import acl_allows, effective_principals
+from app.memory import poisoning
 from app.models import (
     Agent,
     AuditLog,
@@ -64,6 +65,7 @@ from app.schemas import (
     AgentUsage,
     Alert,
     AuditEvent,
+    CacheMetrics,
     IngestionMetrics,
     Metrics,
     MetricsPoint,
@@ -95,6 +97,7 @@ TRACE_SCHEMA = "orbit.trace.v1"
 #: Display order of the assembly stages (§9); unknown keys follow alphabetically, ``total`` last.
 STAGE_ORDER: tuple[str, ...] = (
     "understand",
+    "rewrite",
     "retrieve",
     "fuse",
     "rerank",
@@ -188,6 +191,17 @@ class AlertSignals:
     pending_proposals: int = 0
     c2_documents: int = 0
     c3_documents: int = 0
+    #: §A1 chunks held in quarantine, §A3 poisoning alert messages.
+    quarantined_chunks: int = 0
+    poisoning: tuple[str, ...] = ()
+    #: §E1/§E3 context quality degradation (evaluation regression, LLM-judge average below threshold).
+    quality: tuple[str, ...] = ()
+
+
+async def _quality_alerts(session: AsyncSession, pid: uuid.UUID) -> list[str]:
+    from app.evaluation import bench, judge
+
+    return [*await bench.regression_alerts(session, pid), *await judge.degradation_alerts(session, pid)]
 
 
 _ALERT_RANK = {AlertLevel.critical: 0, AlertLevel.warning: 1, AlertLevel.info: 2}
@@ -195,7 +209,18 @@ _ALERT_RANK = {AlertLevel.critical: 0, AlertLevel.warning: 1, AlertLevel.info: 2
 
 def build_alerts(signals: AlertSignals) -> list[Alert]:
     """French alerts, most severe first."""
-    alerts: list[Alert] = []
+    alerts: list[Alert] = [Alert(level=AlertLevel.critical, message=message) for message in signals.poisoning]
+    alerts += [Alert(level=AlertLevel.warning, message=message) for message in signals.quality]
+    if signals.quarantined_chunks:
+        alerts.append(
+            Alert(
+                level=AlertLevel.warning,
+                message=_plural(
+                    signals.quarantined_chunks, "fragment en quarantaine", "fragments en quarantaine"
+                )
+                + " (injection de prompt suspectée) — à examiner par un propriétaire.",
+            )
+        )
     if signals.failed_jobs:
         alerts.append(
             Alert(
@@ -469,6 +494,15 @@ async def build_overview(session: AsyncSession, access: ProjectAccess) -> Overvi
             pending_proposals=pending_proposals,
             c2_documents=by_classification.get(2, 0),
             c3_documents=by_classification.get(3, 0),
+            quarantined_chunks=await _count(
+                session,
+                Chunk.id,
+                Chunk.project_id == pid,
+                Chunk.quarantined.is_(True),
+                Chunk.status == ChunkStatus.active,
+            ),
+            poisoning=tuple(s.message for s in await poisoning.detect(session, pid, now)),
+            quality=tuple(await _quality_alerts(session, pid)),
         )
     )
 
@@ -642,6 +676,32 @@ async def build_metrics(session: AsyncSession, access: ProjectAccess, *, days: i
         by_agent=await _by_agent(session, in_window),
         stage_latency_avg=await _stage_latency(session, pid, since),
         ingestion=await _ingestion_metrics(session, pid, since),
+        cache=await _cache_metrics(session, in_window),
+    )
+
+
+async def _cache_metrics(session: AsyncSession, in_window: Any) -> CacheMetrics:
+    """§C1: reuse of stable prefixes (``params.cache`` written by the assembler)."""
+    cache = ContextRequest.params["cache"]
+    tokens = cast(cache["prefix_tokens"].astext, Integer)
+    reused = cache["reused"].astext == "true"
+    row = (
+        await session.execute(
+            select(
+                func.count(ContextRequest.id),
+                func.count(ContextRequest.id).filter(reused),
+                func.avg(tokens),
+                func.coalesce(func.sum(tokens).filter(reused), 0),
+            ).where(in_window, cache["prefix_hash"].astext.is_not(None))
+        )
+    ).one()
+    packages, hits, avg_tokens, hit_tokens = row
+    return CacheMetrics(
+        packages=int(packages),
+        reused=int(hits),
+        reuse_rate=round(int(hits) / int(packages), 4) if packages else 0,
+        avg_prefix_tokens=rounded(avg_tokens),
+        reused_prefix_tokens=int(hit_tokens),
     )
 
 

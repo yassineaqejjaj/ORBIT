@@ -1,6 +1,6 @@
 "use client";
 
-import { Gavel, Lightbulb, Sparkles } from "lucide-react";
+import { CalendarClock, Gavel, Lightbulb, Mic, Sparkles, UserRound } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import type { MemoryCardFields as CardFields } from "@/lib/api/features-ask";
@@ -15,7 +15,8 @@ export interface MemoryCardFieldsProps {
 /** « Fiche » fields filled by the LLM-assisted extraction (F3): who decided, why, and how sure. */
 export function MemoryCardFields({ item }: MemoryCardFieldsProps) {
   const fromLlm = item.tags.includes(LLM_EXTRACTION_TAG);
-  if (!item.rationale && !item.decided_by && !item.confidence_reason && !fromLlm) return null;
+  const action = item.action_meta ?? null;
+  if (!item.rationale && !item.decided_by && !item.confidence_reason && !fromLlm && !action) return null;
   return (
     <section aria-label="Fiche mémoire" className="space-y-3 rounded-xl border border-border bg-card p-4">
       <div className="flex items-center gap-2">
@@ -35,6 +36,41 @@ export function MemoryCardFields({ item }: MemoryCardFieldsProps) {
               Décidé par
             </dt>
             <dd>{item.decided_by}</dd>
+          </div>
+        ) : null}
+        {action?.owner ? (
+          <div className="space-y-1">
+            <dt className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <UserRound className="size-3.5" aria-hidden />
+              Responsable
+            </dt>
+            <dd>{action.owner}</dd>
+          </div>
+        ) : null}
+        {action?.due_date || action?.due_text ? (
+          <div className="space-y-1">
+            <dt className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <CalendarClock className="size-3.5" aria-hidden />
+              Échéance
+            </dt>
+            <dd className="tabular-nums">
+              {action.due_date ?? action.due_text}
+              {action.due_date && action.due_text ? (
+                <span className="text-muted-foreground"> · « {action.due_text} »</span>
+              ) : null}
+            </dd>
+          </div>
+        ) : null}
+        {action?.speaker ? (
+          <div className="space-y-1">
+            <dt className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Mic className="size-3.5" aria-hidden />
+              Énoncée par
+            </dt>
+            <dd>
+              {action.speaker}
+              {action.timestamp ? <span className="font-mono text-xs text-muted-foreground"> · {action.timestamp}</span> : null}
+            </dd>
           </div>
         ) : null}
         {item.rationale ? (

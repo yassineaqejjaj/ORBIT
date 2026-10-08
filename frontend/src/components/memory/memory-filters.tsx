@@ -78,12 +78,12 @@ export function MemoryFilters({ state, onChange, counts, className }: MemoryFilt
   };
 
   const hasFilters =
-    state.scope !== "all" || state.status !== "all" || state.kinds.length > 0 || state.q.trim() !== "" || state.history;
+    state.scope !== "all" || state.status !== "all" || state.kinds.length > 0 || state.q.trim() !== "" || state.history || state.asOf !== "";
 
   const reset = () => {
     lastPushed.current = "";
     setSearch("");
-    onChange({ scope: "all", status: "all", kinds: [], q: "", history: false });
+    onChange({ scope: "all", status: "all", kinds: [], q: "", history: false, asOf: "" });
   };
 
   return (
@@ -187,6 +187,20 @@ export function MemoryFilters({ state, onChange, counts, className }: MemoryFilt
           <Label htmlFor="memory-history" className="cursor-pointer text-xs font-normal text-muted-foreground">
             Afficher l&apos;historique
           </Label>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Label htmlFor="memory-as-of" className="text-xs font-normal text-muted-foreground">
+            Telle que connue au
+          </Label>
+          <Input
+            id="memory-as-of"
+            type="date"
+            className="h-8 w-[150px] text-xs"
+            value={state.asOf}
+            onChange={(e) => onChange({ asOf: e.target.value })}
+            title="Versions connues et valides à cette date"
+          />
         </div>
 
         {hasFilters ? (

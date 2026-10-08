@@ -29,6 +29,7 @@ import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import HTTPException
@@ -45,6 +46,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config import settings
+from app.context import spotlight
 from app.db import get_sessionmaker
 from app.deps import Principal, ProjectAccess, authenticate_agent_key
 from app.enums import (
@@ -72,6 +74,7 @@ from app.models import (
     Source,
     User,
 )
+from app.observability import genai
 from app.schemas import (
     BaseSnapshotRef,
     ContextPackage,
@@ -119,6 +122,15 @@ Bonnes pratiques :
 6. `propose_memory` propose une décision, un besoin, une contrainte, un risque ou un fait : il reste
    « proposé » jusqu'à validation par un humain.
 7. Terminez par `send_feedback` (note 1–5) avec le `request_id` reçu pour améliorer la sélection.
+8. Contexte à la demande : `get_context` avec `mode="progressive"` renvoie un résumé et un index
+   (identifiants) ; dépliez un élément avec `expand_source`, `get_decision` ou `get_memory_item`, et
+   lancez `search_more` si `sufficiency.verdict` vaut « partial » ou « insufficient » (sous-sujets
+   manquants dans `sufficiency.missing_subtopics`). Si le contexte reste insuffisant, dites que vous
+   ne savez pas plutôt que de deviner. `cache_hints=true` renvoie les blocs `cache_control`.
+9. Façons de faire : `list_skills` liste les procédures du projet (définitions de « terminé »,
+   conventions, checklists) et `get_skill` renvoie leur SKILL.md ; `get_context` les injecte déjà dans
+   la section « Façons de faire » selon le type de tâche. `as_of` (date) sert la mémoire telle que
+   connue à cette date.
 
 Les données personnelles sont masquées ([EMAIL], [TÉLÉPHONE]…) et les contenus hors habilitation ne
 sont jamais transmis, pas même leur titre.
@@ -254,6 +266,7 @@ async def agent_scope(ctx: Context) -> AsyncIterator[AgentScope]:
             if project is None:
                 raise ToolError("Projet de l'agent introuvable")
             access = ProjectAccess(project=project, principal=Principal.for_agent(agent), role=Role.editor)
+            genai.agent_attributes(agent)  # §E6 gen_ai.agent.* on the MCP server span
             yield AgentScope(session=session, access=access)
         except ToolError:
             await session.rollback()
@@ -333,7 +346,18 @@ def context_result(package: ContextPackage) -> dict[str, Any]:
         "tokens_used": data["tokens_used"],
         "token_budget": data["token_budget"],
         "warnings": data["warnings"],
+        "sufficiency": data.get("sufficiency"),
+        "cache_prefix_hash": data.get("cache_prefix_hash"),
+        "cache_prefix_tokens": data.get("cache_prefix_tokens", 0),
+        **({"cache_hints": data["cache_hints"]} if data.get("cache_hints") else {}),
+        **({"mode": "progressive", "index": data["index"]} if data.get("mode") == "progressive" else {}),
+        **_untrusted_notice(),
     }
+
+
+def _untrusted_notice() -> dict[str, str]:
+    """§A2: every MCP result carrying source content says it is untrusted data."""
+    return {"untrusted_content_notice": spotlight.MCP_NOTICE} if spotlight.enabled() else {}
 
 
 # --- Tools --------------------------------------------------------------------------------------------
@@ -369,6 +393,17 @@ async def get_context(
     save_snapshot: Annotated[
         str | None, Field(description="Enregistre le contexte comme nouvelle version de ce snapshot")
     ] = None,
+    cache_hints: Annotated[
+        bool, Field(description="Blocs de texte avec points d'arrêt cache_control (format Anthropic)")
+    ] = False,
+    mode: Annotated[
+        Literal["full", "progressive"],
+        Field(description="progressive : résumé + index avec identifiants, détail via expand_source…"),
+    ] = "full",
+    as_of: Annotated[
+        datetime | None,
+        Field(description="Mémoire « telle que connue au » (date ISO 8601) : versions valides à cette date"),
+    ] = None,
 ) -> dict[str, Any]:
     """Assemble a governed context package for the task (same engine as ``POST /context``)."""
     from app.context.assembler import assemble_context
@@ -385,6 +420,9 @@ async def get_context(
             base_snapshot=parse_snapshot_ref(base_snapshot),
             save_snapshot=SaveSnapshotRef(name=save_snapshot.strip()) if save_snapshot else None,
             explain=False,
+            cache_hints=cache_hints,
+            mode=mode,
+            as_of=as_of,
         )
         package = await assemble_context(scope.session, scope.access, body)
         return context_result(package)
@@ -420,7 +458,7 @@ async def search_sources(
     """Hybrid search (BM25 + k-NN) over the project's indexed chunks, restricted to the agent's rights."""
     async with agent_scope(ctx) as scope:
         hits = await hybrid_chunk_search(scope, query.strip(), limit)
-        return [hit.model_dump(mode="json") for hit in hits]
+        return [{**hit.model_dump(mode="json"), **_untrusted_notice()} for hit in hits]
 
 
 async def propose_memory(
@@ -534,6 +572,131 @@ async def send_feedback(
 # --- Tool internals -----------------------------------------------------------------------------------
 
 
+IdArg = Annotated[str, Field(min_length=1, max_length=100, description="Identifiant renvoyé par l'index")]
+
+
+@asynccontextmanager
+async def _governed(ctx: Context, on_behalf_of: str | None) -> AsyncIterator[tuple[AgentScope, Any]]:
+    """§C2: agent scope + the context engine's identity/governance (``app.context.expand``)."""
+    from app.context import expand
+
+    async with agent_scope(ctx) as scope:
+        behalf = await resolve_member(scope, on_behalf_of) if on_behalf_of else None
+        gov = await expand.governed(scope.session, scope.access, behalf)
+        try:
+            yield scope, gov
+        except expand.LookupDenied as exc:
+            await scope.session.commit()  # the refusal is audited
+            raise ToolError(exc.message) from exc
+        await scope.session.commit()
+
+
+async def expand_source(
+    source_id: IdArg,
+    ctx: Context,
+    max_tokens: Annotated[int, Field(ge=100, le=16000, description="Taille maximale du texte")] = 2000,
+    on_behalf_of: OnBehalfArg = None,
+) -> dict[str, Any]:
+    """Full text of a source extract (chunk id) or of a document (document id), governed and audited."""
+    from app.context import expand
+
+    async with _governed(ctx, on_behalf_of) as (scope, gov):
+        result = await expand.expand_source(scope.session, gov, source_id, max_tokens=max_tokens)
+        return {**result, **_untrusted_notice()}
+
+
+async def get_decision(decision_id: IdArg, ctx: Context, on_behalf_of: OnBehalfArg = None) -> dict[str, Any]:
+    """Current version of a decision in force (memory item or lineage id), governed and audited."""
+    from app.context import expand
+
+    async with _governed(ctx, on_behalf_of) as (scope, gov):
+        result = await expand.get_memory(scope.session, gov, decision_id, decision_only=True)
+        return {**result, **_untrusted_notice()}
+
+
+async def get_memory_item(item_id: IdArg, ctx: Context, on_behalf_of: OnBehalfArg = None) -> dict[str, Any]:
+    """Current version of any memory item (requirement, constraint, fact…), governed and audited."""
+    from app.context import expand
+
+    async with _governed(ctx, on_behalf_of) as (scope, gov):
+        result = await expand.get_memory(scope.session, gov, item_id)
+        return {**result, **_untrusted_notice()}
+
+
+async def list_skills(
+    ctx: Context,
+    task_type: Annotated[
+        Intent | None, Field(description="Type de tâche : ne garde que les procédures applicables")
+    ] = None,
+) -> dict[str, Any]:
+    """§D1 procedures of the project served as Agent Skills (name, description, metadata)."""
+    from app.memory import skills
+    from app.memory.visibility import MemoryViewer
+    from app.services import skills as skill_service
+
+    if not settings.memory_skills:
+        raise ToolError("La mémoire procédurale (skills) est désactivée")
+    async with agent_scope(ctx) as scope:
+        agent = scope.access.principal.agent
+        kind = getattr(getattr(agent, "kind", None), "value", None)
+        items = await skill_service.list_procedures(scope.session, MemoryViewer.from_access(scope.access))
+        out = []
+        for item in items:
+            meta = skills.meta_of(item)
+            if task_type is not None and not skills.applies_to(meta, task_type.value, kind)[0]:
+                continue
+            out.append(_jsonable(skill_service.summary(item)))
+        return {"skills": out, **_untrusted_notice()}
+
+
+async def get_skill(
+    name: Annotated[str, Field(min_length=1, max_length=100, description="Nom du skill (ou identifiant)")],
+    ctx: Context,
+) -> dict[str, Any]:
+    """§D1 one procedure as a ``SKILL.md`` (Agent Skills format)."""
+    from app.memory import skills
+    from app.memory.visibility import MemoryViewer
+    from app.services import skills as skill_service
+
+    if not settings.memory_skills:
+        raise ToolError("La mémoire procédurale (skills) est désactivée")
+    async with agent_scope(ctx) as scope:
+        item = await skill_service.find_skill(scope.session, MemoryViewer.from_access(scope.access), name)
+        if item is None:
+            raise ToolError("Skill introuvable")
+        return {
+            **_jsonable(skill_service.summary(item)),
+            "skill_md": skills.render_skill_md(item, project_slug=scope.access.project.slug),
+            **_untrusted_notice(),
+        }
+
+
+def _jsonable(data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        k: (v.isoformat() if isinstance(v, datetime) else str(v) if isinstance(v, uuid.UUID) else v)
+        for k, v in data.items()
+    }
+
+
+async def search_more(
+    query: Annotated[str, Field(min_length=1, max_length=1000, description="Question complémentaire")],
+    ctx: Context,
+    limit: Annotated[int, Field(ge=1, le=30, description="Nombre maximal de résultats")] = 8,
+    exclude_ids: Annotated[
+        list[str] | None, Field(description="Identifiants déjà servis (index du contexte) à ignorer")
+    ] = None,
+    on_behalf_of: OnBehalfArg = None,
+) -> dict[str, Any]:
+    """Complementary governed search over sources and memory; each result says which tool expands it."""
+    from app.context import expand
+
+    async with _governed(ctx, on_behalf_of) as (scope, gov):
+        results = await expand.search_more(
+            scope.session, gov, query.strip(), limit=limit, exclude_ids=set(exclude_ids or [])
+        )
+        return {"results": results, **_untrusted_notice()}
+
+
 async def _provenance_documents(scope: AgentScope, ids: Sequence[str]) -> list[Document]:
     """Resolve provenance documents; unknown and unreadable ones get the same message (non-leak)."""
     documents: list[Document] = []
@@ -599,6 +762,7 @@ async def hybrid_chunk_search(scope: AgentScope, query: str, limit: int) -> list
         chunk, document, kind = entry
         if (
             chunk.status != ChunkStatus.active
+            or chunk.quarantined  # §A1: never served while in quarantine
             or document.status == DocumentStatus.forgotten
             or not visibility.allows(chunk.acl_principals, chunk.classification)
         ):
@@ -609,7 +773,7 @@ async def hybrid_chunk_search(scope: AgentScope, query: str, limit: int) -> list
                 document_id=document.id,
                 document_title=document.title,
                 source_kind=kind,
-                text=chunk.text_redacted,
+                text=spotlight.wrap(chunk.text_redacted),  # §A2: untrusted data
                 score=round(hit.rrf_norm, 4),
                 bm25=hit.bm25_score,
                 dense=hit.dense_score,
@@ -723,7 +887,10 @@ async def snapshot_view(
         items=visible,
         request_id=snapshot.request_id,
     )
-    return {**view.model_dump(mode="json"), "restricted_items": restricted}
+    data = view.model_dump(mode="json")
+    if spotlight.enabled() and data.get("content") and not spotlight.is_wrapped(data["content"]):
+        data["content"] = spotlight.wrap(data["content"])
+    return {**data, "restricted_items": restricted, **_untrusted_notice()}
 
 
 # --- Server & ASGI app --------------------------------------------------------------------------------
@@ -771,11 +938,54 @@ TOOL_SPECS: tuple[tuple[str, str, Any, ToolAnnotations], ...] = (
     ),
 )
 
+TOOL_SPECS = (
+    *TOOL_SPECS,
+    (
+        "expand_source",
+        "Contexte à la demande : texte complet d'un extrait (identifiant de l'index d'un contexte "
+        "progressif) ou d'un document, filtré selon vos droits.",
+        expand_source,
+        ToolAnnotations(title="Déplier une source", read_only_hint=True, open_world_hint=False),
+    ),
+    (
+        "get_decision",
+        "Contexte à la demande : version en vigueur d'une décision (identifiant de l'index).",
+        get_decision,
+        ToolAnnotations(title="Lire une décision", read_only_hint=True, open_world_hint=False),
+    ),
+    (
+        "list_skills",
+        "Façons de faire du projet (procédures, définitions de « terminé », conventions, checklists) "
+        "servies comme skills : nom, description, types de tâche et d'agent concernés.",
+        list_skills,
+        ToolAnnotations(title="Lister les skills", read_only_hint=True, open_world_hint=False),
+    ),
+    (
+        "get_skill",
+        "Contenu d'un skill au format Agent Skills (SKILL.md avec métadonnées).",
+        get_skill,
+        ToolAnnotations(title="Lire un skill", read_only_hint=True, open_world_hint=False),
+    ),
+    (
+        "get_memory_item",
+        "Contexte à la demande : version en vigueur d'un élément de mémoire (besoin, contrainte, fait…).",
+        get_memory_item,
+        ToolAnnotations(title="Lire un élément de mémoire", read_only_hint=True, open_world_hint=False),
+    ),
+    (
+        "search_more",
+        "Recherche complémentaire gouvernée (sources et mémoire) ; chaque résultat indique l'outil qui "
+        "renvoie son détail.",
+        search_more,
+        ToolAnnotations(title="Chercher davantage", read_only_hint=True, open_world_hint=False),
+    ),
+)
+
 TOOL_NAMES: tuple[str, ...] = tuple(spec[0] for spec in TOOL_SPECS)
 
 
 def build_mcp_server() -> MCPServer:
-    """MCP server with the six ORBIT tools (docs/API.md « MCP »)."""
+    """MCP server with the ORBIT tools (docs/API.md « MCP »)."""
     server: MCPServer = MCPServer(
         SERVER_NAME,
         title=SERVER_TITLE,
@@ -786,6 +996,10 @@ def build_mcp_server() -> MCPServer:
     )
     for name, description, fn, hints in TOOL_SPECS:
         server.add_tool(fn, name=name, title=hints.title, description=description, annotations=hints)
+    from app import mcp_resources
+
+    mcp_resources.register(server)  # §E4 resources, prompts, elicitation
+    server.middleware.append(genai.McpResourceMiddleware())  # §E6 mcp.resource.uri
     return server
 
 

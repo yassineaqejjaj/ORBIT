@@ -29,6 +29,14 @@ class SourceKind(StrEnum):
     url = "url"
 
 
+class SourceTrust(StrEnum):
+    """Trust level of a source (docs/AI_CONTEXT_ENGINEERING.md §A3): ranking and memory promotion."""
+
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+
 class DocumentStatus(StrEnum):
     pending = "pending"
     processing = "processing"
@@ -51,6 +59,9 @@ class JobKind(StrEnum):
     extract_memory = "extract_memory"
     webhook = "webhook"
     connector_sync = "connector_sync"
+    reflect = "reflect"
+    evaluate = "evaluate"
+    judge = "judge"
 
 
 class JobStatus(StrEnum):
@@ -75,6 +86,9 @@ class MemoryKind(StrEnum):
     preference = "preference"
     summary = "summary"
     risk = "risk"
+    procedure = "procedure"
+    #: Action item of a meeting (§F1): ``action_meta`` holds the owner and the due date.
+    action = "action"
 
 
 class MemoryStatus(StrEnum):
@@ -135,6 +149,7 @@ class ReasonCode(StrEnum):
     EXCLUDED_LOW_SCORE = "EXCLUDED_LOW_SCORE"
     EXCLUDED_BUDGET = "EXCLUDED_BUDGET"
     EXCLUDED_FORGOTTEN = "EXCLUDED_FORGOTTEN"
+    EXCLUDED_QUARANTINE = "EXCLUDED_QUARANTINE"
 
     @property
     def is_included(self) -> bool:
@@ -208,7 +223,9 @@ class JobStepStatus(StrEnum):
 
 
 #: Names of the ``ingest`` pipeline steps, in order (``JobStep.name``; other names are allowed).
-PIPELINE_STEPS: tuple[str, ...] = ("extract", "pii", "classify", "chunk", "embed", "index", "extract_memory")
+PIPELINE_STEPS: tuple[str, ...] = (
+    "extract", "pii", "classify", "visual", "chunk", "contextualize", "embed", "index", "extract_memory"
+)  # fmt: skip
 
 
 class PiiType(StrEnum):
@@ -255,6 +272,7 @@ REASON_CODE_LABELS: dict[ReasonCode, str] = {
     ReasonCode.EXCLUDED_LOW_SCORE: "Exclu — pertinence insuffisante",
     ReasonCode.EXCLUDED_BUDGET: "Exclu — budget de tokens atteint",
     ReasonCode.EXCLUDED_FORGOTTEN: "Exclu — oubli sélectif",
+    ReasonCode.EXCLUDED_QUARANTINE: "Exclu — quarantaine (injection suspectée)",
 }
 
 #: Reason codes whose details must be redacted for callers without access (non-leak principle, §3).
@@ -267,6 +285,7 @@ GOVERNANCE_ORDER: tuple[ReasonCode, ...] = (
     ReasonCode.EXCLUDED_FORGOTTEN,
     ReasonCode.EXCLUDED_ACL,
     ReasonCode.EXCLUDED_CLASSIFICATION,
+    ReasonCode.EXCLUDED_QUARANTINE,
     ReasonCode.EXCLUDED_SCOPE,
     ReasonCode.EXCLUDED_EXPIRED,
     ReasonCode.EXCLUDED_STALE,
@@ -293,6 +312,25 @@ SOURCE_KIND_LABELS: dict[SourceKind, str] = {
     SourceKind.url: "Page web",
 }
 
+SOURCE_TRUST_LABELS: dict[SourceTrust, str] = {
+    SourceTrust.high: "Élevée",
+    SourceTrust.medium: "Moyenne",
+    SourceTrust.low: "Faible",
+}
+
+#: Default trust per source kind (§A3): curated documents high, user-generated / web / agents low.
+DEFAULT_SOURCE_TRUST: dict[SourceKind, SourceTrust] = {
+    SourceKind.document: SourceTrust.high,
+    SourceKind.note: SourceTrust.medium,
+    SourceKind.ticket: SourceTrust.medium,
+    SourceKind.crm: SourceTrust.medium,
+    SourceKind.feedback: SourceTrust.low,
+    SourceKind.agent_trace: SourceTrust.low,
+    SourceKind.url: SourceTrust.low,
+}
+
+TRUST_RANK: dict[SourceTrust, int] = {SourceTrust.low: 0, SourceTrust.medium: 1, SourceTrust.high: 2}
+
 MEMORY_KIND_LABELS: dict[MemoryKind, str] = {
     MemoryKind.decision: "Décision",
     MemoryKind.requirement: "Besoin",
@@ -301,6 +339,8 @@ MEMORY_KIND_LABELS: dict[MemoryKind, str] = {
     MemoryKind.preference: "Préférence",
     MemoryKind.summary: "Synthèse",
     MemoryKind.risk: "Risque",
+    MemoryKind.procedure: "Procédure",
+    MemoryKind.action: "Action",
 }
 
 PII_LABELS: dict[PiiType, str] = {

@@ -44,6 +44,8 @@ TEXT = "text/plain"
 HTML = "text/html"
 JSON = "application/json"
 CSV = "text/csv"
+VTT = "text/vtt"
+SRT = "application/x-subrip"
 
 MIME_BY_EXTENSION: dict[str, str] = {
     ".pdf": PDF,
@@ -62,6 +64,8 @@ MIME_BY_EXTENSION: dict[str, str] = {
     ".jsonl": JSON,
     ".csv": CSV,
     ".tsv": CSV,
+    ".vtt": VTT,
+    ".srt": SRT,
 }
 
 _MIME_ALIASES: dict[str, str] = {
@@ -75,11 +79,13 @@ _MIME_ALIASES: dict[str, str] = {
     "text/json": JSON,
     "application/csv": CSV,
     "text/tab-separated-values": CSV,
+    "text/srt": SRT,
+    "application/srt": SRT,
     "application/vnd.ms-excel": CSV,  # browsers often label .csv this way
 }
 
 SUPPORTED_MIME_TYPES: frozenset[str] = frozenset(MIME_BY_EXTENSION.values())
-SUPPORTED_FORMATS_LABEL = "PDF, DOCX, Markdown, texte, HTML, JSON, CSV"
+SUPPORTED_FORMATS_LABEL = "PDF, DOCX, Markdown, texte, HTML, JSON, CSV, transcriptions VTT/SRT"
 
 
 def _canonical(mime: str | None) -> str | None:
@@ -162,7 +168,15 @@ def _extractors() -> dict[str, Callable[[bytes, str | None], ExtractedDocument]]
         HTML: html.extract_html,
         JSON: structured.extract_json,
         CSV: structured.extract_csv,
+        VTT: lambda data, filename: _extract_transcript(data, VTT, filename),
+        SRT: lambda data, filename: _extract_transcript(data, SRT, filename),
     }
+
+
+def _extract_transcript(data: bytes, mime_type: str, filename: str | None) -> ExtractedDocument:
+    from app.ingestion.meetings import extract_meeting
+
+    return extract_meeting(data, mime_type, filename)
 
 
 def extract(data: bytes, mime_type: str, filename: str | None = None) -> ExtractedDocument:

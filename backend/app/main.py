@@ -18,6 +18,7 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.api import API_PREFIX, api_router
+from app.api.a2a import wellknown_router as a2a_wellknown_router
 from app.config import settings
 from app.db import dispose_engine, get_engine, get_sessionmaker
 from app.errors import install_exception_handlers
@@ -48,6 +49,7 @@ OPENAPI_TAGS = [
     {"name": "snapshots", "description": "Snapshots de contexte"},
     {"name": "metrics", "description": "Vue projet, métriques, export des traces"},
     {"name": "audit", "description": "Journal d'audit"},
+    {"name": "compliance", "description": "Rapport de traçabilité IA (AI Act)"},
     {"name": "meta", "description": "Métadonnées de la plateforme"},
     {"name": "system", "description": "Santé et disponibilité"},
 ]
@@ -243,6 +245,7 @@ def create_app() -> FastAPI:
     )
     install_exception_handlers(app)
     app.include_router(api_router)
+    app.include_router(a2a_wellknown_router)  # §E5 /.well-known/agent-card.json
     app.add_api_route("/health", health, methods=["GET"], response_model=Health, tags=["system"])
     app.add_api_route(
         "/ready",

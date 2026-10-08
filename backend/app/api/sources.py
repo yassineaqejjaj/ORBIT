@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import EditorAccess, SessionDep, ViewerAccess
 from app.enums import DocumentStatus, classification_code
-from app.errors import conflict
+from app.errors import conflict, forbidden
 from app.ingestion.service import DocumentViewer, get_project_source
 from app.models import Document
 from app.models import Source as SourceModel
@@ -85,6 +85,7 @@ async def create_source(body: SourceCreateIn, access: EditorAccess, session: Ses
         default_classification=body.default_classification,
         default_acl=list(body.default_acl),
         config=dict(body.config),
+        trust=body.trust if access.is_owner else None,
     )
     session.add(source)
     await session.flush()
@@ -117,6 +118,8 @@ async def update_source(
     source = await get_project_source(session, access.project_id, source_id)
     changes: dict[str, dict[str, Any]] = {}
     values = body.model_dump(exclude_unset=True)
+    if values.get("trust") is not None and not access.is_owner:
+        raise forbidden("Seul un propriétaire peut modifier la confiance d'une source")
     for key, value in values.items():
         if value is None:
             continue

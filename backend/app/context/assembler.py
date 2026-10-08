@@ -17,28 +17,43 @@ compress → package → persist and returns the :class:`ContextPackage` of docs
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.context import compression, packaging, persistence, rerank, retrieval, selection
+from app.context import (
+    compression,
+    packaging,
+    persistence,
+    profiles,
+    query_rewrite,
+    rerank,
+    retrieval,
+    selection,
+    sufficiency,
+)
 from app.context import snapshots as snapshot_service
 from app.context.selection import Decision
-from app.context.understanding import Understanding, understand
+from app.context.understanding import Understanding, embed_query, understand
 from app.context.visibility import Viewer
 from app.db import utcnow
 from app.deps import ProjectAccess
 from app.enums import (
     GOVERNANCE_ORDER,
+    AgentKind,
     ContextRequestStatus,
     Intent,
+    MemoryKind,
     MemoryScope,
     PrincipalKind,
     ReasonCode,
@@ -47,18 +62,25 @@ from app.enums import (
 )
 from app.errors import ApiError, forbidden, not_found, validation_error
 from app.governance.acl import effective_clearance, effective_principals
-from app.governance.policy import Candidate, GovernanceContext, evaluate
+from app.governance.policy import Candidate, GovernanceContext, Verdict, evaluate, format_date_fr
 from app.llm import client as llm_client
+from app.memory import entities, skills
 from app.models import Agent, ContextRequest, ContextSnapshot, User
-from app.observability.metrics import observe_context_request
+from app.observability import genai
+from app.observability.metrics import observe_cache_prefix, observe_context_request
 from app.observability.tracing import current_trace_id, get_tracer
 from app.schemas.context import (
+    AppliedProfile,
+    CacheControl,
+    CacheHintBlock,
     ContextConfig,
+    ContextIndexEntry,
     ContextPackage,
     ContextRequestIn,
     ContextSnapshotInfo,
     ContextTimings,
 )
+from app.search.tokens import estimate_tokens, truncate_to_tokens
 from app.services import audit
 from app.services import projects as project_service
 from app.services.audit import AuditAction
@@ -70,7 +92,10 @@ MIN_TOKEN_BUDGET = 500
 MAX_TOKEN_BUDGET = 32_000
 ALL_SCOPES: frozenset[MemoryScope] = frozenset(MemoryScope)
 RETRIEVAL_LABEL = "hybrid-bm25-knn-rrf-v1"
-STAGES = ("understand", "retrieve", "fuse", "rerank", "govern", "select", "compress", "package")
+#: Fused-score factor of hits found by query rewrites (round 1) and by targeted rounds (§B3/§B4).
+REWRITE_DISCOUNT = 0.9
+ROUND_DISCOUNT = 0.85
+STAGES = ("understand", "rewrite", "retrieve", "fuse", "rerank", "govern", "select", "compress", "package")
 FAILURE_MESSAGE = "Échec de l'assemblage du contexte"
 
 _EXCLUSION_ORDER = {code: index for index, code in enumerate(GOVERNANCE_ORDER)}
@@ -95,6 +120,8 @@ class ResolvedRequest:
     base_snapshot: ContextSnapshot | None
     save_name: str | None
     viewer: Viewer
+    #: §C3 profile of the requesting agent's kind (``None`` for humans or when disabled).
+    profile: profiles.Profile | None = None
 
     @property
     def project_id(self) -> uuid.UUID:
@@ -104,6 +131,8 @@ class ResolvedRequest:
 @dataclass(slots=True)
 class _Timer:
     timings: dict[str, float] = field(default_factory=dict)
+    #: Iterative retrieval rounds (§B4), serialised in ``timings["rounds"]``.
+    rounds: list[dict[str, Any]] = field(default_factory=list)
     started: float = field(default_factory=time.perf_counter)
 
     @contextmanager
@@ -188,6 +217,17 @@ async def resolve_request(
             version = f" v{body.base_snapshot.version}" if body.base_snapshot.version else ""
             raise not_found(f"Snapshot « {base_name} »{version} introuvable dans ce projet")
     save_name = snapshot_service.normalize_name(body.save_snapshot.name) if body.save_snapshot else None
+    profile = (
+        profiles.profile_for(project, agent.kind) if agent is not None and settings.context_profiles else None
+    )
+    default_budget = (profile.token_budget if profile else None) or int(
+        project_settings["default_token_budget"]
+    )
+    default_relevance = (
+        profile.min_relevance
+        if profile and profile.min_relevance is not None
+        else float(project_settings["min_relevance"])
+    )
 
     return ResolvedRequest(
         access=access,
@@ -198,15 +238,14 @@ async def resolve_request(
         clearance=clearance,
         scopes=set(body.scopes) if body.scopes is not None else set(ALL_SCOPES),
         source_kinds=set(body.source_kinds) if body.source_kinds is not None else None,
-        token_budget=clamp_budget(body.token_budget, int(project_settings["default_token_budget"])),
-        min_relevance=float(
-            body.min_relevance if body.min_relevance is not None else project_settings["min_relevance"]
-        ),
+        token_budget=clamp_budget(body.token_budget, default_budget),
+        min_relevance=float(body.min_relevance if body.min_relevance is not None else default_relevance),
         freshness_days=dict(project_settings["freshness_days"]),
         explain=body.explain if body.explain is not None else principal.is_user,
         base_snapshot=base_snapshot,
         save_name=save_name,
         viewer=Viewer.from_access(access),
+        profile=profile,
     )
 
 
@@ -232,10 +271,17 @@ def _governance_context(resolved: ResolvedRequest, now: Any) -> GovernanceContex
 
 
 def _enforce_budget(
-    task: str, intent: Intent, included: list[Decision], excluded: list[Decision], budget: int
+    task: str,
+    intent: Intent,
+    included: list[Decision],
+    excluded: list[Decision],
+    budget: int,
+    *,
+    progressive: bool = False,
+    section_order: list[str] | None = None,
 ) -> packaging.Packaged:
     """Render, and in the rare case the estimate is exceeded drop the lowest-priority items."""
-    packaged = packaging.render(task, intent, included)
+    packaged = packaging.render(task, intent, included, progressive=progressive, section_order=section_order)
     while packaged.tokens_used > budget and included:
         dropped = included.pop()
         remaining = budget - (packaged.tokens_used - dropped.tokens)
@@ -248,8 +294,104 @@ def _enforce_budget(
         dropped.excerpt = ""
         dropped.tokens = 0
         excluded.append(dropped)
-        packaged = packaging.render(task, intent, included)
+        packaged = packaging.render(
+            task, intent, included, progressive=progressive, section_order=section_order
+        )
     return packaged
+
+
+def _apply_profile_sections(
+    profile: profiles.Profile, eligible: list[Candidate], excluded: list[Decision]
+) -> list[Candidate]:
+    """§C3: sections absent from the agent kind's profile are not served (explained exclusion)."""
+    kept: list[Candidate] = []
+    for candidate in eligible:
+        section = packaging.section_for(candidate)
+        if section in profile.sections or candidate.pinned:
+            kept.append(candidate)
+        else:
+            detail = f"section « {packaging.SECTION_TITLES[section]} » hors du profil {profile.kind.value}"
+            excluded.append(Decision(candidate=candidate, verdict=Verdict(ReasonCode.EXCLUDED_SCOPE, detail)))
+    return kept
+
+
+KIND_ALIAS = "alias"
+
+
+def _aware(value: datetime | None) -> datetime | None:
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=UTC)
+
+
+def _apply_procedure_scope(
+    intent: str, agent_kind: str | None, eligible: list[Candidate], excluded: list[Decision]
+) -> list[Candidate]:
+    """§D1: a procedure restricted to other task types / agent kinds is not served (explained)."""
+    kept: list[Candidate] = []
+    for candidate in eligible:
+        ok, detail = (
+            skills.applies_to(candidate.skill_meta, intent, agent_kind)
+            if candidate.memory_kind == MemoryKind.procedure and not candidate.pinned
+            else (True, "")
+        )
+        if ok:
+            kept.append(candidate)
+        else:
+            excluded.append(Decision(candidate=candidate, verdict=Verdict(ReasonCode.EXCLUDED_SCOPE, detail)))
+    return kept
+
+
+def progressive_index(included: list[Decision]) -> list[ContextIndexEntry]:
+    entries = []
+    for d in included:
+        c = d.candidate
+        ref, tool = packaging.index_ref(c), packaging.expand_tool(c)
+        if not ref or not tool:
+            continue
+        entries.append(
+            ContextIndexEntry(
+                citation=d.citation or "",
+                id=ref,
+                candidate_type=c.candidate_type,
+                title=c.title,
+                memory_kind=c.memory_kind,
+                tool=tool,
+                tokens_full=estimate_tokens(c.text),
+            )
+        )
+    return entries
+
+
+def cache_hint_blocks(markdown: str, prefix: str) -> list[CacheHintBlock]:
+    """§C1: the context as Anthropic text blocks, a ``cache_control`` breakpoint closing the prefix."""
+    blocks = [CacheHintBlock(text=prefix, cache_control=CacheControl())]
+    rest = markdown[len(prefix) :] if markdown.startswith(prefix) else ""
+    if rest.strip():
+        blocks.append(CacheHintBlock(text=rest))
+    return blocks
+
+
+async def _prefix_reused(
+    session: AsyncSession, project_id: uuid.UUID, prefix_hash: str | None, now: Any
+) -> bool:
+    """A request of the project served the same stable prefix within the cache window (§C1)."""
+    if not prefix_hash:
+        return False
+    since = now - timedelta(seconds=settings.context_cache_ttl_seconds)
+    scalar = getattr(session, "scalar", None)  # unit tests drive the pipeline with a fake session
+    if scalar is None:
+        return False
+    found = await scalar(
+        select(ContextRequest.id)
+        .where(
+            ContextRequest.project_id == project_id,
+            ContextRequest.created_at >= since,
+            ContextRequest.params["cache"]["prefix_hash"].astext == prefix_hash,
+        )
+        .limit(1)
+    )
+    return found is not None
 
 
 def _link_related(included: list[Decision], excluded: list[Decision]) -> None:
@@ -304,6 +446,82 @@ def _params(resolved: ResolvedRequest, understanding: Understanding) -> dict[str
     }
 
 
+async def _embedded(queries: list[query_rewrite.RewrittenQuery]) -> list[tuple[str, list[float] | None]]:
+    vectors = await asyncio.gather(*(embed_query(q.text) for q in queries))
+    return [(q.text, vector) for q, (vector, _model) in zip(queries, vectors, strict=True)]
+
+
+async def _iterative_retrieve(
+    session: AsyncSession,
+    resolved: ResolvedRequest,
+    understanding: Understanding,
+    rewritten: query_rewrite.Rewrite,
+    timer: _Timer,
+    *,
+    pinned: list[retrieval.PinnedRef],
+    base: Any,
+) -> retrieval.RawRetrieval:
+    """Round 1: the task and its rewrites (§B3). Rounds 2..``ORBIT_RETRIEVAL_MAX_ROUNDS`` (≤ 3): targeted
+    searches of the sub-topics no retrieved item covers yet (§B4); stops early when everything is
+    covered or a round finds nothing new. Every round is traced in ``timings.rounds``."""
+    body = resolved.body
+    scope = {
+        "project_id": resolved.project_id,
+        "include_chunks": body.include_sources,
+        "include_memory": bool(resolved.scopes),
+        "include_org_memory": MemoryScope.long_term in resolved.scopes,
+    }
+    begin = time.perf_counter()
+    raw = await retrieval.retrieve(
+        session,
+        task=understanding.task,
+        query_vector=understanding.query_vector,
+        session_id=body.session_id if MemoryScope.short_term in resolved.scopes else None,
+        pinned=pinned,
+        pinned_label=f"{base.name}@v{base.version}" if base is not None else None,
+        **scope,
+    )
+    found = len({h.id for h in raw.chunk_hits}) + len({h.id for h in raw.memory_hits})
+    extra = rewritten.queries[: settings.query_rewrite_max_queries]
+    if settings.memory_entity_aliases:
+        aliased = await entities.alias_query(session, resolved.project_id, understanding.task)
+        if aliased:  # §D2 the other surface forms of the entities the task mentions
+            extra = [query_rewrite.RewrittenQuery(aliased, KIND_ALIAS), *extra]
+    if extra:
+        found += await retrieval.search_more(
+            session, raw, await _embedded(extra), discount=REWRITE_DISCOUNT, **scope
+        )
+    missing = query_rewrite.uncovered(rewritten.subtopics, retrieval.coverage_texts(raw))
+    timer.rounds.append(
+        _round(1, [query_rewrite.RewrittenQuery(understanding.task, "task"), *extra], found, missing, begin)
+    )
+    for number in range(2, settings.retrieval_max_rounds + 1):
+        if not missing:
+            break
+        begin = time.perf_counter()
+        targeted = [query_rewrite.RewrittenQuery(t, query_rewrite.KIND_SUBTOPIC) for t in missing]
+        new = await retrieval.search_more(
+            session, raw, await _embedded(targeted), discount=ROUND_DISCOUNT, **scope
+        )
+        missing = query_rewrite.uncovered(missing, retrieval.coverage_texts(raw))
+        timer.rounds.append(_round(number, targeted, new, missing, begin))
+        if new == 0:
+            break
+    return raw
+
+
+def _round(
+    number: int, queries: list[query_rewrite.RewrittenQuery], new: int, missing: list[str], begin: float
+) -> dict[str, Any]:
+    return {
+        "round": number,
+        "queries": [q.as_dict() for q in queries],
+        "new_items": new,
+        "uncovered": list(missing),
+        "ms": round((time.perf_counter() - begin) * 1000, 1),
+    }
+
+
 async def _run(
     session: AsyncSession, resolved: ResolvedRequest, timer: _Timer, request_id: uuid.UUID, trace_id: str
 ) -> ContextPackage:
@@ -319,40 +537,71 @@ async def _run(
         span.set_attribute("orbit.intent", understanding.intent.value)
         span.set_attribute("orbit.dense", understanding.query_vector is not None)
 
+    with timer.stage("rewrite") as span:
+        rewritten = await query_rewrite.rewrite(session, resolved.project_id, understanding.task)
+        span.set_attribute("orbit.rewrite", rewritten.method)
+        span.set_attribute("orbit.rewrite_queries", len(rewritten.queries))
+
     base = resolved.base_snapshot
     pinned = retrieval.pinned_refs(base.items or []) if base is not None else []
     with timer.stage("retrieve") as span:
-        raw = await retrieval.retrieve(
-            session,
-            project_id=resolved.project_id,
-            task=understanding.task,
-            query_vector=understanding.query_vector,
-            include_chunks=body.include_sources,
-            include_memory=bool(resolved.scopes),
-            include_org_memory=MemoryScope.long_term in resolved.scopes,
-            session_id=body.session_id if MemoryScope.short_term in resolved.scopes else None,
-            pinned=pinned,
-            pinned_label=f"{base.name}@v{base.version}" if base is not None else None,
+        raw = await _iterative_retrieve(
+            session, resolved, understanding, rewritten, timer, pinned=pinned, base=base
         )
+        span.set_attribute("orbit.rounds", len(timer.rounds))
         span.set_attribute("orbit.chunk_hits", len(raw.chunk_hits))
         span.set_attribute("orbit.memory_hits", len(raw.memory_hits))
+        genai.retrieval_attributes(  # §E6 OpenTelemetry GenAI conventions
+            span,
+            data_source=f"orbit:{resolved.access.project.slug}",
+            query=understanding.task,
+            top_k=retrieval.CHUNK_TOP_K + retrieval.MEMORY_TOP_K,
+            hits=len(raw.chunk_hits) + len(raw.memory_hits),
+        )
+        agent_kind = AgentKind(resolved.agent.kind).value if resolved.agent is not None else None
+        if settings.memory_skills and resolved.scopes:
+            await retrieval.add_procedures(
+                session,
+                raw,
+                resolved.project_id,
+                intent=understanding.intent.value,
+                agent_kind=agent_kind,
+                limit=settings.skills_context_max,
+            )
+        as_of = _aware(body.as_of)
+        if as_of is not None:
+            await retrieval.apply_as_of(session, raw, as_of)
+            raw.warnings.append(
+                f"Mémoire telle que connue au {format_date_fr(as_of)} "
+                "(les extraits de sources reflètent leur état actuel)"
+            )
 
     with timer.stage("fuse") as span:
         candidates: list[Candidate] = retrieval.fuse(raw, session_id=body.session_id)
         span.set_attribute("orbit.candidates", len(candidates))
 
     with timer.stage("rerank") as span:
+        from app.evaluation import learning
+
+        try:
+            learned = await learning.current_weights(session, resolved.project_id)
+        except Exception:  # §E2 learned weights are an optimisation: never fail the request for them
+            logger.warning("Learned ranking weights unavailable for %s", resolved.project_id, exc_info=True)
+            learned = learning.defaults()
+        weights = None if learned == learning.defaults() else learning.as_tuple(learned)
         reranker_used = await rerank.rerank(
             candidates,
             query=understanding.task,
             query_terms=understanding.terms,
             query_vector=understanding.query_vector,
             now=now,
+            weights=weights,
         )
         span.set_attribute("orbit.reranker", reranker_used)
+        span.set_attribute("orbit.learned_weights", weights is not None)
 
     with timer.stage("govern") as span:
-        ctx = _governance_context(resolved, now)
+        ctx = _governance_context(resolved, as_of or now)
         eligible: list[Candidate] = []
         excluded: list[Decision] = []
         for candidate in candidates:
@@ -361,6 +610,9 @@ async def _run(
                 eligible.append(candidate)
             else:
                 excluded.append(Decision(candidate=candidate, verdict=verdict))
+        eligible = _apply_procedure_scope(understanding.intent.value, agent_kind, eligible, excluded)
+        if resolved.profile is not None:
+            eligible = _apply_profile_sections(resolved.profile, eligible, excluded)
         span.set_attribute("orbit.eligible", len(eligible))
 
     with timer.stage("select") as span:
@@ -378,12 +630,27 @@ async def _run(
 
     with timer.stage("compress"):
         await compression.compress(
-            included, query_terms=understanding.terms, query_vector=understanding.query_vector
+            included,
+            query_terms=understanding.terms,
+            query_vector=understanding.query_vector,
+            query=understanding.task,
         )
 
+    progressive = body.mode == "progressive"
+    if progressive:
+        teaser = settings.context_progressive_excerpt_tokens
+        for d in included:
+            d.excerpt = truncate_to_tokens(d.excerpt, teaser)
+            d.tokens = estimate_tokens(d.excerpt)
     with timer.stage("package") as span:
         packaged = _enforce_budget(
-            understanding.task, understanding.intent, included, excluded, resolved.token_budget
+            understanding.task,
+            understanding.intent,
+            included,
+            excluded,
+            resolved.token_budget,
+            progressive=progressive,
+            section_order=resolved.profile.sections if resolved.profile else None,
         )
         included = packaged.ordered
         _link_related(included, excluded)
@@ -398,6 +665,7 @@ async def _run(
             reranker=reranker_used,
             embedding_model=understanding.embedding_model or settings.embedding_model,
             llm=llm_client.model_label(),
+            compression=compression.label(),
         )
         package = ContextPackage(
             request_id=request_id,
@@ -419,6 +687,27 @@ async def _run(
             config=config,
             warnings=warnings,
         )
+        if settings.context_sufficiency:
+            package.sufficiency = sufficiency.assess(
+                understanding.task,
+                rewritten.subtopics,
+                included,
+                sufficient_threshold=resolved.profile.sufficient_threshold if resolved.profile else None,
+            )
+            span.set_attribute("orbit.sufficiency", package.sufficiency.verdict)
+        if resolved.profile is not None:
+            package.profile = AppliedProfile(**resolved.profile.as_dict())
+        if progressive:
+            package.mode = "progressive"
+            package.index = progressive_index(included)
+        if packaged.prefix:
+            package.cache_prefix_hash = packaged.prefix_hash
+            package.cache_prefix_tokens = packaged.prefix_tokens
+            package.cache_prefix_reused = await _prefix_reused(
+                session, resolved.project_id, packaged.prefix_hash, now
+            )
+            if body.cache_hints:
+                package.cache_hints = cache_hint_blocks(packaged.markdown, packaged.prefix)
         span.set_attribute("orbit.tokens_used", packaged.tokens_used)
 
     # --- persist ---------------------------------------------------------------------------------
@@ -426,10 +715,18 @@ async def _run(
         params = _params(resolved, understanding)
         params.update(
             {
+                "rewrite": rewritten.as_dict(),
                 "config": config.model_dump(mode="json"),
                 "warnings": warnings,
                 "exclusion_summary": {code.value: n for code, n in summary.items()},
                 "retrieval_sources": raw.sources_used,
+                "profile": resolved.profile.as_dict() if resolved.profile else None,
+                "sufficiency": package.sufficiency.model_dump(mode="json") if package.sufficiency else None,
+                "cache": {
+                    "prefix_hash": package.cache_prefix_hash,
+                    "prefix_tokens": package.cache_prefix_tokens,
+                    "reused": package.cache_prefix_reused,
+                },
             }
         )
         row = persistence.request_row(
@@ -524,9 +821,13 @@ async def _run(
     total = timer.elapsed_ms()
     timings = {stage: timer.timings.get(stage, 0.0) for stage in STAGES}
     timings["total"] = total
+    timings["rounds"] = timer.rounds  # type: ignore[assignment]
     row.latency_ms = round(total)
     row.timings = timings
     package.timings = ContextTimings(**timings)
+    from app.evaluation import judge
+
+    await judge.maybe_enqueue(session, resolved.project_id, request_id)  # §E3 sampled LLM judge
     await session.commit()
     return package
 
@@ -593,6 +894,8 @@ async def assemble_context(
                 latency_seconds=elapsed / 1000, tokens_used=0, status="failed", caller=caller
             )
             raise
+    if package.cache_prefix_hash:
+        observe_cache_prefix(reused=package.cache_prefix_reused, tokens=package.cache_prefix_tokens)
     observe_context_request(
         latency_seconds=package.timings.total / 1000,
         tokens_used=package.tokens_used,

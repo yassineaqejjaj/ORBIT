@@ -88,7 +88,8 @@ async def update_project(body: ProjectUpdateIn, access: OwnerAccess, session: Se
                 for key, value in after.items()
                 if before.get(key) != value
             }
-            project.settings = after
+            # Keys managed elsewhere (e.g. §C3 ``context_profiles``) are preserved.
+            project.settings = {**(project.settings or {}), **after}
     if changes:
         await audit.record(
             session,

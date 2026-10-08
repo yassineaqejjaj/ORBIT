@@ -292,6 +292,8 @@ export const http = {
     request<T>(path, { ...options, method: "POST", json }),
   patch: <T>(path: string, json?: unknown, options?: Omit<RequestOptions, "method" | "json">) =>
     request<T>(path, { ...options, method: "PATCH", json }),
+  put: <T>(path: string, json?: unknown, options?: Omit<RequestOptions, "method" | "json">) =>
+    request<T>(path, { ...options, method: "PUT", json }),
   delete: <T = void>(path: string, options?: Omit<RequestOptions, "method">) =>
     request<T>(path, { ...options, method: "DELETE" }),
   upload: <T>(path: string, formData: FormData, options?: Omit<RequestOptions, "method" | "formData" | "json">) =>

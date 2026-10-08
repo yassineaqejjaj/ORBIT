@@ -2,13 +2,21 @@
  * One typed function per endpoint of docs/API.md (base `/api/v1`).
  * Path segments are always URI-encoded. `signal` is forwarded for query cancellation.
  */
+import type { AgentKind } from "@/lib/enums";
 import { apiUrl, http, request } from "./client";
 import type {
+  Entity,
+  EntitySuggestion,
+  Skill,
+  SkillDetail,
+  ContextProfileIn,
+  ContextProfileView,
   Agent,
   AgentCreateIn,
   AgentCreated,
   AuditEvent,
   AuditListParams,
+  ChunkView,
   ContextFeedbackIn,
   ContextPackage,
   ContextRequestDetail,
@@ -23,6 +31,7 @@ import type {
   DocumentSummary,
   DocumentUpdateIn,
   DocumentUploadIn,
+  MeetingImportIn,
   ForgetIn,
   Job,
   JobListParams,
@@ -62,6 +71,7 @@ import type {
   SnapshotSummary,
   SnapshotVersionRef,
   SupersedeIn,
+  QuarantinedChunk,
   Source,
   SourceCreateIn,
   SourceUpdateIn,
@@ -138,6 +148,21 @@ export function getProject(slug: string, opts: Opts = {}): Promise<Project> {
 /** PATCH /projects/{slug} (owner) → Project */
 export function updateProject(slug: string, body: ProjectUpdateIn): Promise<Project> {
   return http.patch<Project>(p(slug), body);
+}
+
+/** GET /projects/{slug}/context/profiles → ContextProfileView[] (§C3) */
+export function listContextProfiles(slug: string, opts: Opts = {}): Promise<ContextProfileView[]> {
+  return http.get<ContextProfileView[]>(`${p(slug)}/context/profiles`, opts);
+}
+
+/** PUT /projects/{slug}/context/profiles/{kind} (owner) → ContextProfileView */
+export function updateContextProfile(slug: string, kind: AgentKind, body: ContextProfileIn): Promise<ContextProfileView> {
+  return http.put<ContextProfileView>(`${p(slug)}/context/profiles/${kind}`, body);
+}
+
+/** DELETE /projects/{slug}/context/profiles/{kind} (owner) → ContextProfileView (built-in default) */
+export function resetContextProfile(slug: string, kind: AgentKind): Promise<ContextProfileView> {
+  return http.delete<ContextProfileView>(`${p(slug)}/context/profiles/${kind}`);
 }
 
 /** GET /projects/{slug}/overview → Overview */
@@ -247,6 +272,19 @@ export function uploadDocuments(slug: string, input: DocumentUploadIn): Promise<
   return http.upload<DocumentSummary[]>(`${p(slug)}/documents/upload`, form);
 }
 
+/** POST /projects/{slug}/documents/meeting (editor, multipart transcript or audio) → DocumentSummary (§F1) */
+export function importMeeting(slug: string, input: MeetingImportIn): Promise<DocumentSummary> {
+  const form = new FormData();
+  form.append("file", input.file, input.file.name);
+  if (input.title) form.append("title", input.title);
+  if (input.meeting_date) form.append("meeting_date", input.meeting_date);
+  if (input.participants?.length) form.append("participants", input.participants.join(","));
+  if (input.source_id) form.append("source_id", input.source_id);
+  if (input.classification !== undefined) form.append("classification", String(input.classification));
+  if (input.tags?.length) form.append("tags", input.tags.join(","));
+  return http.upload<DocumentSummary>(`${p(slug)}/documents/meeting`, form);
+}
+
 /** POST /projects/{slug}/documents/text (editor) → DocumentSummary */
 export function createTextDocument(slug: string, body: TextDocumentIn): Promise<DocumentSummary> {
   return http.post<DocumentSummary>(`${p(slug)}/documents/text`, body);
@@ -321,6 +359,7 @@ export function listMemory(slug: string, params: MemoryListParams = {}, opts: Op
       status: params.status,
       q: params.q,
       include_history: params.include_history,
+      as_of: params.as_of,
       page: params.page,
       page_size: params.page_size,
     },
@@ -375,6 +414,51 @@ export function forgetMemory(slug: string, memoryId: UUID, body: RequiredReasonI
 /** POST /projects/{slug}/memory/consolidate (editor) → Job */
 export function consolidateMemory(slug: string): Promise<Job> {
   return http.post<Job>(`${p(slug)}/memory/consolidate`);
+}
+
+/** POST /projects/{slug}/memory/reflect?month=YYYY-MM (editor) → Job (§D4 « ce qui a changé ») */
+export function reflectMemory(slug: string, month?: string): Promise<Job> {
+  return http.post<Job>(`${p(slug)}/memory/reflect`, undefined, { query: { month } });
+}
+
+/** GET /projects/{slug}/skills → procedures served as Agent Skills (§D1) */
+export function listSkills(slug: string, opts: Opts = {}): Promise<Skill[]> {
+  return http.get<Skill[]>(`${p(slug)}/skills`, opts);
+}
+
+/** GET /projects/{slug}/skills/{name} → SKILL.md */
+export function getSkill(slug: string, name: string, opts: Opts = {}): Promise<SkillDetail> {
+  return http.get<SkillDetail>(`${p(slug)}/skills/${e(name)}`, opts);
+}
+
+/** URL of GET /projects/{slug}/skills/{name}/download (zip) — usable as <a href download>. */
+export function skillDownloadUrl(slug: string, name: string): string {
+  return apiUrl(`${p(slug)}/skills/${e(name)}/download`);
+}
+
+/** GET /projects/{slug}/entities (§D2) */
+export function listEntities(slug: string, opts: Opts = {}): Promise<Entity[]> {
+  return http.get<Entity[]>(`${p(slug)}/entities`, opts);
+}
+
+/** POST /projects/{slug}/entities (editor) */
+export function createEntity(slug: string, body: { name: string; kind?: string; aliases?: string[] }): Promise<Entity> {
+  return http.post<Entity>(`${p(slug)}/entities`, body);
+}
+
+/** GET /projects/{slug}/entities/suggestions (editor) → suggested merges */
+export function listEntitySuggestions(slug: string, opts: Opts = {}): Promise<EntitySuggestion[]> {
+  return http.get<EntitySuggestion[]>(`${p(slug)}/entities/suggestions`, opts);
+}
+
+/** POST /projects/{slug}/entities/{id}/merge (editor, audited) */
+export function mergeEntity(slug: string, targetId: UUID, body: { source_id: UUID; reason?: string }): Promise<Entity> {
+  return http.post<Entity>(`${p(slug)}/entities/${e(targetId)}/merge`, body);
+}
+
+/** POST /projects/{slug}/entities/{id}/unmerge (editor, audited) */
+export function unmergeEntity(slug: string, entityId: UUID, body: { reason?: string } = {}): Promise<Entity> {
+  return http.post<Entity>(`${p(slug)}/entities/${e(entityId)}/unmerge`, body);
 }
 
 /** GET /projects/{slug}/memory/graph → {nodes, edges} */
@@ -502,6 +586,39 @@ export function exportTraces(slug: string, params: TraceExportParams = {}, opts:
     query: { days: params.days },
     responseType: "text",
     ...opts,
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* AI security (quarantine, AI Act traceability report)                       */
+/* -------------------------------------------------------------------------- */
+
+/** GET /projects/{slug}/documents/quarantine (owner) → chunks held in quarantine. */
+export function listQuarantine(slug: string, opts: Opts = {}): Promise<QuarantinedChunk[]> {
+  return http.get<QuarantinedChunk[]>(`${p(slug)}/documents/quarantine`, opts);
+}
+
+/** POST /projects/{slug}/documents/{id}/chunks/{chunk}/release (owner, audited) → ChunkView */
+export function releaseQuarantine(slug: string, documentId: UUID, chunkId: UUID): Promise<ChunkView> {
+  return http.post<ChunkView>(`${p(slug)}/documents/${e(documentId)}/chunks/${e(chunkId)}/release`);
+}
+
+export interface ComplianceReportParams {
+  format?: "json" | "html";
+  request_id?: string;
+  memory_id?: string;
+  from?: string;
+  to?: string;
+}
+
+/** URL of GET /projects/{slug}/compliance/report (owner) — JSON download or printable HTML. */
+export function complianceReportUrl(slug: string, params: ComplianceReportParams = {}): string {
+  return apiUrl(`${p(slug)}/compliance/report`, {
+    format: params.format,
+    request_id: params.request_id || undefined,
+    memory_id: params.memory_id || undefined,
+    from: params.from || undefined,
+    to: params.to || undefined,
   });
 }
 

@@ -366,6 +366,8 @@ KIND_FAMILIES: tuple[frozenset[MemoryKind], ...] = (
     frozenset({MemoryKind.fact, MemoryKind.constraint, MemoryKind.requirement, MemoryKind.summary}),
     frozenset({MemoryKind.risk}),
     frozenset({MemoryKind.preference}),
+    frozenset({MemoryKind.procedure}),
+    frozenset({MemoryKind.action}),
 )
 
 

@@ -45,7 +45,7 @@ Flux : `Sources métier → ingestion & normalisation → indexation → gouvern
 | `ORBIT_EMBEDDING_DIM` | `384` | doit correspondre au modèle |
 | `ORBIT_EMBEDDING_BASE_URL` / `ORBIT_EMBEDDING_API_KEY` | vide | provider `openai` |
 | `ORBIT_RERANKER` | `heuristic` | `heuristic` \| `fastembed` (cross-encoder) \| `none` |
-| `ORBIT_RERANKER_MODEL` | `jinaai/jina-reranker-v2-base-multilingual` | |
+| `ORBIT_RERANKER_MODEL` | `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` | Apache-2.0, multilingue (§B2) |
 | `ORBIT_LLM_BASE_URL` / `ORBIT_LLM_MODEL` / `ORBIT_LLM_API_KEY` | vide | LLM **optionnel** compatible OpenAI (vLLM, Ollama, LiteLLM). Sans LLM, tout fonctionne en mode déterministe (règles + extraction). |
 | `ORBIT_OTLP_ENDPOINT` | vide | Export OpenTelemetry (Langfuse, Jaeger, Tempo…) |
 | `ORBIT_INDEX_PREFIX` | `orbit` | Index : `{prefix}-chunks-v1`, `{prefix}-memory-v1` |
@@ -159,7 +159,7 @@ Intent            = general | specification | design | engineering | research | 
 ReasonCode        = INCLUDED_RELEVANT | INCLUDED_PINNED
                   | EXCLUDED_ACL | EXCLUDED_CLASSIFICATION | EXCLUDED_SCOPE | EXCLUDED_STALE | EXCLUDED_EXPIRED
                   | EXCLUDED_SUPERSEDED | EXCLUDED_CONFLICT | EXCLUDED_DUPLICATE | EXCLUDED_LOW_SCORE
-                  | EXCLUDED_BUDGET | EXCLUDED_FORGOTTEN
+                  | EXCLUDED_BUDGET | EXCLUDED_FORGOTTEN | EXCLUDED_QUARANTINE
 AgentKind         = product | design | engineering | research | custom
 ```
 
@@ -179,6 +179,7 @@ Libellés FR des codes de raison (UI) :
 | `EXCLUDED_LOW_SCORE` | Exclu — pertinence insuffisante | « score 0,21 < seuil 0,35 » |
 | `EXCLUDED_BUDGET` | Exclu — budget de tokens atteint | « 380 tokens, budget restant 120 » |
 | `EXCLUDED_FORGOTTEN` | Exclu — oubli sélectif | « oublié le … par … » |
+| `EXCLUDED_QUARANTINE` | Exclu — quarantaine (injection suspectée) | « injection de prompt suspectée (score 0,88) » — évalué après ACL/classification (AI_CONTEXT_ENGINEERING.md §A1) |
 
 ---
 

@@ -64,6 +64,10 @@ export interface Conflict {
   detected_at: ISODateString;
   similarity: number;
   detail: string | null;
+  /** §D3 detection method (nli | llm | lexical), model score and explanation. */
+  method?: string | null;
+  score?: number | null;
+  explanation?: string | null;
   suggested_winner_id: UUID;
   rationale: string;
   status: ConflictStatus;

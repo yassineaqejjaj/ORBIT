@@ -252,15 +252,47 @@ Variables d'environnement préfixées `ORBIT_` (voir [`.env.example`](.env.examp
 | `ORBIT_COOKIE_SECURE` | `false` | `true` derrière HTTPS |
 | `ORBIT_EMBEDDING_PROVIDER` | `fastembed` | `fastembed` (local, hors ligne), `openai` (TEI, vLLM, LiteLLM… via `ORBIT_EMBEDDING_BASE_URL` / `_API_KEY`), `hash` (tests) |
 | `ORBIT_EMBEDDING_MODEL` / `ORBIT_EMBEDDING_DIM` | `paraphrase-multilingual-MiniLM-L12-v2` / `384` | Modèle et dimension (doivent correspondre) |
-| `ORBIT_RERANKER` | `heuristic` | `heuristic`, `fastembed` (cross-encoder multilingue) ou `none` |
+| `ORBIT_RERANKER` | `heuristic` | `heuristic`, `fastembed` (cross-encoder multilingue local) ou `none` |
+| `ORBIT_RERANKER_MODEL` | `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` | Cross-encoder fastembed (Apache-2.0, multilingue FR/EN, ~470 Mo, embarqué dans l'image : build arg `PRELOAD_RERANKER=true`) ; repli heuristique en cas d'échec |
+| `ORBIT_RERANKER_TOP_N` / `ORBIT_RERANKER_MAX_CHARS` | `20` / `800` | Candidats notés par le cross-encoder et longueur des passages (latence mesurée sur les données de démo : ~370 ms sur Apple M5 ; 30 × 1 200 caractères ≈ 1,1 s) ; métrique `orbit_reranker_latency_seconds` |
 | `ORBIT_LLM_PROVIDER` | `openai` | `openai` (compatible OpenAI : vLLM, Ollama, LiteLLM) ou `anthropic` (Messages API, modèle par défaut `claude-sonnet-5`) |
 | `ORBIT_LLM_BASE_URL` / `ORBIT_LLM_MODEL` / `ORBIT_LLM_API_KEY` | vide | LLM **optionnel** (extraction de mémoire, réponses de *Demander à ORBIT*). Sans LLM, tout fonctionne en mode déterministe |
 | `ORBIT_LLM_MAX_CLASSIFICATION` / `ORBIT_LLM_LOCAL` / `ORBIT_LLM_REDACT_PII` | `1` / `false` / `true` | Garde-fou : rien au-dessus de C1 n'est envoyé à un LLM externe (sauf LLM auto-hébergé déclaré), données personnelles masquées |
+| `ORBIT_INJECTION_DETECTION` / `ORBIT_INJECTION_THRESHOLD` / `ORBIT_INJECTION_CLASSIFIER` | `true` / `0.6` / `off` | Détection d'injection de prompt à l'ingestion : au-dessus du seuil, le fragment est mis en quarantaine (`EXCLUDED_QUARANTINE`) jusqu'à libération par un propriétaire ; `local` ajoute un classifieur local optionnel |
+| `ORBIT_SPOTLIGHTING` | `true` | Balise tout contenu servi aux agents (contexte, MCP, *Demander à ORBIT*) comme donnée non fiable |
+| `ORBIT_TRUST_RANKING_PENALTY` | `0.15` | Pénalité de classement des sources de confiance faible (moyenne : la moitié) ; `0` la désactive |
+| `ORBIT_POISONING_ALERT_THRESHOLD` / `ORBIT_POISONING_WINDOW_HOURS` | `8` / `24` | Alerte d'empoisonnement : N propositions/faits d'une même source récente ou d'un agent dans la fenêtre |
+| `ORBIT_CONTEXTUAL_RETRIEVAL` | `auto` | Préambule contextuel par fragment, indexé avec lui (§B1) : `auto` (LLM si le garde-fou l'autorise, sinon déterministe : titre, section, date, source, entités), `deterministic` ou `off` |
+| `ORBIT_CONTEXTUAL_LLM_MAX_CHUNKS` / `ORBIT_CONTEXTUAL_REINDEX_BATCH` | `64` / `200` | Fragments contextualisés par LLM par document ; taille des lots de la réindexation progressive des projets existants (job planifié par le worker) |
+| `ORBIT_QUERY_REWRITE` | `deterministic` | Réécriture de requête (§B3) : `auto` = multi-requêtes, décomposition, HyDE avec le LLM si le garde-fou l'autorise (un appel LLM par requête de contexte) ; `deterministic` = expansion par synonymes et entités du projet + décomposition par règles ; `off` |
+| `ORBIT_QUERY_REWRITE_HYDE` / `ORBIT_QUERY_REWRITE_MAX_QUERIES` | `true` / `4` | Réponse hypothétique (HyDE) ; nombre maximal de requêtes supplémentaires |
+| `ORBIT_RETRIEVAL_MAX_ROUNDS` | `3` | Recherche itérative (§B4) : tours (1 à 3) relançant une recherche ciblée sur les sous-sujets non couverts ; tours visibles dans les timings et l'Explorateur |
+| `ORBIT_VISUAL_EXTRACTION` / `ORBIT_VISUAL_LLM` | `auto` / `true` | Documents visuels (§B5) : images des PDF/PPTX décrites (LLM vision si autorisé, sinon OCR si installé, sinon texte alternatif) et indexées comme fragments |
+| `ORBIT_VISUAL_MAX_IMAGES` / `ORBIT_VISUAL_MIN_SIZE` | `20` / `96` | Images décrites par document ; taille minimale (px, plus petit côté) |
+| `ORBIT_CONTEXT_CACHE_ORDERING` / `ORBIT_CONTEXT_CACHE_TTL_SECONDS` | `true` / `300` | Cache de prompt (§C1) : préfixe stable (consignes, décisions, contraintes, snapshot) puis éléments variables ; `cache_prefix_hash` / `cache_prefix_tokens`, réutilisation mesurée sur la fenêtre ; `cache_hints: true` renvoie les blocs `cache_control` Anthropic |
+| `ORBIT_CONTEXT_PROGRESSIVE_EXCERPT_TOKENS` | `40` | Mode `progressive` (§C2) : résumé + index des sources et décisions ; détail via les outils MCP `expand_source`, `get_decision`, `get_memory_item`, `search_more` |
+| `ORBIT_CONTEXT_PROFILES` | `true` | Profils de contexte par type d'agent (§C3) : budget, sections, ordre, seuils, éditables dans Paramètres, ajustement suggéré d'après les retours |
+| `ORBIT_COMPRESSION_MODE` / `ORBIT_COMPRESSION_PRUNER` | `learned` / vide | Compression au niveau phrase (§C4) : pertinence par embeddings + redondance (+ modèle d'élagage local `module:fonction`), citations préservées ; `extractive` = repli simple |
+| `ORBIT_CONTEXT_SUFFICIENCY` / `ORBIT_SUFFICIENCY_SUFFICIENT_THRESHOLD` / `ORBIT_SUFFICIENCY_PARTIAL_THRESHOLD` | `true` / `0.75` / `0.4` | Suffisance du contexte (§C5) : score, verdict `sufficient`/`partial`/`insufficient`, sous-sujets manquants |
+| `ORBIT_ASK_ABSTAIN_WHEN_INSUFFICIENT` | `true` | « Demander à ORBIT » répond « Je ne sais pas » quand le contexte est insuffisant |
+| `ORBIT_MEMORY_SKILLS` / `ORBIT_SKILLS_CONTEXT_MAX` | `true` / `3` | Mémoire procédurale (§D1) : procédures servies comme skills (`/projects/{slug}/skills`, MCP `list_skills`/`get_skill`) et section « Façons de faire » |
+| `ORBIT_MEMORY_ENTITY_ALIASES` | `true` | Résolution d'entités (§D2) : les alias élargissent la recherche |
+| `ORBIT_MEMORY_CONTRADICTION_MODE` / `ORBIT_MEMORY_NLI_MODEL` / `ORBIT_MEMORY_CONTRADICTION_THRESHOLD` | `auto` / vide / `0.7` | Contradictions par modèle (§D3) : crochet NLI local, sinon LLM-juge si le garde-fou l'autorise, sinon marqueurs lexicaux ; score et explication stockés |
+| `ORBIT_MEMORY_REFLECTION` | `true` | Réflexion mensuelle « ce qui a changé » (§D4), proposée en mémoire long terme |
+| `ORBIT_EVAL_K` / `ORBIT_EVAL_MIN_RECALL` | `5` / `0.6` | Banc d'évaluation (§E1) : jeux de questions de référence, rappel@k, nDCG, suffisance, fidélité des citations ; page Suivi → Évaluation ; CI : `python -m app.admin eval --project <slug> --min-recall 0.6` (code de sortie 1 sous le seuil) |
+| `ORBIT_RANKING_LEARNING` / `_MAX_DELTA` / `_RATE` / `_MIN_SIGNALS` | `true` / `0.1` / `0.2` / `5` | Apprentissage borné des poids du classement (§E2) à partir des 👍/👎, signalements, épingles et décisions de tri ; journalisé, réversible (Paramètres → Évaluation) |
+| `ORBIT_JUDGE_SAMPLE_RATE` / `_ALERT_THRESHOLD` / `_WINDOW_DAYS` / `_MIN_SAMPLES` | `0` / `0.5` / `7` / `3` | LLM-juge sur échantillon (§E3) : note de suffisance (garde-fou ; jamais C2/C3 vers un LLM externe), alerte de dégradation, export NDJSON pour FORGE |
+| `ORBIT_A2A_ENABLED` / `ORBIT_A2A_SIGNING_SECRET` / `ORBIT_A2A_HANDOFF_TTL_SECONDS` | `true` / vide (= `ORBIT_JWT_SECRET`) / `600` | A2A (§E5, protocole 0.3.0) : Agent Card `/.well-known/agent-card.json` (+ alias `agent.json`), passation signée d'un snapshot (JWS HS256, usage unique, auditée) |
+| `ORBIT_OTEL_GENAI_CAPTURE_CONTENT` | `false` | OpenTelemetry GenAI (§E6) : attributs `gen_ai.*` sur les spans LLM, recherche et MCP ; contenus des prompts seulement si activé |
 | `ORBIT_ENCRYPTION_KEY` | vide | Clé Fernet chiffrant les secrets des connecteurs, webhooks et Teams ; **requise** pour les créer |
 | `ORBIT_CONNECTOR_DEFAULT_SCHEDULE_MINUTES` | `60` | Fréquence de synchronisation par défaut des connecteurs |
 | `ORBIT_MCP_ALLOW_CUSTOM` | `false` | Autorise des serveurs MCP hors presets (administrateurs uniquement) |
 | `ORBIT_MCP_TIMEOUT_SECONDS` / `ORBIT_MCP_MAX_ITEMS` / `ORBIT_MCP_SYNC_TIMEOUT_SECONDS` | `60` / `500` / `1800` | Limites des synchronisations MCP |
 | `ORBIT_MARKITDOWN_MCP` | `auto` | Conversion MarkItDown des formats non lus nativement (`off` pour désactiver) |
+| `ORBIT_MEETINGS_ENABLED` | `true` | Import de réunions (§F1) : transcriptions VTT, SRT, DOCX Teams/Meet, texte ; locuteurs, horodatages, décisions et actions attribuées |
+| `ORBIT_TRANSCRIPTION_BASE_URL` / `_API_KEY` / `_MODEL` | vide / vide / `whisper-1` | Transcription audio optionnelle via un endpoint compatible OpenAI `/audio/transcriptions` (vide = désactivée) |
+| `ORBIT_TRANSCRIPTION_MAX_MB` / `_TIMEOUT_SECONDS` / `_LOCAL` | `25` / `300` / `false` | Taille maximale de l'audio ; garde-fou : un audio C2/C3 n'est jamais envoyé à un service externe (sauf serveur auto-hébergé déclaré `_LOCAL=true`) |
+| `ORBIT_MAIL_MAX_MESSAGES` | `200` | E-mails de projet (§F3) : messages lus au plus par dossier / libellé et par synchronisation |
 | `ORBIT_SMTP_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_FROM` | vide | Envoi des résumés des changements par e-mail (sinon consultables dans l'application) |
 | `ORBIT_WEBHOOK_TIMEOUT_SECONDS` / `ORBIT_WEBHOOK_MAX_FAILURES` | `10` / `20` | Livraison des webhooks (désactivation après N échecs) |
 | `ORBIT_OTLP_ENDPOINT` | vide | Export OpenTelemetry (Langfuse, Jaeger, Tempo…) |

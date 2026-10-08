@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.context.textutils import FRENCH_STOPWORDS, fold, unique_preserving
 from app.enums import (
+    TRUST_RANK,
     ActorType,
     CandidateType,
     ChunkStatus,
@@ -37,6 +38,7 @@ from app.enums import (
     MemoryScope,
     MemoryStatus,
     SourceKind,
+    SourceTrust,
 )
 from app.governance.acl import DEFAULT_ACL
 from app.governance.policy import (
@@ -47,6 +49,7 @@ from app.governance.policy import (
     SupersessionInfo,
 )
 from app.models import Agent, Chunk, Document, MemoryEvent, MemoryItem, MemoryProvenance, Source, User
+from app.models.source import effective_trust
 from app.search.tokens import estimate_tokens
 
 logger = logging.getLogger("orbit.context.retrieval")
@@ -253,6 +256,7 @@ class ChunkRow:
     document: Document
     source_kind: SourceKind
     forgotten_by_label: str | None = None
+    trust: str = "high"
 
 
 @dataclass(slots=True)
@@ -263,6 +267,8 @@ class MemoryRow:
     status_changed_at: datetime | None = None
     provenance_kinds: tuple[SourceKind, ...] = ()
     provenance_chunk_ids: frozenset[str] = frozenset()
+    #: Lowest trust of the provenance sources (§A3); ``high`` without provenance.
+    trust: str = "high"
 
 
 @dataclass(slots=True)
@@ -358,15 +364,20 @@ async def hydrate_chunks(
     if not chunk_ids:
         return {}
     rows = await session.execute(
-        select(Chunk, Document, Source.kind)
+        select(Chunk, Document, Source.kind, Source.trust)
         .join(Document, Document.id == Chunk.document_id)
         .join(Source, Source.id == Document.source_id)
         .where(Chunk.id.in_(chunk_ids), Chunk.project_id == project_id)
     )
     result: dict[str, ChunkRow] = {}
     forgotten_by: set[uuid.UUID] = set()
-    for chunk, document, kind in rows.tuples():
-        result[str(chunk.id)] = ChunkRow(chunk=chunk, document=document, source_kind=SourceKind(kind))
+    for chunk, document, kind, trust in rows.tuples():
+        result[str(chunk.id)] = ChunkRow(
+            chunk=chunk,
+            document=document,
+            source_kind=SourceKind(kind),
+            trust=effective_trust(kind, trust).value,
+        )
         if document.forgotten_by is not None:
             forgotten_by.add(document.forgotten_by)
     if forgotten_by:
@@ -440,7 +451,7 @@ async def _enrich_provenance(session: AsyncSession, rows: list[MemoryRow]) -> No
     if not by_lineage:
         return
     result = await session.execute(
-        select(MemoryItem.lineage_id, MemoryProvenance.chunk_id, Source.kind)
+        select(MemoryItem.lineage_id, MemoryProvenance.chunk_id, Source.kind, Source.trust)
         .join(MemoryItem, MemoryItem.id == MemoryProvenance.memory_item_id)
         .outerjoin(Document, Document.id == MemoryProvenance.document_id)
         .outerjoin(Source, Source.id == Document.source_id)
@@ -448,8 +459,12 @@ async def _enrich_provenance(session: AsyncSession, rows: list[MemoryRow]) -> No
     )
     kinds: dict[uuid.UUID, list[SourceKind]] = {}
     chunk_ids: dict[uuid.UUID, set[str]] = {}
-    for lineage_id, chunk_id, kind in result.tuples():
+    trusts: dict[uuid.UUID, SourceTrust] = {}
+    for lineage_id, chunk_id, kind, trust in result.tuples():
         if kind is not None:
+            level = effective_trust(kind, trust)
+            if lineage_id not in trusts or TRUST_RANK[level] < TRUST_RANK[trusts[lineage_id]]:
+                trusts[lineage_id] = level
             source_kind = SourceKind(kind)
             known = kinds.setdefault(lineage_id, [])
             if source_kind not in known:
@@ -459,6 +474,8 @@ async def _enrich_provenance(session: AsyncSession, rows: list[MemoryRow]) -> No
     for lineage_id, row in by_lineage.items():
         row.provenance_kinds = tuple(kinds.get(lineage_id, ()))
         row.provenance_chunk_ids = frozenset(chunk_ids.get(lineage_id, ()))
+        if lineage_id in trusts:
+            row.trust = trusts[lineage_id].value
 
 
 async def _enrich_memory(session: AsyncSession, rows: list[MemoryRow]) -> None:
@@ -621,6 +638,94 @@ async def retrieve(
     return raw
 
 
+def _discounted(hits: Sequence[IndexHit], factor: float) -> list[IndexHit]:
+    for hit in hits:
+        hit.rrf *= factor
+        hit.rrf_norm *= factor
+    return list(hits)
+
+
+async def search_more(
+    session: AsyncSession,
+    raw: RawRetrieval,
+    queries: Sequence[tuple[str, Sequence[float] | None]],
+    *,
+    project_id: uuid.UUID,
+    include_chunks: bool,
+    include_memory: bool,
+    include_org_memory: bool,
+    discount: float,
+) -> int:
+    """Extra searches (query rewrites §B3, iterative rounds §B4) merged into ``raw``.
+
+    Hits of extra queries rank below those of the task itself (``discount`` on the fused score); the
+    candidates fusion keeps the best score per item. Only new ids are hydrated. Returns the number of
+    new items (chunks + memory) found.
+    """
+    kinds = [k for k, on in (("chunks", include_chunks), ("memory", include_memory)) if on]
+    if not queries or not kinds:
+        return 0
+
+    async def _one(kind: str, text: str, vector: Sequence[float] | None) -> list[IndexHit]:
+        size = CHUNK_TOP_K if kind == "chunks" else MEMORY_TOP_K
+        try:
+            return await search_index(
+                kind,
+                text,
+                vector,
+                project_id=project_id,
+                size_each=size,
+                include_org_memory=include_org_memory and kind == "memory",
+            )
+        except RetrievalUnavailable:
+            return await fallback_search(
+                session, kind, text, project_id=project_id, size=size, include_org_memory=include_org_memory
+            )
+
+    jobs = [(kind, _one(kind, text, vector)) for text, vector in queries for kind in kinds]
+    results = await asyncio.gather(*(job for _, job in jobs), return_exceptions=True)
+    known_chunks = {h.id for h in raw.chunk_hits}
+    known_memory = {h.id for h in raw.memory_hits}
+    new_chunks: list[IndexHit] = []
+    new_memory: list[IndexHit] = []
+    for (kind, _), result in zip(jobs, results, strict=True):
+        if isinstance(result, BaseException):
+            logger.info("Extra %s search failed: %r", kind, result)
+            continue
+        hits = _discounted(result, discount)
+        if kind == "chunks":
+            new_chunks.extend(h for h in hits if h.id not in known_chunks)
+            raw.chunk_hits.extend(hits)
+        else:
+            new_memory.extend(h for h in hits if h.id not in known_memory)
+            raw.memory_hits.extend(hits)
+    chunk_ids = list(dict.fromkeys(h.id for h in new_chunks))
+    memory_ids = list(dict.fromkeys(h.id for h in new_memory))
+    if chunk_ids:
+        raw.chunks.update(await hydrate_chunks(session, project_id, chunk_ids))
+    if memory_ids:
+        resolution, by_lineage = await hydrate_memory(session, project_id, memory_ids, [])
+        raw.memory_resolution.update(resolution)
+        raw.memory_by_lineage.update(by_lineage)
+    if new_chunks or new_memory:
+        await attach_embeddings(RawRetrieval(chunk_hits=new_chunks, memory_hits=new_memory))
+    return len(chunk_ids) + len(memory_ids)
+
+
+def coverage_texts(raw: RawRetrieval, limit: int = 40) -> list[str]:
+    """Titles + texts of the best hydrated hits (coverage check of iterative retrieval)."""
+    texts: list[str] = []
+    for hit in sorted(raw.chunk_hits, key=lambda h: h.rrf_norm, reverse=True)[:limit]:
+        row = raw.chunks.get(hit.id)
+        if row is not None:
+            texts.append(f"{row.document.title} {row.chunk.section or ''} {row.chunk.text}")
+    for hit in sorted(raw.memory_hits, key=lambda h: h.rrf_norm, reverse=True)[:limit]:
+        mrow = raw.memory_resolution.get(hit.id)
+        if mrow is not None:
+            texts.append(f"{mrow.item.title} {mrow.item.content}")
+    return texts
+
+
 async def anchor_decision_hits(
     session: AsyncSession, project_id: uuid.UUID, hits: Sequence[IndexHit]
 ) -> list[IndexHit]:
@@ -656,6 +761,92 @@ async def anchor_decision_hits(
         for item_id in ids
         if str(item_id) not in known
     ]
+
+
+async def add_procedures(
+    session: AsyncSession,
+    raw: RawRetrieval,
+    project_id: uuid.UUID,
+    *,
+    intent: str | None,
+    agent_kind: str | None,
+    limit: int,
+) -> int:
+    """§D1: anchor validated procedures whose task types / agent kinds match the request (« Façons de
+    faire »), at the tail of the memory hits. Governance (ACL, clearance) applies as for any candidate."""
+    if limit <= 0:
+        return 0
+    from app.memory import skills
+
+    known = {h.id for h in raw.memory_hits}
+    rows = await session.scalars(
+        select(MemoryItem)
+        .where(
+            or_(MemoryItem.project_id == project_id, MemoryItem.project_id.is_(None)),
+            MemoryItem.kind == MemoryKind.procedure,
+            MemoryItem.is_current.is_(True),
+            MemoryItem.status == MemoryStatus.validated,
+        )
+        .order_by(MemoryItem.updated_at.desc())
+        .limit(50)
+    )
+    ids: list[str] = []
+    for item in rows:
+        meta = skills.meta_of(item)
+        targeted = bool(meta["task_types"] or meta["agent_kinds"])
+        if str(item.id) in known or not targeted or not skills.applies_to(meta, intent, agent_kind)[0]:
+            continue
+        ids.append(str(item.id))
+        if len(ids) >= limit:
+            break
+    if not ids:
+        return 0
+    tail_rrf = min((h.rrf for h in raw.memory_hits), default=0.0)
+    tail_norm = min((h.rrf_norm for h in raw.memory_hits), default=0.0)
+    raw.memory_hits.extend(IndexHit(id=i, rrf=tail_rrf, rrf_norm=tail_norm, via="procedure") for i in ids)
+    resolution, by_lineage = await hydrate_memory(session, project_id, ids, [])
+    raw.memory_resolution.update(resolution)
+    raw.memory_by_lineage.update(by_lineage)
+    return len(ids)
+
+
+async def apply_as_of(session: AsyncSession, raw: RawRetrieval, as_of: datetime) -> int:
+    """§D2 « tel que connu au <date> »: replace every hydrated memory row by the version of its lineage
+    known at ``as_of`` (created before it, validity window covering it); drop lineages unknown then.
+    Returns the number of memory rows dropped."""
+    lineages = {row.item.lineage_id for row in raw.memory_resolution.values()}
+    if not lineages:
+        return 0
+    versions = await session.scalars(
+        select(MemoryItem)
+        .where(MemoryItem.lineage_id.in_(lineages), MemoryItem.created_at <= as_of)
+        .order_by(MemoryItem.lineage_id, MemoryItem.version.desc())
+    )
+    known: dict[uuid.UUID, MemoryItem] = {}
+    for item in versions:
+        known.setdefault(item.lineage_id, item)
+    rows: dict[uuid.UUID, MemoryRow] = {}
+    for lineage_id, item in known.items():
+        if item.valid_from and item.valid_from > as_of:
+            continue
+        if item.valid_to is not None and item.valid_to <= as_of:
+            continue
+        if MemoryStatus(item.status) == MemoryStatus.forgotten:
+            continue
+        rows[lineage_id] = MemoryRow(item=item)
+    await _enrich_memory(session, list(rows.values()))
+    dropped = 0
+    for key, row in list(raw.memory_resolution.items()):
+        replacement = rows.get(row.item.lineage_id)
+        if replacement is None:
+            del raw.memory_resolution[key]
+            dropped += 1
+        else:
+            if MemoryStatus(replacement.item.status) != MemoryStatus.superseded:
+                replacement.superseded_by = None  # later supersessions were not known at that date
+            raw.memory_resolution[key] = replacement
+    raw.memory_by_lineage = {str(lid): row for lid, row in rows.items()}
+    return dropped
 
 
 async def fetch_embeddings(kind: str, ids: Sequence[str]) -> dict[str, list[float]]:
@@ -729,6 +920,9 @@ def chunk_candidate(row: ChunkRow) -> Candidate:
         uri=document.uri,
         section=chunk.section,
         pii_redacted=bool(chunk.pii),
+        quarantined=bool(chunk.quarantined),
+        injection_score=float(chunk.injection_score or 0.0),
+        trust=row.trust,
         superseded_by=SupersessionInfo(
             title=document.title, version=document.current_version, date=document.source_updated_at
         )
@@ -767,7 +961,9 @@ def memory_candidate(row: MemoryRow) -> Candidate:
         status_changed_at=row.status_changed_at,
         provenance_kinds=row.provenance_kinds,
         provenance_chunk_ids=row.provenance_chunk_ids,
+        trust=row.trust,
         tokens=estimate_tokens(item.content or ""),
+        skill_meta=item.skill_meta,
     )
 
 

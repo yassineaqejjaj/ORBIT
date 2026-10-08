@@ -3,13 +3,17 @@
 from fastapi import APIRouter
 
 from app.api import (
+    a2a,
     agents,
     ask,
     audit,
     auth,
+    compliance,
     connectors,
     context,
     documents,
+    entities,
+    evaluation,
     feed,
     inbox,
     jobs,
@@ -20,6 +24,7 @@ from app.api import (
     projects,
     search,
     sessions,
+    skills,
     snapshots,
     sources,
     teams,
@@ -41,6 +46,8 @@ for module in (
     jobs,
     search,
     memory,
+    skills,
+    entities,
     sessions,
     context,
     snapshots,
@@ -53,6 +60,9 @@ for module in (
     ask,
     teams,
     connectors,
+    compliance,
+    evaluation,
+    a2a,
 ):
     api_router.include_router(module.router)
 

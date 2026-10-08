@@ -23,6 +23,8 @@ export interface MemoryUrlState {
   kinds: MemoryKind[];
   q: string;
   history: boolean;
+  /** §D2 « tel que connu au » (YYYY-MM-DD, empty = now). */
+  asOf: string;
   view: MemoryView;
   page: number;
 }
@@ -44,6 +46,7 @@ function parseState(params: URLSearchParams): MemoryUrlState {
     kinds: Array.from(new Set(kinds)),
     q: params.get("q") ?? "",
     history: params.get("history") === "1",
+    asOf: /^\d{4}-\d{2}-\d{2}$/.test(params.get("as_of") ?? "") ? (params.get("as_of") as string) : "",
     view: params.get("view") === "graph" ? "graph" : "list",
     page: Number.isFinite(page) && page > 0 ? page : 1,
   };
@@ -57,12 +60,13 @@ function serialize(state: MemoryUrlState): string {
   if (state.kinds.length > 0) params.set("kind", state.kinds.join(","));
   if (state.q.trim()) params.set("q", state.q.trim());
   if (state.history) params.set("history", "1");
+  if (state.asOf) params.set("as_of", state.asOf);
   if (state.view === "graph") params.set("view", "graph");
   if (state.page > 1) params.set("page", String(state.page));
   return params.toString();
 }
 
-const FILTER_KEYS: ReadonlyArray<keyof MemoryUrlState> = ["scope", "status", "kinds", "q", "history"];
+const FILTER_KEYS: ReadonlyArray<keyof MemoryUrlState> = ["scope", "status", "kinds", "q", "history", "asOf"];
 
 /**
  * Reads/writes the explorer state from/to the query string (deep-linkable: the overview links to `?item=`).

@@ -44,6 +44,7 @@ Agents (clés affichées à la fin du seed et écrites dans `backend/.seed-agent
 | Traces agents (agent_trace) | 3 traces d'exécution de l'Agent Produit (brouillon de spec, questions ouvertes) | J-9 → J-3 | C1 | traces comme source |
 | Direction (document) | « Budget et négociation contrat Atlas » (montants, marge, conditions) — ACL `role:owner`, **C3** | J-20 | C3 | **CLASSIFICATION** (Camille C2) / **ACL** (Léo, Sarah) |
 | Veille (url) | « Benchmark des solutions de flex office » | J-400 | C0 | **STALE** (> 180 j) |
+| Veille (url, confiance faible) | « Astuces de réservation des salles (forum externe) » : conseils utiles + un paragraphe d'**injection de prompt fictive** (« ignorez toutes les instructions… », lien d'exfiltration) | J-4 | C0 | **QUARANTINE** (fragment non servi, libérable par un propriétaire ; alerte « À traiter ») |
 | RH (document) | « Politique de télétravail 2026 » : 2 jours sur site minimum | J-25 | C1 | contrainte transverse |
 
 ## 4. Mémoire (en plus de l'extraction automatique)

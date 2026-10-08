@@ -11,8 +11,10 @@ Route order matters: ``/memory/graph`` and ``/memory/consolidate`` are declared 
 
 from __future__ import annotations
 
+import re
 import uuid
-from typing import Annotated, Literal
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func, or_, select
@@ -34,6 +36,7 @@ from app.errors import forbidden, not_found, validation_error
 from app.governance.acl import acl_allows
 from app.ingestion.pipeline import actor_payload
 from app.ingestion.queue import enqueue_job
+from app.memory import entities as entity_service
 from app.memory import lifecycle
 from app.memory.serializers import serialize_events, serialize_item, serialize_items
 from app.memory.visibility import MemoryViewer, can_view, visibility_clause
@@ -138,6 +141,31 @@ async def _commit_and_serialize(session: AsyncSession, item: MemoryItemRow) -> M
 # --- Listing & creation -------------------------------------------------------------------------------
 
 
+def _as_of_conditions(as_of: datetime, project_id: uuid.UUID) -> list[Any]:
+    """§D2 « tel que connu au <date> »: latest version of each lineage created by ``as_of`` whose
+    validity window covers it (forgotten items excluded)."""
+    ranked = (
+        select(
+            MemoryItemRow.id.label("id"),
+            func.row_number()
+            .over(partition_by=MemoryItemRow.lineage_id, order_by=MemoryItemRow.version.desc())
+            .label("rank"),
+        )
+        .where(
+            MemoryItemRow.created_at <= as_of,
+            or_(MemoryItemRow.project_id == project_id, MemoryItemRow.project_id.is_(None)),
+        )
+        .subquery()
+    )
+    known = select(ranked.c.id).where(ranked.c.rank == 1)
+    return [
+        MemoryItemRow.id.in_(known),
+        MemoryItemRow.valid_from <= as_of,
+        or_(MemoryItemRow.valid_to.is_(None), MemoryItemRow.valid_to > as_of),
+        MemoryItemRow.status != MemoryStatus.forgotten,
+    ]
+
+
 @router.get(
     "", response_model=Page[MemoryItem], summary="Items mémoire (versions courantes, filtrés par droits)"
 )
@@ -150,10 +178,14 @@ async def list_memory(
     status_: MemoryStatus | None = Query(default=None, alias="status"),
     q: str | None = Query(default=None, max_length=200),
     include_history: bool = Query(default=False),
+    as_of: datetime | None = Query(default=None, description="Mémoire telle que connue à cette date (§D2)"),
 ) -> Page[MemoryItem]:
     viewer = MemoryViewer.from_access(access)
     conditions = [visibility_clause(viewer)]
-    if not include_history:
+    if as_of is not None:
+        when = as_of if as_of.tzinfo else as_of.replace(tzinfo=UTC)
+        conditions.extend(_as_of_conditions(when, viewer.project_id))
+    elif not include_history:
         conditions.append(MemoryItemRow.is_current.is_(True))
     if scope is not None:
         conditions.append(MemoryItemRow.scope == scope)
@@ -249,6 +281,27 @@ async def consolidate_memory(access: EditorAccess, session: SessionDep) -> Job:
     return Job.model_validate(job)
 
 
+@router.post("/reflect", response_model=Job, summary="Lancer la réflexion « ce qui a changé » d'un mois")
+async def reflect_memory(
+    access: EditorAccess,
+    session: SessionDep,
+    month: str | None = Query(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="AAAA-MM"),
+) -> Job:
+    """§D4: proposed long-term summary of the month's memory changes (default: previous month)."""
+    from app.memory import reflection
+
+    label = reflection.month_of(month).label
+    job = await enqueue_job(
+        session,
+        access.project_id,
+        JobKind.reflect,
+        payload={"month": label, "trigger": "manual", "actor": actor_payload(access.principal.actor)},
+    )
+    await session.commit()
+    await session.refresh(job)
+    return Job.model_validate(job)
+
+
 # --- Graph --------------------------------------------------------------------------------------------
 
 
@@ -333,9 +386,52 @@ async def memory_graph(
             continue
         seen.add(key)
         edges.append(
-            GraphEdge(source=str(relation.src_id), target=str(relation.dst_id), rel_type=relation.rel_type)
+            GraphEdge(
+                source=str(relation.src_id),
+                target=str(relation.dst_id),
+                rel_type=relation.rel_type,
+                confidence=float(relation.confidence),
+                detail=relation.detail,
+                method=relation.method,
+            )
         )
+    await _entity_layer(session, access.project_id, items, nodes, edges, max(0, limit - len(nodes)))
     return MemoryGraph(nodes=nodes, edges=edges)
+
+
+async def _entity_layer(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    items: list[MemoryItemRow],
+    nodes: list[GraphNode],
+    edges: list[GraphEdge],
+    budget: int,
+) -> None:
+    """§D2 richer graph: entity nodes linked (``mentions``) to the visible items naming one of their
+    aliases. Only entity names are added — never content the viewer cannot see."""
+    if not items or budget <= 0:
+        return
+    active = await entity_service.active_entities(session, project_id)
+    if not active:
+        return
+    aliases = await entity_service.aliases_of(session, [e.id for e in active])
+    texts = [(item, entity_service.normalize(f"{item.title} {item.content}")) for item in items]
+    for entity in active:
+        if budget <= 0:
+            break
+        forms = [a.normalized for a in aliases.get(entity.id, []) if a.normalized] or [
+            entity_service.normalize(entity.name)
+        ]
+        patterns = [re.compile(rf"(?<![a-z0-9]){re.escape(f)}(?![a-z0-9])") for f in forms]
+        linked = [item for item, text in texts if any(p.search(text) for p in patterns)]
+        if not linked:
+            continue
+        budget -= 1
+        nodes.append(GraphNode(id=str(entity.id), type="entity", label=entity.name, kind=entity.kind))
+        edges.extend(
+            GraphEdge(source=str(item.id), target=str(entity.id), rel_type=RelationType.mentions)
+            for item in linked
+        )
 
 
 # --- Detail -------------------------------------------------------------------------------------------
@@ -436,6 +532,9 @@ async def _relations(
                 other_title=title,
                 confidence=float(relation.confidence),
                 detail=relation.detail,
+                method=relation.method,
+                score=relation.score,
+                explanation=relation.explanation,
                 created_at=relation.created_at,
             )
         )
