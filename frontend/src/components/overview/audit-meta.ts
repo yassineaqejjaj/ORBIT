@@ -44,6 +44,7 @@ export const AUDIT_ACTION_META: Record<string, AuditActionMeta> = {
   "session.close": { label: "Session clôturée", tone: "sky" },
   "context.request": { label: "Contexte servi", tone: "orange" },
   "context.feedback": { label: "Retour utilisateur", tone: "orange" },
+  "context.expand": { label: "Contexte à la demande", tone: "blue" },
   "snapshot.create": { label: "Snapshot enregistré", tone: "violet" },
   "governance.acl_change": { label: "Droits d'accès modifiés", tone: "amber" },
   "governance.classification_change": { label: "Classification modifiée", tone: "amber" },

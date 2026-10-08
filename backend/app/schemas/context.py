@@ -50,6 +50,10 @@ class ContextRequestIn(InputModel):
     explain: bool | None = Field(
         default=None, description="Défaut : true pour un humain, false pour un agent"
     )
+    mode: Literal["full", "progressive"] = Field(
+        default="full",
+        description="progressive : résumé + index (identifiants) ; détail via expand_source, get_decision…",
+    )
     cache_hints: bool = Field(
         default=False,
         description="Contexte découpé en blocs avec points d'arrêt cache_control (format Anthropic)",
@@ -160,6 +164,20 @@ class CacheHintBlock(ApiModel):
     cache_control: CacheControl | None = None
 
 
+class ContextIndexEntry(ApiModel):
+    """§C2 progressive mode: one served item and how to expand it."""
+
+    citation: str
+    id: str
+    candidate_type: CandidateType
+    title: str
+    memory_kind: MemoryKind | None = None
+    #: MCP tool returning the detail (``expand_source``, ``get_decision``, ``get_memory_item``).
+    tool: str
+    #: Tokens of the full item text (what expanding costs).
+    tokens_full: int
+
+
 class ContextPackage(ApiModel):
     request_id: uuid.UUID
     trace_id: str
@@ -183,6 +201,8 @@ class ContextPackage(ApiModel):
     cache_prefix_tokens: int = 0
     cache_prefix_reused: bool = False
     cache_hints: list[CacheHintBlock] | None = None
+    mode: Literal["full", "progressive"] = "full"
+    index: list[ContextIndexEntry] = Field(default_factory=list)
 
 
 class ItemFlag(InputModel):

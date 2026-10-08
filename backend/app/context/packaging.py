@@ -47,6 +47,7 @@ SECTIONS: tuple[tuple[str, str], ...] = (
 )
 SECTION_TITLES = dict(SECTIONS)
 SOURCES_HEADING = "Sources"
+INDEX_HEADING = "Index des sources et décisions"
 EMPTY_CONTEXT = "_Aucun élément pertinent et autorisé n'a été retenu pour cette tâche._"
 TASK_PREVIEW_CHARS = 200
 #: Placeholder citation used to estimate the cost of a bullet before numbering.
@@ -239,10 +240,10 @@ def classification_warnings(included: Sequence[Decision]) -> list[str]:
     return [w for w in (classification_warning(level) for level in levels) if w]
 
 
-def render(task: str, intent: Intent, included: Sequence[Decision]) -> Packaged:
+def render(task: str, intent: Intent, included: Sequence[Decision], *, progressive: bool = False) -> Packaged:
     """Assemble the Markdown context. ``included`` must carry their excerpts (compression done)."""
-    if settings.context_cache_ordering:
-        return render_cache_aware(task, intent, included)
+    if settings.context_cache_ordering or progressive:
+        return render_cache_aware(task, intent, included, progressive=progressive)
     ordered = assign_citations(included)
     lines: list[str] = [preamble(task, intent)]
     if not ordered:
@@ -307,7 +308,48 @@ def _render_sections(lines: list[str], members: Sequence[Decision]) -> None:
             lines.append(bullet(d.candidate, d.excerpt, d.citation or ""))
 
 
-def render_cache_aware(task: str, intent: Intent, included: Sequence[Decision]) -> Packaged:
+def index_ref(c: Candidate) -> str | None:
+    """Identifier an agent passes to the §C2 tools (chunk id, memory item id)."""
+    if c.candidate_type == CandidateType.chunk:
+        return c.id
+    if c.candidate_type == CandidateType.memory and c.memory_item_id is not None:
+        return str(c.memory_item_id)
+    return None
+
+
+def expand_tool(c: Candidate) -> str | None:
+    if c.candidate_type == CandidateType.chunk:
+        return "expand_source"
+    if c.candidate_type == CandidateType.memory:
+        return "get_decision" if c.memory_kind == MemoryKind.decision else "get_memory_item"
+    return None
+
+
+def index_line(c: Candidate, citation: str) -> str:
+    """Progressive mode: the source line plus the identifier and the tool that expands it."""
+    ref, tool = index_ref(c), expand_tool(c)
+    suffix = f" · id={ref} → {tool}" if ref and tool else ""
+    return source_line(c, citation) + suffix
+
+
+def progressive_summary(ordered: Sequence[Decision]) -> str:
+    counts = []
+    for name, title in SECTIONS:
+        n = sum(1 for d in ordered if section_for(d.candidate) == name)
+        if n:
+            counts.append(f"{title.lower()} : {n}")
+    return (
+        "\n## Résumé (contexte progressif)\n\n"
+        f"{len(ordered)} élément{'s' if len(ordered) > 1 else ''} retenu{'s' if len(ordered) > 1 else ''}"
+        f"{' — ' + ' · '.join(counts) if counts else ''}. Chaque élément n'est servi qu'en aperçu : l'index "
+        "ci-dessous donne son identifiant et l'outil MCP qui renvoie le détail (expand_source, "
+        "get_decision, get_memory_item) ; search_more lance une recherche complémentaire."
+    )
+
+
+def render_cache_aware(
+    task: str, intent: Intent, included: Sequence[Decision], *, progressive: bool = False
+) -> Packaged:
     """Stable prefix (header, untrusted-data notice, stable items in a request-independent order) then
     variable items, the source list and the task: two requests serving the same stable items share a
     byte-identical prefix, which a prompt cache (e.g. Anthropic ``cache_control``) can reuse."""
@@ -335,10 +377,13 @@ def render_cache_aware(task: str, intent: Intent, included: Sequence[Decision]) 
     rest: list[str] = []
     if not ordered:
         rest.append(EMPTY_CONTEXT)
+    elif progressive:
+        rest.append(progressive_summary(ordered))
     _render_sections(rest, variable)
     if ordered:
-        rest.append(f"\n## {SOURCES_HEADING}\n")
-        rest.extend(source_line(d.candidate, d.citation or "") for d in ordered)
+        rest.append(f"\n## {INDEX_HEADING if progressive else SOURCES_HEADING}\n")
+        line = index_line if progressive else source_line
+        rest.extend(line(d.candidate, d.citation or "") for d in ordered)
     if spotlighted:
         rest.append(spotlight.CLOSE)
     rest.append(task_block(task, intent))
@@ -348,5 +393,5 @@ def render_cache_aware(task: str, intent: Intent, included: Sequence[Decision]) 
         tokens_used=estimate_tokens(markdown),
         ordered=ordered,
         warnings=classification_warnings(ordered),
-        prefix=prefix,
+        prefix=prefix if settings.context_cache_ordering else "",
     )

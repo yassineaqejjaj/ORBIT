@@ -845,6 +845,19 @@ export interface ContextPackage {
   cache_prefix_reused?: boolean;
   /** Anthropic text blocks (requested with `cache_hints: true`); `cache_control` closes the prefix. */
   cache_hints?: { type: "text"; text: string; cache_control: { type: "ephemeral" } | null }[] | null;
+  /** §C2: `progressive` = summary + index; details through the MCP tools named in `index[].tool`. */
+  mode?: "full" | "progressive";
+  index?: ContextIndexEntry[];
+}
+
+export interface ContextIndexEntry {
+  citation: string;
+  id: string;
+  candidate_type: CandidateType;
+  title: string;
+  memory_kind: MemoryKind | null;
+  tool: "expand_source" | "get_decision" | "get_memory_item" | (string & {});
+  tokens_full: number;
 }
 
 export interface FeedbackItemFlag {

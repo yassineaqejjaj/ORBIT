@@ -3,12 +3,14 @@ learned compression, sufficiency. Fictitious demo data only; no network (hash em
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 import httpx
 
 from app.context import packaging, spotlight
 from tests.test_api_documents import _text, drain
+from tests.test_mcp_server import AgentSetup, agent_setup, error_text, mcp_client, payload  # noqa: F401
 
 API = "/api/v1/projects"
 JSON = dict[str, Any]
@@ -113,3 +115,80 @@ def test_cache_header_is_request_independent() -> None:
     assert "{" not in packaging.CACHE_HEADER
     block = packaging.task_block("Tâche fictive", packaging.Intent.design)
     assert block.startswith("\n## Tâche") and "design" in block
+
+
+# --- C2 progressive mode and on-demand tools ----------------------------------------------------------
+
+
+async def test_progressive_mode_and_mcp_expansion_tools(
+    app: Any,
+    admin_client: httpx.AsyncClient,
+    agent_setup: AgentSetup,
+) -> None:
+    slug = agent_setup.slug
+    await _seed(admin_client, slug)
+    secret = await _memory(
+        admin_client,
+        slug,
+        title="Budget salon Atlas",
+        content="Décision : le budget du salon Atlas est fixé à 90 000 euros.",
+        classification=3,
+    )
+    private = await _memory(
+        admin_client,
+        slug,
+        scope="user",
+        kind="preference",
+        title="Préférence personnelle",
+        content="Préférence : réponses courtes en français.",
+    )
+    await drain()
+
+    full = await _context(admin_client, slug, "check-in Atlas par QR code")
+    package = await _context(admin_client, slug, "check-in Atlas par QR code", mode="progressive")
+    assert package["mode"] == "progressive" and full["mode"] == "full"
+    assert "## Résumé (contexte progressif)" in package["context"]
+    assert "## Index des sources et décisions" in package["context"]
+    assert all(i["tokens"] <= 40 for i in package["items"])  # teasers only
+    index = {entry["title"]: entry for entry in package["index"]}
+    decision = index["Check-in par QR code"]
+    constraint = index["Accessibilité RGAA AA"]
+    source = next(e for e in package["index"] if e["candidate_type"] == "chunk")
+    assert decision["tool"] == "get_decision" and constraint["tool"] == "get_memory_item"
+    assert source["tool"] == "expand_source"
+    assert f"id={decision['id']} → get_decision" in package["context"]
+
+    async with mcp_client(app, {"X-Orbit-Key": agent_setup.api_key}) as mcp:
+        progressive = payload(
+            await mcp.call_tool("get_context", {"task": "check-in Atlas par QR code", "mode": "progressive"})
+        )
+        assert progressive["mode"] == "progressive" and progressive["index"]
+        got = payload(await mcp.call_tool("get_decision", {"decision_id": decision["id"]}))
+        assert got["kind"] == "decision" and "QR code" in got["content"]
+        if spotlight.enabled():
+            assert got["content"].startswith(spotlight.OPEN) and got["untrusted_content_notice"]
+        item = payload(await mcp.call_tool("get_memory_item", {"item_id": constraint["id"]}))
+        assert item["kind"] == "constraint"
+        wrong = await mcp.call_tool("get_decision", {"decision_id": constraint["id"]})
+        assert "pas une décision" in error_text(wrong)
+        expanded = payload(await mcp.call_tool("expand_source", {"source_id": source["id"]}))
+        assert expanded["chunks"] == 1 and expanded["text"] and not expanded["truncated"]
+        more = payload(await mcp.call_tool("search_more", {"query": "plan de salle exposants halls"}))
+        assert more["results"] and all(r["expand_with"] for r in more["results"])
+        ids = {r["id"] for r in more["results"]}
+        assert secret["id"] not in ids and private["id"] not in ids  # governance: clearance, private scope
+        # Denials (classification C3 > agent clearance, private user memory) answer like unknown ids.
+        denied = [
+            error_text(await mcp.call_tool("get_decision", {"decision_id": secret["id"]})),
+            error_text(await mcp.call_tool("get_memory_item", {"item_id": private["id"]})),
+            error_text(await mcp.call_tool("get_memory_item", {"item_id": str(uuid.uuid4())})),
+            error_text(await mcp.call_tool("expand_source", {"source_id": str(uuid.uuid4())})),
+        ]
+        assert len({d.split(": ", 1)[1] for d in denied}) == 1 and "introuvable" in denied[0]
+
+    audit = await admin_client.get(f"{API}/{slug}/audit", params={"action": "context.expand", "limit": 50})
+    events = audit.json()["items"]
+    outcomes = [e["details"].get("allowed") for e in events]
+    assert outcomes.count(True) >= 4 and outcomes.count(False) >= 5
+    reasons = {e["details"].get("reason_code") for e in events if e["details"].get("allowed") is False}
+    assert {"EXCLUDED_CLASSIFICATION", "EXCLUDED_SCOPE"} <= reasons

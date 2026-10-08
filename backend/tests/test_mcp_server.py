@@ -66,6 +66,10 @@ EXPECTED_TOOLS = {
     "propose_memory",
     "record_turn",
     "send_feedback",
+    "expand_source",
+    "get_decision",
+    "get_memory_item",
+    "search_more",
 }
 
 # --- Pure units -----------------------------------------------------------------------------------------
@@ -83,6 +87,10 @@ async def test_tools_registered_exactly_as_contract() -> None:
         "propose_memory": {"kind", "title", "content"},
         "record_turn": {"session_id", "role", "content"},
         "send_feedback": {"request_id", "rating"},
+        "expand_source": {"source_id"},
+        "get_decision": {"decision_id"},
+        "get_memory_item": {"item_id"},
+        "search_more": {"query"},
     }
     props = set(tools["get_context"].input_schema["properties"])
     assert props == {
@@ -95,6 +103,7 @@ async def test_tools_registered_exactly_as_contract() -> None:
         "base_snapshot",
         "save_snapshot",
         "cache_hints",
+        "mode",
     }
     assert "ctx" not in json.dumps([t.input_schema for t in tools.values()])
     assert all(tool.description for tool in tools.values())

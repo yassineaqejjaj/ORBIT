@@ -71,6 +71,7 @@ class AuditAction(StrEnum):
     session_close = "session.close"
     context_request = "context.request"
     context_feedback = "context.feedback"
+    context_expand = "context.expand"
     snapshot_create = "snapshot.create"
     acl_change = "governance.acl_change"
     classification_change = "governance.classification_change"

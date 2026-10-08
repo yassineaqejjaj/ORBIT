@@ -59,11 +59,13 @@ from app.schemas.context import (
     CacheControl,
     CacheHintBlock,
     ContextConfig,
+    ContextIndexEntry,
     ContextPackage,
     ContextRequestIn,
     ContextSnapshotInfo,
     ContextTimings,
 )
+from app.search.tokens import estimate_tokens, truncate_to_tokens
 from app.services import audit
 from app.services import projects as project_service
 from app.services.audit import AuditAction
@@ -242,10 +244,16 @@ def _governance_context(resolved: ResolvedRequest, now: Any) -> GovernanceContex
 
 
 def _enforce_budget(
-    task: str, intent: Intent, included: list[Decision], excluded: list[Decision], budget: int
+    task: str,
+    intent: Intent,
+    included: list[Decision],
+    excluded: list[Decision],
+    budget: int,
+    *,
+    progressive: bool = False,
 ) -> packaging.Packaged:
     """Render, and in the rare case the estimate is exceeded drop the lowest-priority items."""
-    packaged = packaging.render(task, intent, included)
+    packaged = packaging.render(task, intent, included, progressive=progressive)
     while packaged.tokens_used > budget and included:
         dropped = included.pop()
         remaining = budget - (packaged.tokens_used - dropped.tokens)
@@ -258,8 +266,29 @@ def _enforce_budget(
         dropped.excerpt = ""
         dropped.tokens = 0
         excluded.append(dropped)
-        packaged = packaging.render(task, intent, included)
+        packaged = packaging.render(task, intent, included, progressive=progressive)
     return packaged
+
+
+def progressive_index(included: list[Decision]) -> list[ContextIndexEntry]:
+    entries = []
+    for d in included:
+        c = d.candidate
+        ref, tool = packaging.index_ref(c), packaging.expand_tool(c)
+        if not ref or not tool:
+            continue
+        entries.append(
+            ContextIndexEntry(
+                citation=d.citation or "",
+                id=ref,
+                candidate_type=c.candidate_type,
+                title=c.title,
+                memory_kind=c.memory_kind,
+                tool=tool,
+                tokens_full=estimate_tokens(c.text),
+            )
+        )
+    return entries
 
 
 def cache_hint_blocks(markdown: str, prefix: str) -> list[CacheHintBlock]:
@@ -491,9 +520,20 @@ async def _run(
             included, query_terms=understanding.terms, query_vector=understanding.query_vector
         )
 
+    progressive = body.mode == "progressive"
+    if progressive:
+        teaser = settings.context_progressive_excerpt_tokens
+        for d in included:
+            d.excerpt = truncate_to_tokens(d.excerpt, teaser)
+            d.tokens = estimate_tokens(d.excerpt)
     with timer.stage("package") as span:
         packaged = _enforce_budget(
-            understanding.task, understanding.intent, included, excluded, resolved.token_budget
+            understanding.task,
+            understanding.intent,
+            included,
+            excluded,
+            resolved.token_budget,
+            progressive=progressive,
         )
         included = packaged.ordered
         _link_related(included, excluded)
@@ -529,6 +569,9 @@ async def _run(
             config=config,
             warnings=warnings,
         )
+        if progressive:
+            package.mode = "progressive"
+            package.index = progressive_index(included)
         if packaged.prefix:
             package.cache_prefix_hash = packaged.prefix_hash
             package.cache_prefix_tokens = packaged.prefix_tokens
