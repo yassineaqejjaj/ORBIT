@@ -3,6 +3,7 @@ import {
   Brain,
   Camera,
   Database,
+  FlaskConical,
   History,
   Inbox,
   MessageCircleQuestion,
@@ -28,6 +29,7 @@ export interface ProjectNavItem {
     | "explorer"
     | "snapshots"
     | "observability"
+    | "evaluation"
     | "settings";
   label: string;
   icon: LucideIcon;
@@ -112,6 +114,13 @@ export const PROJECT_NAV: ProjectNavItem[] = [
     keywords: ["métriques", "metrics", "traces", "coût", "latence"],
   },
   {
+    segment: "evaluation",
+    label: "Évaluation",
+    icon: FlaskConical,
+    description: "Questions de référence, rappel, nDCG, suffisance et LLM-juge",
+    keywords: ["évaluation", "eval", "rappel", "recall", "ndcg", "benchmark", "juge"],
+  },
+  {
     segment: "settings",
     label: "Paramètres",
     icon: Settings,
@@ -135,7 +144,7 @@ export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
   { label: "Données", segments: ["sources", "connectors"] },
   { label: "Contexte", segments: ["memory", "explorer", "snapshots"] },
   { label: "Qualité", segments: ["inbox", "changes"] },
-  { label: "Suivi", segments: ["observability"] },
+  { label: "Suivi", segments: ["observability", "evaluation"] },
   { label: "Administration", segments: ["settings"] },
 ];
 

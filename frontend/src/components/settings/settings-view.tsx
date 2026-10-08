@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Layers, Lock, Plug, ScrollText, Settings, ShieldCheck, SlidersHorizontal, Users, Webhook } from "lucide-react";
+import { Bot, FlaskConical, Layers, Lock, Plug, ScrollText, Settings, ShieldCheck, SlidersHorizontal, Users, Webhook } from "lucide-react";
 
 import { RoleBadge } from "@/components/domain/enum-badge";
 import { useUrlParams } from "@/components/sources/use-url-params";
@@ -16,9 +16,10 @@ import { ContextProfilesPanel } from "./context-profiles-panel";
 import { McpPanel } from "./mcp-panel";
 import { MembersPanel } from "./members-panel";
 import { ProjectSettingsPanel } from "./project-settings-panel";
+import { RankingWeightsPanel } from "./ranking-weights-panel";
 import { WebhooksPanel } from "./webhooks-panel";
 
-const TABS = ["project", "members", "agents", "profiles", "mcp", "webhooks", "audit", "compliance"] as const;
+const TABS = ["project", "members", "agents", "profiles", "mcp", "webhooks", "audit", "compliance", "evaluation"] as const;
 type SettingsTab = (typeof TABS)[number];
 const DEFAULT_TAB: SettingsTab = "project";
 
@@ -94,6 +95,10 @@ export function SettingsView() {
             <ShieldCheck aria-hidden />
             Conformité IA
           </TabsTrigger>
+          <TabsTrigger value="evaluation">
+            <FlaskConical aria-hidden />
+            Évaluation
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="project">
@@ -113,6 +118,9 @@ export function SettingsView() {
         </TabsContent>
         <TabsContent value="webhooks">
           <WebhooksPanel />
+        </TabsContent>
+        <TabsContent value="evaluation">
+          <RankingWeightsPanel />
         </TabsContent>
         <TabsContent value="audit">
           <AuditPanel />
