@@ -583,7 +583,11 @@ async def _run(
     with timer.stage("rerank") as span:
         from app.evaluation import learning
 
-        learned = await learning.current_weights(session, resolved.project_id)
+        try:
+            learned = await learning.current_weights(session, resolved.project_id)
+        except Exception:  # §E2 learned weights are an optimisation: never fail the request for them
+            logger.warning("Learned ranking weights unavailable for %s", resolved.project_id, exc_info=True)
+            learned = learning.defaults()
         weights = None if learned == learning.defaults() else learning.as_tuple(learned)
         reranker_used = await rerank.rerank(
             candidates,
