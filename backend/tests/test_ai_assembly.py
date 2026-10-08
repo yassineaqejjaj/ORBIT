@@ -123,7 +123,7 @@ def test_cache_header_is_request_independent() -> None:
 async def test_progressive_mode_and_mcp_expansion_tools(
     app: Any,
     admin_client: httpx.AsyncClient,
-    agent_setup: AgentSetup,
+    agent_setup: AgentSetup,  # noqa: F811
 ) -> None:
     slug = agent_setup.slug
     await _seed(admin_client, slug)
@@ -192,3 +192,73 @@ async def test_progressive_mode_and_mcp_expansion_tools(
     assert outcomes.count(True) >= 4 and outcomes.count(False) >= 5
     reasons = {e["details"].get("reason_code") for e in events if e["details"].get("allowed") is False}
     assert {"EXCLUDED_CLASSIFICATION", "EXCLUDED_SCOPE"} <= reasons
+
+
+# --- C3 context profiles per agent kind ---------------------------------------------------------------
+
+
+async def test_context_profiles_applied_editable_and_suggested(
+    admin_client: httpx.AsyncClient,
+    agent_setup: AgentSetup,  # noqa: F811
+    agent_client: Any,
+) -> None:
+    slug = agent_setup.slug
+    await _seed(admin_client, slug)
+    listed = (await admin_client.get(f"{API}/{slug}/context/profiles")).json()
+    by_kind = {p["kind"]: p for p in listed}
+    assert set(by_kind) == {"product", "design", "engineering", "research", "custom"}
+    assert by_kind["engineering"]["token_budget"] == 6000 and not by_kind["engineering"]["customized"]
+    assert by_kind["research"]["sections"][0] == "sources"
+
+    edited = await admin_client.put(
+        f"{API}/{slug}/context/profiles/product",
+        json={"sections": ["constraints", "decisions"], "token_budget": 1500, "min_relevance": 0},
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["customized"] is True and edited.json()["default"]["token_budget"] == 4000
+    bad = await admin_client.put(f"{API}/{slug}/context/profiles/product", json={"sections": ["inconnue"]})
+    assert bad.status_code == 422
+    # Editing other project settings keeps the profiles.
+    patched = await admin_client.patch(f"{API}/{slug}", json={"settings": {"default_token_budget": 3000}})
+    assert patched.status_code == 200, patched.text
+
+    # The product agent (MCP/REST key) gets its profile: budget, sections, order.
+    async with agent_client(agent_setup.api_key) as agent:
+        response = await agent.post(f"{API}/{slug}/context", json={"task": "check-in Atlas par QR code"})
+    assert response.status_code == 200, response.text
+    package = response.json()
+    assert package["profile"]["kind"] == "product" and package["profile"]["customized"] is True
+    assert package["token_budget"] == 1500
+    assert {i["candidate_type"] for i in package["items"]} == {"memory"}
+    assert package["exclusion_summary"].get("EXCLUDED_SCOPE", 0) >= 1
+    context = package["context"]
+    assert context.index("## Contraintes & risques") < context.index("## Décisions en vigueur")
+
+    # Explorer « agir en tant que » applies the same profile and explains the exclusions.
+    simulated = await _context(
+        admin_client, slug, "check-in Atlas par QR code", agent_id=str(agent_setup.agent_id)
+    )
+    assert simulated["profile"]["kind"] == "product"
+    assert any("hors du profil product" in e["reason_detail"] for e in simulated["excluded"])
+    human = await _context(admin_client, slug, "check-in Atlas par QR code")
+    assert human["profile"] is None and any(i["candidate_type"] == "chunk" for i in human["items"])
+
+    # Feedback flagging served items as irrelevant suggests a stricter threshold.
+    for _ in range(3):
+        served = await _context(
+            admin_client, slug, "check-in Atlas par QR code", agent_id=str(agent_setup.agent_id)
+        )
+        flags = [{"citation": i["citation"], "flag": "irrelevant"} for i in served["items"]]
+        sent = await admin_client.post(
+            f"{API}/{slug}/context/requests/{served['request_id']}/feedback",
+            json={"rating": 2, "item_flags": flags},
+        )
+        assert sent.status_code in (200, 201), sent.text
+    listed = {p["kind"]: p for p in (await admin_client.get(f"{API}/{slug}/context/profiles")).json()}
+    suggestion = listed["product"]["suggestion"]
+    assert suggestion["feedback_count"] == 3 and suggestion["avg_rating"] == 2
+    assert suggestion["changes"]["min_relevance"] == 0.05 and suggestion["rationale"]
+    assert listed["design"]["suggestion"]["changes"] == {}
+
+    reset = await admin_client.delete(f"{API}/{slug}/context/profiles/product")
+    assert reset.json()["customized"] is False and reset.json()["token_budget"] == 4000

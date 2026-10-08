@@ -7,11 +7,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from app.context import persistence
+from app.context import persistence, profiles
 from app.context.assembler import assemble_context
 from app.context.visibility import Viewer
-from app.deps import AgentViewerAccess, SessionDep, ViewerAccess
-from app.enums import PrincipalKind
+from app.deps import AgentViewerAccess, OwnerAccess, ProjectAccess, SessionDep, ViewerAccess
+from app.enums import AgentKind, PrincipalKind
 from app.errors import not_found
 from app.schemas import (
     ContextPackage,
@@ -24,6 +24,7 @@ from app.schemas import (
     PageParams,
     page_params,
 )
+from app.schemas.context import AppliedProfile, ContextProfileIn, ContextProfileView, ProfileSuggestion
 from app.services import audit
 
 router = APIRouter(prefix="/projects/{slug}/context", tags=["context"])
@@ -35,6 +36,64 @@ async def request_context(
 ) -> ContextPackage:
     """Humans get the full explanation by default; agents only exclusion counters (``explain=false``)."""
     return await assemble_context(session, access, body)
+
+
+@router.get(
+    "/profiles", response_model=list[ContextProfileView], summary="Profils de contexte par type d'agent"
+)
+async def list_profiles(access: ViewerAccess, session: SessionDep) -> list[ContextProfileView]:
+    """§C3: effective profile, built-in default and the adjustment suggested by the feedback."""
+    return [await _profile_view(session, access, kind) for kind in AgentKind]
+
+
+@router.put("/profiles/{kind}", response_model=ContextProfileView, summary="Modifier un profil de contexte")
+async def update_profile(
+    kind: AgentKind, body: ContextProfileIn, access: OwnerAccess, session: SessionDep
+) -> ContextProfileView:
+    before = profiles.profile_for(access.project, kind).as_dict()
+    profile = profiles.Profile(kind=kind, **body.model_dump())
+    profiles.store(access.project, profile)
+    await _audit_profile(session, access, kind, before, profile.as_dict())
+    await session.commit()
+    return await _profile_view(session, access, kind)
+
+
+@router.delete("/profiles/{kind}", response_model=ContextProfileView, summary="Réinitialiser un profil")
+async def reset_profile(kind: AgentKind, access: OwnerAccess, session: SessionDep) -> ContextProfileView:
+    before = profiles.profile_for(access.project, kind).as_dict()
+    profiles.reset(access.project, kind)
+    await _audit_profile(session, access, kind, before, profiles.profile_for(access.project, kind).as_dict())
+    await session.commit()
+    return await _profile_view(session, access, kind)
+
+
+async def _profile_view(session: SessionDep, access: ProjectAccess, kind: AgentKind) -> ContextProfileView:
+    profile = profiles.profile_for(access.project, kind)
+    suggestion = await profiles.suggest(session, access.project, kind)
+    return ContextProfileView(
+        **profile.as_dict(),
+        default=AppliedProfile(**profiles.DEFAULTS[kind].as_dict()),
+        suggestion=ProfileSuggestion(**suggestion.as_dict()),
+    )
+
+
+async def _audit_profile(
+    session: SessionDep,
+    access: ProjectAccess,
+    kind: AgentKind,
+    before: dict,
+    after: dict,  # type: ignore[type-arg]
+) -> None:
+    await audit.record(
+        session,
+        access.project_id,
+        access.principal,
+        audit.AuditAction.project_update,
+        target_type="project",
+        target_id=access.project_id,
+        summary=f"Profil de contexte « {kind.value} » modifié",
+        details={"context_profile": kind.value, "before": before, "after": after},
+    )
 
 
 @router.get(

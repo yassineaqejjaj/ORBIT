@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -178,6 +178,17 @@ class ContextIndexEntry(ApiModel):
     tokens_full: int
 
 
+class AppliedProfile(ApiModel):
+    """§C3 context profile of the requesting agent's kind, as applied to this package."""
+
+    kind: str
+    sections: list[str]
+    token_budget: int | None = None
+    min_relevance: float | None = None
+    sufficient_threshold: float | None = None
+    customized: bool = False
+
+
 class ContextPackage(ApiModel):
     request_id: uuid.UUID
     trace_id: str
@@ -203,6 +214,7 @@ class ContextPackage(ApiModel):
     cache_hints: list[CacheHintBlock] | None = None
     mode: Literal["full", "progressive"] = "full"
     index: list[ContextIndexEntry] = Field(default_factory=list)
+    profile: AppliedProfile | None = None
 
 
 class ItemFlag(InputModel):
@@ -256,3 +268,31 @@ class ContextRequestSummary(ApiModel):
     snapshot: SnapshotRef | None
     rating: float | None
     created_at: datetime
+
+
+ProfileSection = Literal[
+    "decisions", "requirements", "constraints", "facts", "preferences", "sources", "session"
+]
+
+
+class ContextProfileIn(InputModel):
+    """§C3 editable profile of one agent kind (``null`` = project default)."""
+
+    sections: list[ProfileSection] = Field(min_length=1, max_length=7)
+    token_budget: int | None = Field(default=None, ge=500, le=32000)
+    min_relevance: float | None = Field(default=None, ge=0, le=1)
+    sufficient_threshold: float | None = Field(default=None, ge=0, le=1)
+
+
+class ProfileSuggestion(ApiModel):
+    kind: str
+    feedback_count: int
+    avg_rating: float | None = None
+    #: Suggested values (``token_budget``, ``min_relevance``, ``sections``); empty = no change.
+    changes: dict[str, Any] = Field(default_factory=dict)
+    rationale: list[str] = Field(default_factory=list)
+
+
+class ContextProfileView(AppliedProfile):
+    default: AppliedProfile
+    suggestion: ProfileSuggestion

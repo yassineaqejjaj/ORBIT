@@ -31,7 +31,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.context import compression, packaging, persistence, query_rewrite, rerank, retrieval, selection
+from app.context import (
+    compression,
+    packaging,
+    persistence,
+    profiles,
+    query_rewrite,
+    rerank,
+    retrieval,
+    selection,
+)
 from app.context import snapshots as snapshot_service
 from app.context.selection import Decision
 from app.context.understanding import Understanding, embed_query, understand
@@ -50,12 +59,13 @@ from app.enums import (
 )
 from app.errors import ApiError, forbidden, not_found, validation_error
 from app.governance.acl import effective_clearance, effective_principals
-from app.governance.policy import Candidate, GovernanceContext, evaluate
+from app.governance.policy import Candidate, GovernanceContext, Verdict, evaluate
 from app.llm import client as llm_client
 from app.models import Agent, ContextRequest, ContextSnapshot, User
 from app.observability.metrics import observe_cache_prefix, observe_context_request
 from app.observability.tracing import current_trace_id, get_tracer
 from app.schemas.context import (
+    AppliedProfile,
     CacheControl,
     CacheHintBlock,
     ContextConfig,
@@ -105,6 +115,8 @@ class ResolvedRequest:
     base_snapshot: ContextSnapshot | None
     save_name: str | None
     viewer: Viewer
+    #: §C3 profile of the requesting agent's kind (``None`` for humans or when disabled).
+    profile: profiles.Profile | None = None
 
     @property
     def project_id(self) -> uuid.UUID:
@@ -200,6 +212,17 @@ async def resolve_request(
             version = f" v{body.base_snapshot.version}" if body.base_snapshot.version else ""
             raise not_found(f"Snapshot « {base_name} »{version} introuvable dans ce projet")
     save_name = snapshot_service.normalize_name(body.save_snapshot.name) if body.save_snapshot else None
+    profile = (
+        profiles.profile_for(project, agent.kind) if agent is not None and settings.context_profiles else None
+    )
+    default_budget = (profile.token_budget if profile else None) or int(
+        project_settings["default_token_budget"]
+    )
+    default_relevance = (
+        profile.min_relevance
+        if profile and profile.min_relevance is not None
+        else float(project_settings["min_relevance"])
+    )
 
     return ResolvedRequest(
         access=access,
@@ -210,15 +233,14 @@ async def resolve_request(
         clearance=clearance,
         scopes=set(body.scopes) if body.scopes is not None else set(ALL_SCOPES),
         source_kinds=set(body.source_kinds) if body.source_kinds is not None else None,
-        token_budget=clamp_budget(body.token_budget, int(project_settings["default_token_budget"])),
-        min_relevance=float(
-            body.min_relevance if body.min_relevance is not None else project_settings["min_relevance"]
-        ),
+        token_budget=clamp_budget(body.token_budget, default_budget),
+        min_relevance=float(body.min_relevance if body.min_relevance is not None else default_relevance),
         freshness_days=dict(project_settings["freshness_days"]),
         explain=body.explain if body.explain is not None else principal.is_user,
         base_snapshot=base_snapshot,
         save_name=save_name,
         viewer=Viewer.from_access(access),
+        profile=profile,
     )
 
 
@@ -251,9 +273,10 @@ def _enforce_budget(
     budget: int,
     *,
     progressive: bool = False,
+    section_order: list[str] | None = None,
 ) -> packaging.Packaged:
     """Render, and in the rare case the estimate is exceeded drop the lowest-priority items."""
-    packaged = packaging.render(task, intent, included, progressive=progressive)
+    packaged = packaging.render(task, intent, included, progressive=progressive, section_order=section_order)
     while packaged.tokens_used > budget and included:
         dropped = included.pop()
         remaining = budget - (packaged.tokens_used - dropped.tokens)
@@ -266,8 +289,25 @@ def _enforce_budget(
         dropped.excerpt = ""
         dropped.tokens = 0
         excluded.append(dropped)
-        packaged = packaging.render(task, intent, included, progressive=progressive)
+        packaged = packaging.render(
+            task, intent, included, progressive=progressive, section_order=section_order
+        )
     return packaged
+
+
+def _apply_profile_sections(
+    profile: profiles.Profile, eligible: list[Candidate], excluded: list[Decision]
+) -> list[Candidate]:
+    """§C3: sections absent from the agent kind's profile are not served (explained exclusion)."""
+    kept: list[Candidate] = []
+    for candidate in eligible:
+        section = packaging.section_for(candidate)
+        if section in profile.sections or candidate.pinned:
+            kept.append(candidate)
+        else:
+            detail = f"section « {packaging.SECTION_TITLES[section]} » hors du profil {profile.kind.value}"
+            excluded.append(Decision(candidate=candidate, verdict=Verdict(ReasonCode.EXCLUDED_SCOPE, detail)))
+    return kept
 
 
 def progressive_index(included: list[Decision]) -> list[ContextIndexEntry]:
@@ -500,6 +540,8 @@ async def _run(
                 eligible.append(candidate)
             else:
                 excluded.append(Decision(candidate=candidate, verdict=verdict))
+        if resolved.profile is not None:
+            eligible = _apply_profile_sections(resolved.profile, eligible, excluded)
         span.set_attribute("orbit.eligible", len(eligible))
 
     with timer.stage("select") as span:
@@ -534,6 +576,7 @@ async def _run(
             excluded,
             resolved.token_budget,
             progressive=progressive,
+            section_order=resolved.profile.sections if resolved.profile else None,
         )
         included = packaged.ordered
         _link_related(included, excluded)
@@ -569,6 +612,8 @@ async def _run(
             config=config,
             warnings=warnings,
         )
+        if resolved.profile is not None:
+            package.profile = AppliedProfile(**resolved.profile.as_dict())
         if progressive:
             package.mode = "progressive"
             package.index = progressive_index(included)
@@ -592,6 +637,7 @@ async def _run(
                 "warnings": warnings,
                 "exclusion_summary": {code.value: n for code, n in summary.items()},
                 "retrieval_sources": raw.sources_used,
+                "profile": resolved.profile.as_dict() if resolved.profile else None,
                 "cache": {
                     "prefix_hash": package.cache_prefix_hash,
                     "prefix_tokens": package.cache_prefix_tokens,

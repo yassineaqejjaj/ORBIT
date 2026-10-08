@@ -240,10 +240,19 @@ def classification_warnings(included: Sequence[Decision]) -> list[str]:
     return [w for w in (classification_warning(level) for level in levels) if w]
 
 
-def render(task: str, intent: Intent, included: Sequence[Decision], *, progressive: bool = False) -> Packaged:
+def render(
+    task: str,
+    intent: Intent,
+    included: Sequence[Decision],
+    *,
+    progressive: bool = False,
+    section_order: Sequence[str] | None = None,
+) -> Packaged:
     """Assemble the Markdown context. ``included`` must carry their excerpts (compression done)."""
-    if settings.context_cache_ordering or progressive:
-        return render_cache_aware(task, intent, included, progressive=progressive)
+    if settings.context_cache_ordering or progressive or section_order:
+        return render_cache_aware(
+            task, intent, included, progressive=progressive, section_order=section_order
+        )
     ordered = assign_citations(included)
     lines: list[str] = [preamble(task, intent)]
     if not ordered:
@@ -298,8 +307,17 @@ def task_block(task: str, intent: Intent) -> str:
     return f"\n## Tâche\n\n{task_line}\n\n_Intention : {INTENT_LABELS.get(intent, intent.value)}._"
 
 
-def _render_sections(lines: list[str], members: Sequence[Decision]) -> None:
-    for name, title in SECTIONS:
+def _ordered_sections(section_order: Sequence[str] | None) -> list[tuple[str, str]]:
+    """Profile order first (§C3), then any remaining section in the default order."""
+    names = [n for n in (section_order or ()) if n in SECTION_TITLES]
+    names += [n for n, _ in SECTIONS if n not in names]
+    return [(n, SECTION_TITLES[n]) for n in names]
+
+
+def _render_sections(
+    lines: list[str], members: Sequence[Decision], section_order: Sequence[str] | None = None
+) -> None:
+    for name, title in _ordered_sections(section_order):
         group = [d for d in members if section_for(d.candidate) == name]
         if not group:
             continue
@@ -348,13 +366,18 @@ def progressive_summary(ordered: Sequence[Decision]) -> str:
 
 
 def render_cache_aware(
-    task: str, intent: Intent, included: Sequence[Decision], *, progressive: bool = False
+    task: str,
+    intent: Intent,
+    included: Sequence[Decision],
+    *,
+    progressive: bool = False,
+    section_order: Sequence[str] | None = None,
 ) -> Packaged:
     """Stable prefix (header, untrusted-data notice, stable items in a request-independent order) then
     variable items, the source list and the task: two requests serving the same stable items share a
     byte-identical prefix, which a prompt cache (e.g. Anthropic ``cache_control``) can reuse."""
     position = {id(d): index for index, d in enumerate(included)}
-    section_rank = {name: index for index, (name, _title) in enumerate(SECTIONS)}
+    section_rank = {name: index for index, (name, _title) in enumerate(_ordered_sections(section_order))}
     stable = sorted(
         (d for d in included if is_stable(d.candidate)),
         key=lambda d: (section_rank[section_for(d.candidate)], d.candidate.key),
@@ -372,14 +395,14 @@ def render_cache_aware(
     if spotlighted:
         lines.append(spotlight.NOTICE)
         lines.append(spotlight.OPEN)
-    _render_sections(lines, stable)
+    _render_sections(lines, stable, section_order)
     prefix = "\n".join(lines) + "\n"
     rest: list[str] = []
     if not ordered:
         rest.append(EMPTY_CONTEXT)
     elif progressive:
         rest.append(progressive_summary(ordered))
-    _render_sections(rest, variable)
+    _render_sections(rest, variable, section_order)
     if ordered:
         rest.append(f"\n## {INDEX_HEADING if progressive else SOURCES_HEADING}\n")
         line = index_line if progressive else source_line

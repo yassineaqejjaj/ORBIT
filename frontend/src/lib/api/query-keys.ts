@@ -37,6 +37,7 @@ export const queryKeys = {
     overview: (slug: string) => [...projectRoot(slug), "overview"] as const,
     members: (slug: string) => [...projectRoot(slug), "members"] as const,
     agents: (slug: string) => [...projectRoot(slug), "agents"] as const,
+    contextProfiles: (slug: string) => [...projectRoot(slug), "context-profiles"] as const,
     sources: (slug: string) => [...projectRoot(slug), "sources"] as const,
 
     documents: {

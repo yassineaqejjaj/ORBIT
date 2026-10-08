@@ -848,6 +848,47 @@ export interface ContextPackage {
   /** §C2: `progressive` = summary + index; details through the MCP tools named in `index[].tool`. */
   mode?: "full" | "progressive";
   index?: ContextIndexEntry[];
+  /** §C3 profile applied (agent requests and « agir en tant que » simulations). */
+  profile?: AppliedProfile | null;
+}
+
+export type ContextProfileSection =
+  | "decisions"
+  | "requirements"
+  | "constraints"
+  | "facts"
+  | "preferences"
+  | "sources"
+  | "session";
+
+/** §C3 context profile of an agent kind. */
+export interface AppliedProfile {
+  kind: AgentKind;
+  sections: ContextProfileSection[];
+  token_budget: number | null;
+  min_relevance: number | null;
+  sufficient_threshold: number | null;
+  customized: boolean;
+}
+
+export interface ProfileSuggestion {
+  kind: AgentKind;
+  feedback_count: number;
+  avg_rating: number | null;
+  changes: Partial<Pick<AppliedProfile, "token_budget" | "min_relevance" | "sections">>;
+  rationale: string[];
+}
+
+export interface ContextProfileView extends AppliedProfile {
+  default: AppliedProfile;
+  suggestion: ProfileSuggestion;
+}
+
+export interface ContextProfileIn {
+  sections: ContextProfileSection[];
+  token_budget: number | null;
+  min_relevance: number | null;
+  sufficient_threshold: number | null;
 }
 
 export interface ContextIndexEntry {

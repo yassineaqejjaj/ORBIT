@@ -2,8 +2,11 @@
  * One typed function per endpoint of docs/API.md (base `/api/v1`).
  * Path segments are always URI-encoded. `signal` is forwarded for query cancellation.
  */
+import type { AgentKind } from "@/lib/enums";
 import { apiUrl, http, request } from "./client";
 import type {
+  ContextProfileIn,
+  ContextProfileView,
   Agent,
   AgentCreateIn,
   AgentCreated,
@@ -140,6 +143,21 @@ export function getProject(slug: string, opts: Opts = {}): Promise<Project> {
 /** PATCH /projects/{slug} (owner) → Project */
 export function updateProject(slug: string, body: ProjectUpdateIn): Promise<Project> {
   return http.patch<Project>(p(slug), body);
+}
+
+/** GET /projects/{slug}/context/profiles → ContextProfileView[] (§C3) */
+export function listContextProfiles(slug: string, opts: Opts = {}): Promise<ContextProfileView[]> {
+  return http.get<ContextProfileView[]>(`${p(slug)}/context/profiles`, opts);
+}
+
+/** PUT /projects/{slug}/context/profiles/{kind} (owner) → ContextProfileView */
+export function updateContextProfile(slug: string, kind: AgentKind, body: ContextProfileIn): Promise<ContextProfileView> {
+  return http.put<ContextProfileView>(`${p(slug)}/context/profiles/${kind}`, body);
+}
+
+/** DELETE /projects/{slug}/context/profiles/{kind} (owner) → ContextProfileView (built-in default) */
+export function resetContextProfile(slug: string, kind: AgentKind): Promise<ContextProfileView> {
+  return http.delete<ContextProfileView>(`${p(slug)}/context/profiles/${kind}`);
 }
 
 /** GET /projects/{slug}/overview → Overview */

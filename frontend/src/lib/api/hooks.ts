@@ -21,10 +21,13 @@ import {
 
 import { saveBlob, type ApiError } from "./client";
 import * as api from "./endpoints";
+import type { AgentKind } from "@/lib/enums";
 import { queryKeys } from "./query-keys";
 import type {
   Agent,
   AgentCreateIn,
+  ContextProfileIn,
+  ContextProfileView,
   AgentCreated,
   AuditEvent,
   AuditListParams,
@@ -239,6 +242,26 @@ export function useUpdateProject(slug: string, options?: MutationOpts<Project, P
       qc.setQueryData(queryKeys.project.detail(slug), project);
       return inv(qc, queryKeys.projects.all(), queryKeys.project.overview(slug));
     },
+    options,
+  );
+}
+
+export function useContextProfiles(slug: string, options?: QueryOpts<ContextProfileView[]>) {
+  return useQuery<ContextProfileView[], ApiError>({
+    queryKey: queryKeys.project.contextProfiles(slug),
+    queryFn: ({ signal }) => api.listContextProfiles(slug, { signal }),
+    enabled: Boolean(slug),
+    ...options,
+  });
+}
+
+export function useUpdateContextProfile(
+  slug: string,
+  options?: MutationOpts<ContextProfileView, { kind: AgentKind; body: ContextProfileIn | null }>,
+) {
+  return useApiMutation<ContextProfileView, { kind: AgentKind; body: ContextProfileIn | null }>(
+    ({ kind, body }) => (body ? api.updateContextProfile(slug, kind, body) : api.resetContextProfile(slug, kind)),
+    (qc) => inv(qc, queryKeys.project.contextProfiles(slug)),
     options,
   );
 }
