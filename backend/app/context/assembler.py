@@ -66,6 +66,7 @@ from app.governance.policy import Candidate, GovernanceContext, Verdict, evaluat
 from app.llm import client as llm_client
 from app.memory import entities, skills
 from app.models import Agent, ContextRequest, ContextSnapshot, User
+from app.observability import genai
 from app.observability.metrics import observe_cache_prefix, observe_context_request
 from app.observability.tracing import current_trace_id, get_tracer
 from app.schemas.context import (
@@ -550,6 +551,13 @@ async def _run(
         span.set_attribute("orbit.rounds", len(timer.rounds))
         span.set_attribute("orbit.chunk_hits", len(raw.chunk_hits))
         span.set_attribute("orbit.memory_hits", len(raw.memory_hits))
+        genai.retrieval_attributes(  # §E6 OpenTelemetry GenAI conventions
+            span,
+            data_source=f"orbit:{resolved.access.project.slug}",
+            query=understanding.task,
+            top_k=retrieval.CHUNK_TOP_K + retrieval.MEMORY_TOP_K,
+            hits=len(raw.chunk_hits) + len(raw.memory_hits),
+        )
         agent_kind = AgentKind(resolved.agent.kind).value if resolved.agent is not None else None
         if settings.memory_skills and resolved.scopes:
             await retrieval.add_procedures(

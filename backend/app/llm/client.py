@@ -30,6 +30,7 @@ import httpx
 
 from app.config import settings
 from app.llm import anthropic, guardrail
+from app.observability import genai
 
 logger = logging.getLogger("orbit.llm")
 
@@ -176,6 +177,28 @@ async def generate(
     user = guardrail.prepare(user)
     timeout = timeout_seconds if timeout_seconds is not None else settings.llm_timeout_seconds
     started = time.perf_counter()
+    with genai.chat_span(
+        provider=provider(),
+        model=_model(),
+        max_tokens=max_tokens,
+        temperature=temperature,
+        json_mode=json_mode,
+    ) as span:
+        result = await _call(system, user, json_mode, temperature, max_tokens, timeout, images, started, span)
+    return result
+
+
+async def _call(
+    system: str,
+    user: str,
+    json_mode: bool,
+    temperature: float,
+    max_tokens: int,
+    limit_seconds: float,
+    images: Sequence[tuple[bytes, str]],
+    started: float,
+    span: Any,
+) -> LLMResult | None:
     try:
         if provider() == "anthropic":
             text, tokens_in, tokens_out = await anthropic.create_message(
@@ -185,7 +208,7 @@ async def generate(
                 user=user,
                 max_tokens=max_tokens,
                 json_mode=json_mode,
-                timeout_seconds=timeout,
+                timeout_seconds=limit_seconds,
                 images=images,
             )
             result: LLMResult | None = LLMResult(text, tokens_in, tokens_out)
@@ -196,13 +219,24 @@ async def generate(
                 json_mode=json_mode,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                timeout_seconds=timeout,
+                timeout_seconds=limit_seconds,
                 images=images,
             )
     except (httpx.HTTPError, anthropic.AnthropicError, KeyError, IndexError, TypeError, ValueError) as exc:
         logger.warning("LLM call failed after %.0f ms: %s", (time.perf_counter() - started) * 1000, exc)
+        span.set_attribute(genai.ERROR_TYPE, type(exc).__qualname__)
         return None
     logger.debug("LLM call ok in %.0f ms", (time.perf_counter() - started) * 1000)
+    if result is not None:
+        genai.record_chat_result(
+            span,
+            model=_model(),
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            system=system,
+            user=user,
+            text=result.text,
+        )
     return result
 
 

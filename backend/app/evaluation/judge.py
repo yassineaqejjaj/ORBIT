@@ -30,6 +30,8 @@ from app.enums import JobKind
 from app.llm import client as llm_client
 from app.llm import guardrail
 from app.models import ContextDecision, ContextJudgement, ContextRequest, IngestionJob
+from app.observability import genai
+from app.observability.tracing import get_tracer
 
 JUDGE_SYSTEM = (
     "Tu es un évaluateur de contexte pour agents IA. On te donne une tâche et le contexte servi par ORBIT "
@@ -119,6 +121,16 @@ async def judge_request(session: AsyncSession, request: ContextRequest) -> Conte
         judgement.verdict = _verdict(judgement.score)
     session.add(judgement)
     await session.flush()
+    with get_tracer("orbit.evaluation").start_as_current_span("evaluate context_sufficiency") as span:
+        span.set_attribute("orbit.request_id", str(request.id))
+        span.set_attribute("orbit.judge.method", judgement.method)
+        genai.evaluation_attributes(
+            span,
+            name="context_sufficiency",
+            score=judgement.score,
+            label=judgement.verdict,
+            explanation=judgement.explanation,
+        )
     return judgement
 
 

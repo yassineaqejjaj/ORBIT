@@ -18,6 +18,7 @@ from mcp.shared.exceptions import MCPError
 from mcp_types import ElicitResult
 
 from tests.test_ai_eval import memory
+from tests.test_feature_llm import FakeLLM, fake_llm  # noqa: F401
 from tests.test_mcp_server import AgentSetup, agent_setup  # noqa: F401
 
 API = "/api/v1/projects"
@@ -219,3 +220,54 @@ async def test_signed_handoff_valid_invalid_and_replay(
     actions = [a["action"] for a in items]
     assert actions.count("a2a.handoff_issue") == 1 and actions.count("a2a.handoff_receive") == 1
     assert actions.count("a2a.handoff_reject") == 5
+
+
+# --- E6 OpenTelemetry GenAI semantic conventions ----------------------------------------------------
+
+
+async def test_genai_attributes_on_llm_retrieval_and_mcp_spans(
+    app: FastAPI,
+    admin_client: httpx.AsyncClient,
+    agent_setup: AgentSetup,  # noqa: F811
+    fake_llm: Any,  # noqa: F811
+) -> None:
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from app.llm import client as llm_client
+    from app.observability.tracing import setup_tracing
+
+    exporter = InMemorySpanExporter()
+    setup_tracing().add_span_processor(SimpleSpanProcessor(exporter))
+
+    def spans(name_prefix: str) -> list[Any]:
+        return [s for s in exporter.get_finished_spans() if s.name.startswith(name_prefix)]
+
+    fake_llm(lambda _p: "Bonjour")
+    assert await llm_client.complete("Système", "Dis bonjour", classification=0, max_tokens=50) == "Bonjour"
+    chat = spans("chat ")[-1]
+    assert chat.attributes["gen_ai.operation.name"] == "chat"
+    assert chat.attributes["gen_ai.provider.name"] == "anthropic"
+    assert chat.attributes["gen_ai.request.max_tokens"] == 50
+    assert chat.attributes["gen_ai.usage.input_tokens"] >= 0 and "gen_ai.response.model" in chat.attributes
+    assert "gen_ai.input.messages" not in chat.attributes  # content capture is off by default
+
+    slug = agent_setup.slug
+    await memory(admin_client, slug, title="Hébergement Atlas", content="Atlas est hébergé chez OVH.")
+    await admin_client.post(f"{API}/{slug}/context", json={"task": "Hébergement Atlas", "min_relevance": 0})
+    retrieve = spans("context.retrieve")[-1]
+    assert retrieve.attributes["gen_ai.operation.name"] == "retrieval"
+    assert retrieve.attributes["gen_ai.data_source.id"] == f"orbit:{slug}"
+    assert retrieve.attributes["orbit.retrieval.hits"] >= 1
+
+    async with mcp(app, agent_setup.api_key) as client:
+        await client.call_tool("list_skills", {})
+        await client.read_resource("orbit://decisions")
+    tool = spans("tools/call list_skills")[-1]
+    assert tool.attributes["gen_ai.operation.name"] == "execute_tool"
+    assert tool.attributes["gen_ai.tool.name"] == "list_skills"
+    assert tool.attributes["gen_ai.agent.id"] == str(agent_setup.agent_id)
+    assert tool.attributes["mcp.method.name"] == "tools/call"
+    read = spans("resources/read")[-1]
+    assert read.attributes["mcp.resource.uri"] == "orbit://decisions"
+    assert read.attributes["gen_ai.agent.name"] == "Agent Produit"

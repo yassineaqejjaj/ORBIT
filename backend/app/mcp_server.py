@@ -74,6 +74,7 @@ from app.models import (
     Source,
     User,
 )
+from app.observability import genai
 from app.schemas import (
     BaseSnapshotRef,
     ContextPackage,
@@ -265,6 +266,7 @@ async def agent_scope(ctx: Context) -> AsyncIterator[AgentScope]:
             if project is None:
                 raise ToolError("Projet de l'agent introuvable")
             access = ProjectAccess(project=project, principal=Principal.for_agent(agent), role=Role.editor)
+            genai.agent_attributes(agent)  # §E6 gen_ai.agent.* on the MCP server span
             yield AgentScope(session=session, access=access)
         except ToolError:
             await session.rollback()
@@ -997,6 +999,7 @@ def build_mcp_server() -> MCPServer:
     from app import mcp_resources
 
     mcp_resources.register(server)  # §E4 resources, prompts, elicitation
+    server.middleware.append(genai.McpResourceMiddleware())  # §E6 mcp.resource.uri
     return server
 
 
