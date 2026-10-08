@@ -60,6 +60,8 @@ class JobKind(StrEnum):
     webhook = "webhook"
     connector_sync = "connector_sync"
     reflect = "reflect"
+    evaluate = "evaluate"
+    judge = "judge"
 
 
 class JobStatus(StrEnum):

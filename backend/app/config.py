@@ -187,6 +187,27 @@ class Settings(BaseSettings):
     #: §D4 monthly reflection « ce qui a changé » (proposed long-term summary, human validation).
     memory_reflection: bool = True
 
+    # --- Evaluation & interoperability (docs/AI_CONTEXT_ENGINEERING.md §E) -------------------------
+    #: §E1 evaluation bench: default k of recall@k / nDCG@k and blocking recall threshold (CI, UI badge).
+    eval_k: int = Field(default=5, ge=1, le=50)
+    eval_min_recall: float = Field(default=0.6, ge=0, le=1)
+    #: §E2 bounded learning of the ranking weights from feedback (max absolute change per weight).
+    ranking_learning: bool = True
+    ranking_learning_max_delta: float = Field(default=0.1, ge=0, le=0.3)
+    ranking_learning_rate: float = Field(default=0.2, ge=0, le=1)
+    ranking_learning_min_signals: int = Field(default=5, ge=1)
+    #: §E3 LLM judge on a sample of served contexts (guardrail applies; never C2/C3 to an external LLM).
+    judge_sample_rate: float = Field(default=0.0, ge=0, le=1)
+    judge_alert_threshold: float = Field(default=0.5, ge=0, le=1)
+    judge_window_days: int = Field(default=7, ge=1, le=90)
+    judge_min_samples: int = Field(default=3, ge=1)
+    #: §E5 A2A: Agent Card + signed snapshot handoff (HMAC-SHA256 JWS; secret defaults to the JWT secret).
+    a2a_enabled: bool = True
+    a2a_signing_secret: str = ""
+    a2a_handoff_ttl_seconds: int = Field(default=600, ge=30, le=86400)
+    #: §E6 OpenTelemetry GenAI semantic conventions: record prompt/completion contents on spans (off).
+    otel_genai_capture_content: bool = False
+
     # --- Observability ---------------------------------------------------------------------------
     otlp_endpoint: str = ""
     otlp_headers: str = ""  # "key1=value1,key2=value2" (e.g. Langfuse basic auth)
