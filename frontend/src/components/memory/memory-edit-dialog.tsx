@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { EnumIcon } from "@/components/domain/enum-icon";
 import { ClassificationSelect, type ClassificationChoice } from "@/components/sources/classification-select";
 import { TagsInput } from "@/components/sources/tags-input";
+import { SkillMetaFields, type SkillMetaDraft } from "./skill-meta-fields";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -45,6 +46,15 @@ export function MemoryEditDialog({ slug, item, open, onOpenChange, onSaved }: Me
   const [classification, setClassification] = React.useState<Classification>(item.classification);
   const [validTo, setValidTo] = React.useState(isoToDateInput(item.valid_to));
   const [tags, setTags] = React.useState<string[]>(item.tags);
+  const initialSkill = React.useMemo<SkillMetaDraft>(
+    () => ({
+      description: item.skill_meta?.description ?? "",
+      task_types: item.skill_meta?.task_types ?? [],
+      agent_kinds: item.skill_meta?.agent_kinds ?? [],
+    }),
+    [item.skill_meta],
+  );
+  const [skillMeta, setSkillMeta] = React.useState<SkillMetaDraft>(initialSkill);
   const update = useUpdateMemory(slug, { meta: { silentError: true } });
 
   React.useEffect(() => {
@@ -55,6 +65,7 @@ export function MemoryEditDialog({ slug, item, open, onOpenChange, onSaved }: Me
     setClassification(item.classification);
     setValidTo(isoToDateInput(item.valid_to));
     setTags(item.tags);
+    setSkillMeta(initialSkill);
     update.reset();
     // Reset the form each time the dialog opens on a (possibly new) item.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -68,8 +79,11 @@ export function MemoryEditDialog({ slug, item, open, onOpenChange, onSaved }: Me
     if (classification !== item.classification) out.classification = classification;
     if (validTo !== isoToDateInput(item.valid_to)) out.valid_to = validTo ? dateInputToIso(validTo, "end") : null;
     if (tags.join("\u0000") !== item.tags.join("\u0000")) out.tags = tags;
+    if (kind === "procedure" && JSON.stringify(skillMeta) !== JSON.stringify(initialSkill)) {
+      out.skill_meta = { ...skillMeta, name: item.skill_meta?.name, description: skillMeta.description.trim() };
+    }
     return out;
-  }, [title, content, kind, classification, validTo, tags, item]);
+  }, [title, content, kind, classification, validTo, tags, skillMeta, initialSkill, item]);
 
   const changed = Object.keys(body).length > 0;
   const fieldErrors = isApiError(update.error) ? update.error.fieldErrors : {};
@@ -162,6 +176,10 @@ export function MemoryEditDialog({ slug, item, open, onOpenChange, onSaved }: Me
               <TagsInput id="memory-edit-tags" value={tags} onChange={setTags} />
             </Field>
           </div>
+
+          {kind === "procedure" ? (
+            <SkillMetaFields idPrefix="memory-edit" value={skillMeta} onChange={setSkillMeta} />
+          ) : null}
 
           {update.isError ? (
             <Alert tone="red" title="La modification n'a pas pu être enregistrée">

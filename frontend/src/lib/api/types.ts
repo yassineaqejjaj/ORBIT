@@ -311,8 +311,53 @@ export interface MemoryItem {
   created_by_id: UUID | null;
   created_by_label: string | null;
   provenance_count: number;
+  skill_meta?: SkillMeta | null;
   created_at: ISODateString;
   updated_at: ISODateString;
+}
+
+/** §D1 procedure (skill) metadata. Empty lists = applies to every task / agent kind. */
+export interface SkillMeta {
+  name: string;
+  description: string;
+  task_types: Intent[];
+  agent_kinds: AgentKind[];
+}
+
+export interface Skill extends SkillMeta {
+  title: string;
+  memory_id: UUID;
+  lineage_id: UUID;
+  version: number;
+  status: MemoryStatus;
+  classification: Classification;
+  updated_at: ISODateString;
+}
+
+export interface SkillDetail extends Skill {
+  skill_md: string;
+}
+
+/** §D2 entity resolution. */
+export interface EntityAlias {
+  alias: string;
+  merged_from_id: UUID | null;
+}
+
+export interface Entity {
+  id: UUID;
+  name: string;
+  kind: string;
+  merged_into_id: UUID | null;
+  aliases: EntityAlias[];
+  created_at: ISODateString;
+}
+
+export interface EntitySuggestion {
+  a: Entity;
+  b: Entity;
+  score: number;
+  reason: string;
 }
 
 export interface Provenance {
@@ -347,6 +392,9 @@ export interface Relation {
   other_title: string | null;
   confidence: number;
   detail: string | null;
+  method?: string | null;
+  score?: number | null;
+  explanation?: string | null;
   created_at: ISODateString;
 }
 
@@ -595,6 +643,8 @@ export interface MemoryListParams extends PageParams {
   q?: string;
   /** Default false. */
   include_history?: boolean;
+  /** §D2 « tel que connu au » (ISO date). */
+  as_of?: string;
 }
 
 export interface MemoryProvenanceIn {
@@ -620,6 +670,7 @@ export interface MemoryIn {
   supersedes_id?: UUID;
   status?: "proposed" | "validated";
   provenance?: MemoryProvenanceIn[];
+  skill_meta?: Partial<SkillMeta>;
 }
 
 export interface MemoryUpdateIn {
@@ -629,6 +680,7 @@ export interface MemoryUpdateIn {
   valid_to?: ISODateString | null;
   classification?: Classification;
   kind?: MemoryKind;
+  skill_meta?: Partial<SkillMeta>;
 }
 
 export interface ReasonIn {
@@ -646,7 +698,7 @@ export interface SupersedeIn {
 
 export interface MemoryGraphNode {
   id: UUID;
-  type: RelationNodeType;
+  type: RelationNodeType | "entity";
   label: string;
   kind: MemoryKind | SourceKind | null;
   status: MemoryStatus | DocumentStatus | ChunkStatus | null;
@@ -656,6 +708,9 @@ export interface MemoryGraphEdge {
   source: UUID;
   target: UUID;
   rel_type: RelationType;
+  confidence?: number | null;
+  detail?: string | null;
+  method?: string | null;
 }
 
 export interface MemoryGraph {
@@ -872,6 +927,7 @@ export type ContextProfileSection =
   | "decisions"
   | "requirements"
   | "constraints"
+  | "procedures"
   | "facts"
   | "preferences"
   | "sources"

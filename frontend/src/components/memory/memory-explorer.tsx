@@ -101,8 +101,15 @@ export function MemoryExplorer() {
   const consolidate = useConsolidateMemory(slug);
 
   const filters = React.useMemo<MemoryFilterValues>(
-    () => ({ scope: state.scope, status: state.status, kinds: state.kinds, q: state.q, history: state.history }),
-    [state.scope, state.status, state.kinds, state.q, state.history],
+    () => ({
+      scope: state.scope,
+      status: state.status,
+      kinds: state.kinds,
+      q: state.q,
+      history: state.history,
+      asOf: state.asOf,
+    }),
+    [state.scope, state.status, state.kinds, state.q, state.history, state.asOf],
   );
   const results = useMemoryResults(slug, filters, state.page);
   const counts = useMemoryStatusCounts(slug, {
@@ -110,6 +117,7 @@ export function MemoryExplorer() {
     kinds: state.kinds,
     q: state.q,
     history: state.history,
+    asOf: state.asOf,
   });
   const insights = useGraphInsights(slug);
 
@@ -149,7 +157,7 @@ export function MemoryExplorer() {
   };
 
   const hasFilters =
-    state.scope !== "all" || state.status !== "all" || state.kinds.length > 0 || state.q.trim() !== "" || state.history;
+    state.scope !== "all" || state.status !== "all" || state.kinds.length > 0 || state.q.trim() !== "" || state.history || state.asOf !== "";
   const detailInSheet = state.view === "graph" || isMobile;
   const sheetOpen = mounted && Boolean(state.item) && detailInSheet;
 
@@ -265,7 +273,7 @@ export function MemoryExplorer() {
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() => update({ scope: "all", status: "all", kinds: [], q: "", history: false })}
+                      onClick={() => update({ scope: "all", status: "all", kinds: [], q: "", history: false, asOf: "" })}
                     >
                       Réinitialiser les filtres
                     </Button>

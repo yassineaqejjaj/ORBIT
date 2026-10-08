@@ -9,6 +9,7 @@ import { EnumIcon } from "@/components/domain/enum-icon";
 import { SourceKindIcon } from "@/components/domain/source-kind-icon";
 import { ClassificationSelect, classificationPayload, type ClassificationChoice } from "@/components/sources/classification-select";
 import { TagsInput } from "@/components/sources/tags-input";
+import { EMPTY_SKILL_META, SkillMetaFields, type SkillMetaDraft } from "./skill-meta-fields";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -167,6 +168,7 @@ export function MemoryCreateDialog({ slug, open, onOpenChange, onCreated, defaul
   const [validTo, setValidTo] = React.useState("");
   const [sessionId, setSessionId] = React.useState("");
   const [tags, setTags] = React.useState<string[]>([]);
+  const [skillMeta, setSkillMeta] = React.useState<SkillMetaDraft>(EMPTY_SKILL_META);
   const [validated, setValidated] = React.useState(false);
   const [sources, setSources] = React.useState<PickedSource[]>([]);
   const [touched, setTouched] = React.useState(false);
@@ -215,6 +217,7 @@ export function MemoryCreateDialog({ slug, open, onOpenChange, onCreated, defaul
     if (validFrom) body.valid_from = dateInputToIso(validFrom, "start");
     if (validTo) body.valid_to = dateInputToIso(validTo, "end");
     if (tags.length) body.tags = tags;
+    if (kind === "procedure") body.skill_meta = { ...skillMeta, description: skillMeta.description.trim() };
     if (scope === "user" && me) body.subject_user_id = me.id;
     if (scope === "short_term") body.session_id = sessionId.trim();
     if (sources.length) {
@@ -328,6 +331,10 @@ export function MemoryCreateDialog({ slug, open, onOpenChange, onCreated, defaul
               />
             </Field>
           </div>
+
+          {kind === "procedure" ? (
+            <SkillMetaFields idPrefix="memory-new" value={skillMeta} onChange={setSkillMeta} />
+          ) : null}
 
           <Field id="memory-new-tags" label="Étiquettes">
             <TagsInput id="memory-new-tags" value={tags} onChange={setTags} />

@@ -28,6 +28,13 @@ import { cn } from "@/lib/utils";
 
 type View = "open" | "resolved";
 
+/** §D3 contradiction detection method. */
+const METHOD_LABELS: Record<string, string> = {
+  nli: "Modèle NLI local",
+  llm: "LLM-juge",
+  lexical: "Marqueurs lexicaux",
+};
+
 export function ConflictsPanel({ slug }: { slug: string }) {
   const [view, setView] = React.useState<View>("open");
   const conflicts = useConflicts(slug, view);
@@ -160,7 +167,16 @@ function ConflictCard({
         <Badge tone="neutral" size="sm">
           Similarité {formatPercent(conflict.similarity)}
         </Badge>
+        {conflict.method ? (
+          <Badge tone={conflict.method === "lexical" ? "neutral" : "violet"} size="sm">
+            {METHOD_LABELS[conflict.method] ?? conflict.method}
+            {conflict.score != null ? ` · ${formatPercent(conflict.score)}` : ""}
+          </Badge>
+        ) : null}
         {conflict.detail ? <span className="text-xs text-muted-foreground">{conflict.detail}</span> : null}
+        {conflict.explanation && conflict.method !== "lexical" ? (
+          <p className="w-full text-xs text-muted-foreground">{conflict.explanation}</p>
+        ) : null}
         {!open ? (
           <Badge tone={conflict.status === "resolved" ? "green" : "neutral"} size="sm" className="ml-auto" dot>
             {conflict.status === "resolved" ? "Arbitrée" : "Écartée"}

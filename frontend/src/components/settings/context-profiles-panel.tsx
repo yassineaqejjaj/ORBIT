@@ -34,6 +34,7 @@ const SECTION_LABELS: Record<ContextProfileSection, string> = {
   decisions: "Décisions en vigueur",
   requirements: "Besoins utilisateurs",
   constraints: "Contraintes & risques",
+  procedures: "Façons de faire",
   facts: "Faits & connaissances",
   preferences: "Préférences utilisateur",
   sources: "Extraits de sources",

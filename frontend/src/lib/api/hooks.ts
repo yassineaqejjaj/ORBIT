@@ -24,6 +24,9 @@ import * as api from "./endpoints";
 import type { AgentKind } from "@/lib/enums";
 import { queryKeys } from "./query-keys";
 import type {
+  Entity,
+  EntitySuggestion,
+  Skill,
   Agent,
   AgentCreateIn,
   ContextProfileIn,
@@ -560,6 +563,51 @@ export function useMemoryGraph(slug: string, limit = 150, options?: QueryOpts<Me
     enabled: Boolean(slug),
     ...options,
   });
+}
+
+export function useSkills(slug: string, options?: QueryOpts<Skill[]>) {
+  return useQuery<Skill[], ApiError>({
+    queryKey: queryKeys.project.memory.skills(slug),
+    queryFn: ({ signal }) => api.listSkills(slug, { signal }),
+    enabled: Boolean(slug),
+    ...options,
+  });
+}
+
+export function useEntities(slug: string, options?: QueryOpts<Entity[]>) {
+  return useQuery<Entity[], ApiError>({
+    queryKey: queryKeys.project.memory.entities(slug),
+    queryFn: ({ signal }) => api.listEntities(slug, { signal }),
+    enabled: Boolean(slug),
+    ...options,
+  });
+}
+
+export function useEntitySuggestions(slug: string, options?: QueryOpts<EntitySuggestion[]>) {
+  return useQuery<EntitySuggestion[], ApiError>({
+    queryKey: queryKeys.project.memory.entitySuggestions(slug),
+    queryFn: ({ signal }) => api.listEntitySuggestions(slug, { signal }),
+    enabled: Boolean(slug),
+    ...options,
+  });
+}
+
+export function useMergeEntity(slug: string) {
+  return useApiMutation<Entity, { targetId: UUID; sourceId: UUID }>(
+    ({ targetId, sourceId }) => api.mergeEntity(slug, targetId, { source_id: sourceId }),
+    (qc) => invalidateMemory(qc, slug),
+  );
+}
+
+export function useUnmergeEntity(slug: string) {
+  return useApiMutation<Entity, UUID>(
+    (entityId) => api.unmergeEntity(slug, entityId),
+    (qc) => invalidateMemory(qc, slug),
+  );
+}
+
+export function useReflectMemory(slug: string) {
+  return useApiMutation<Job, string | undefined>((month) => api.reflectMemory(slug, month), null);
 }
 
 export function useCreateMemory(slug: string, options?: MutationOpts<MemoryItem, MemoryIn>) {

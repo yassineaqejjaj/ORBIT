@@ -5,6 +5,10 @@
 import type { AgentKind } from "@/lib/enums";
 import { apiUrl, http, request } from "./client";
 import type {
+  Entity,
+  EntitySuggestion,
+  Skill,
+  SkillDetail,
   ContextProfileIn,
   ContextProfileView,
   Agent,
@@ -341,6 +345,7 @@ export function listMemory(slug: string, params: MemoryListParams = {}, opts: Op
       status: params.status,
       q: params.q,
       include_history: params.include_history,
+      as_of: params.as_of,
       page: params.page,
       page_size: params.page_size,
     },
@@ -395,6 +400,51 @@ export function forgetMemory(slug: string, memoryId: UUID, body: RequiredReasonI
 /** POST /projects/{slug}/memory/consolidate (editor) → Job */
 export function consolidateMemory(slug: string): Promise<Job> {
   return http.post<Job>(`${p(slug)}/memory/consolidate`);
+}
+
+/** POST /projects/{slug}/memory/reflect?month=YYYY-MM (editor) → Job (§D4 « ce qui a changé ») */
+export function reflectMemory(slug: string, month?: string): Promise<Job> {
+  return http.post<Job>(`${p(slug)}/memory/reflect`, undefined, { query: { month } });
+}
+
+/** GET /projects/{slug}/skills → procedures served as Agent Skills (§D1) */
+export function listSkills(slug: string, opts: Opts = {}): Promise<Skill[]> {
+  return http.get<Skill[]>(`${p(slug)}/skills`, opts);
+}
+
+/** GET /projects/{slug}/skills/{name} → SKILL.md */
+export function getSkill(slug: string, name: string, opts: Opts = {}): Promise<SkillDetail> {
+  return http.get<SkillDetail>(`${p(slug)}/skills/${e(name)}`, opts);
+}
+
+/** URL of GET /projects/{slug}/skills/{name}/download (zip) — usable as <a href download>. */
+export function skillDownloadUrl(slug: string, name: string): string {
+  return apiUrl(`${p(slug)}/skills/${e(name)}/download`);
+}
+
+/** GET /projects/{slug}/entities (§D2) */
+export function listEntities(slug: string, opts: Opts = {}): Promise<Entity[]> {
+  return http.get<Entity[]>(`${p(slug)}/entities`, opts);
+}
+
+/** POST /projects/{slug}/entities (editor) */
+export function createEntity(slug: string, body: { name: string; kind?: string; aliases?: string[] }): Promise<Entity> {
+  return http.post<Entity>(`${p(slug)}/entities`, body);
+}
+
+/** GET /projects/{slug}/entities/suggestions (editor) → suggested merges */
+export function listEntitySuggestions(slug: string, opts: Opts = {}): Promise<EntitySuggestion[]> {
+  return http.get<EntitySuggestion[]>(`${p(slug)}/entities/suggestions`, opts);
+}
+
+/** POST /projects/{slug}/entities/{id}/merge (editor, audited) */
+export function mergeEntity(slug: string, targetId: UUID, body: { source_id: UUID; reason?: string }): Promise<Entity> {
+  return http.post<Entity>(`${p(slug)}/entities/${e(targetId)}/merge`, body);
+}
+
+/** POST /projects/{slug}/entities/{id}/unmerge (editor, audited) */
+export function unmergeEntity(slug: string, entityId: UUID, body: { reason?: string } = {}): Promise<Entity> {
+  return http.post<Entity>(`${p(slug)}/entities/${e(entityId)}/unmerge`, body);
 }
 
 /** GET /projects/{slug}/memory/graph → {nodes, edges} */

@@ -47,6 +47,7 @@ export type IconName =
   | "BookOpen"
   | "Heart"
   | "ScrollText"
+  | "ClipboardCheck"
   | "TriangleAlert"
   | "Package"
   | "Palette"
@@ -277,6 +278,7 @@ export const MEMORY_KINDS = [
   "preference",
   "summary",
   "risk",
+  "procedure",
 ] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
 
@@ -288,6 +290,12 @@ export const MEMORY_KIND_META: Record<MemoryKind, EnumMeta & { icon: IconName }>
   preference: { label: "Préférence", tone: "violet", icon: "Heart" },
   summary: { label: "Synthèse", tone: "sky", icon: "ScrollText" },
   risk: { label: "Risque", tone: "red", icon: "TriangleAlert" },
+  procedure: {
+    label: "Procédure",
+    tone: "green",
+    icon: "ClipboardCheck",
+    description: "Façon de faire : définition de « terminé », convention, checklist (servie comme skill)",
+  },
 };
 
 export const MEMORY_STATUSES = ["proposed", "validated", "superseded", "obsolete", "forgotten"] as const;
