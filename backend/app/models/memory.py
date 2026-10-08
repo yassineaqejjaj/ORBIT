@@ -96,6 +96,8 @@ class MemoryItem(UUIDPkMixin, TimestampMixin, Base):
     confidence_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: §D1 procedure (skill) metadata — ``{"name", "description", "task_types", "agent_kinds"}`` (h004).
     skill_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    #: §F1 meeting action item — ``{"owner", "due_date", "due_text", "speaker", "timestamp"}`` (h006).
+    action_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
 
 class MemoryProvenance(UUIDPkMixin, CreatedAtMixin, Base):

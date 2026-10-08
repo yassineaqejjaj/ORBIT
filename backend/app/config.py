@@ -107,6 +107,22 @@ class Settings(BaseSettings):
     #: Command of the MarkItDown MCP server (stdio).
     markitdown_mcp_command: str = "markitdown-mcp"
 
+    # --- Sources (docs/AI_CONTEXT_ENGINEERING.md §F) ---------------------------------------------
+    #: Meeting import (§F1): transcripts (VTT/SRT/DOCX/text) and optional audio transcription.
+    meetings_enabled: bool = True
+    #: OpenAI-compatible ``/audio/transcriptions`` endpoint (Whisper, faster-whisper…); empty = off.
+    transcription_base_url: str = ""
+    transcription_api_key: str = ""
+    transcription_model: str = "whisper-1"
+    transcription_timeout_seconds: float = 300.0
+    #: Maximum audio file size sent for transcription (MB).
+    transcription_max_mb: int = Field(default=25, ge=1, le=500)
+    #: True when the transcription server is self-hosted: C2/C3 audio may then be transcribed. Otherwise the
+    #: LLM guardrail ceiling (``ORBIT_LLM_MAX_CLASSIFICATION``) applies — C2/C3 audio never leaves ORBIT.
+    transcription_local: bool = False
+    #: Project e-mails (§F3): maximum messages read per mailbox folder / label and per synchronisation.
+    mail_max_messages: int = Field(default=200, ge=1, le=5000)
+
     # --- AI security (docs/AI_CONTEXT_ENGINEERING.md §A) -----------------------------------------
     #: Prompt-injection detector at ingestion (score + reasons per chunk, quarantine above the threshold).
     injection_detection: bool = True

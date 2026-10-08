@@ -57,6 +57,7 @@ _FEMININE_KINDS: frozenset[MemoryKind] = frozenset(
         MemoryKind.preference,
         MemoryKind.summary,
         MemoryKind.procedure,
+        MemoryKind.action,
     }
 )
 

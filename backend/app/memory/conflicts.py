@@ -367,6 +367,7 @@ KIND_FAMILIES: tuple[frozenset[MemoryKind], ...] = (
     frozenset({MemoryKind.risk}),
     frozenset({MemoryKind.preference}),
     frozenset({MemoryKind.procedure}),
+    frozenset({MemoryKind.action}),
 )
 
 

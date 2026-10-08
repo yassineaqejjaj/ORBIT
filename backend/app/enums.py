@@ -87,6 +87,8 @@ class MemoryKind(StrEnum):
     summary = "summary"
     risk = "risk"
     procedure = "procedure"
+    #: Action item of a meeting (§F1): ``action_meta`` holds the owner and the due date.
+    action = "action"
 
 
 class MemoryStatus(StrEnum):
@@ -338,6 +340,7 @@ MEMORY_KIND_LABELS: dict[MemoryKind, str] = {
     MemoryKind.summary: "Synthèse",
     MemoryKind.risk: "Risque",
     MemoryKind.procedure: "Procédure",
+    MemoryKind.action: "Action",
 }
 
 PII_LABELS: dict[PiiType, str] = {

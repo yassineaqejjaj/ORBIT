@@ -547,6 +547,28 @@ class Seeder:
             )
             return
 
+        if doc["mode"] == "meeting":  # §F1: transcript → speakers, timestamps, attributed decisions
+            if any(d.get("title") == doc["title"] for d in in_source):
+                say(f"  = {doc['title'][:44]:<44} déjà présent")
+                return
+            filename, content, content_type = mf.meeting_file(doc, self.now)
+            await owner.post(
+                f"{self.base}/documents/meeting",
+                files={"file": (filename, content, content_type)},
+                data={
+                    "source_id": str(source["id"]),
+                    "title": doc["title"],
+                    "meeting_date": mf.day_at(self.now, int(doc["offset_days"])).date().isoformat(),
+                    "participants": ",".join(doc["participants"]),
+                    "classification": str(doc["classification"]),
+                    "acl_principals": ",".join(doc["acl"]),
+                    "tags": ",".join(doc.get("tags", [])),
+                },
+            )
+            self.stats["documents_submitted"] += 1
+            say(f"  + {doc['title'][:44]:<44} J-{doc['offset_days']:<4} réunion (transcription VTT)")
+            return
+
         version = int(doc.get("version", 1))
         match = next(
             (

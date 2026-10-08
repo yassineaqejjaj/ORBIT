@@ -49,6 +49,8 @@ class MemoryItem(ApiModel):
     decided_by: str | None = None
     confidence_reason: str | None = None
     skill_meta: dict[str, Any] | None = None
+    #: §F1 action item: ``{"owner", "due_date", "due_text", "speaker", "timestamp"}``.
+    action_meta: dict[str, Any] | None = None
     created_by_label: str = ""
     provenance_count: int = 0
     created_at: datetime

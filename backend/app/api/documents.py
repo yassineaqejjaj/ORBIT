@@ -216,6 +216,89 @@ async def upload_documents(
 
 
 @router.post(
+    "/meeting",
+    response_model=DocumentSummary,
+    status_code=status.HTTP_201_CREATED,
+    summary="Importer une réunion (transcription VTT/SRT/DOCX/texte ou audio)",
+)
+async def import_meeting(
+    access: AgentEditorAccess,
+    session: SessionDep,
+    file: UploadFile = File(..., description="Transcription (.vtt, .srt, .docx, .txt, .md) ou audio"),
+    title: str | None = Form(default=None, max_length=500),
+    meeting_date: str | None = Form(default=None, description="AAAA-MM-JJ"),
+    participants: str | None = Form(default=None, description="CSV des participants"),
+    source_id: uuid.UUID | None = Form(default=None),
+    classification: int | None = Form(default=None, ge=0, le=3),
+    acl_principals: str | None = Form(default=None),
+    tags: str | None = Form(default=None),
+) -> DocumentSummary:
+    """§F1: the transcript is parsed by the pipeline (speakers, timestamps); audio is transcribed first
+    through ``ORBIT_TRANSCRIPTION_*`` behind the classification guardrail and the size limit."""
+    from datetime import date as date_type
+
+    from app.ingestion import meetings, transcription
+
+    if not settings.meetings_enabled:
+        raise validation_error("L'import de réunions est désactivé (ORBIT_MEETINGS_ENABLED=false)")
+    name = file.filename or "reunion"
+    audio = meetings.audio_mime(file.filename, file.content_type)
+    limit = max(settings.max_upload_bytes, transcription.max_bytes()) if audio else settings.max_upload_bytes
+    data = await file.read(limit + 1)
+    if not data:
+        raise validation_error(f"Le fichier « {name} » est vide")
+    if meeting_date:
+        try:
+            date_type.fromisoformat(meeting_date)
+        except ValueError as exc:
+            raise validation_error("Date de réunion invalide (format attendu AAAA-MM-JJ)") from exc
+    source = await resolve_source(
+        session, access.project_id, source_id, SourceKind.note, access.principal.actor
+    )
+    if audio:
+        level = max(
+            int(classification if classification is not None else 0), int(source.default_classification)
+        )
+        try:
+            transcription.check(len(data), level)
+        except transcription.TranscriptionError as exc:
+            raise validation_error(str(exc)) from exc
+        mime_type = audio
+    else:
+        if len(data) > settings.max_upload_bytes:
+            raise _too_large(name)
+        mime_type = detect_mime_type(file.filename, file.content_type, data)
+        if not (meetings.is_transcript_file(mime_type, file.filename) or mime_type.startswith("text/")) and (
+            not (file.filename or "").lower().endswith(".docx")
+        ):
+            raise validation_error(
+                f"Format non pris en charge pour « {name} » : transcription .vtt, .srt, .docx, .txt ou .md, "
+                "ou fichier audio (.mp3, .m4a, .wav, .webm, .ogg, .flac)"
+            )
+    people = [p.strip() for p in (participants or "").split(",") if p.strip()][:100]
+    outcome = await ingest_content(
+        session,
+        access,
+        source,
+        ContentIn(
+            title=(title or "").strip() or title_from_filename(file.filename),
+            mime_type=mime_type,
+            data=data,
+            filename=file.filename or None,
+            classification=classification,
+            acl_principals=parse_acl_field(acl_principals),
+            tags=parse_tags_csv(tags) or ["réunion"],
+            metadata={
+                "meeting": {"date": meeting_date or None, "participants": people, "audio": bool(audio)}
+            },
+        ),
+    )
+    await session.commit()
+    await session.refresh(outcome.document)
+    return await serialize_summary(session, outcome.document)
+
+
+@router.post(
     "/text", response_model=DocumentSummary, status_code=status.HTTP_201_CREATED, summary="Ingérer un texte"
 )
 async def create_text_document(

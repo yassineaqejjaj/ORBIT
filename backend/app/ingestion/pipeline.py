@@ -53,7 +53,7 @@ from app.enums import (
     classification_code,
     classification_label,
 )
-from app.ingestion import classifier, contextual, visual
+from app.ingestion import classifier, contextual, meetings, transcription, visual
 from app.ingestion.chunker import chunk_text
 from app.ingestion.extractors import (
     ExtractedDocument,
@@ -92,6 +92,7 @@ FORMAT_LABELS = {
     "json": "JSON",
     "csv": "CSV",
     "markitdown": "converti via MarkItDown (MCP)",
+    "transcript": "transcription de réunion",
 }
 
 
@@ -344,8 +345,32 @@ def _raw_text(data: bytes, mime_type: str) -> str | None:
     return data[:2_000_000].decode("utf-8", errors="ignore")
 
 
+async def _extract_meeting(
+    document: Document, source: Source | None, data: bytes, filename: str, meeting: Any
+) -> ExtractedDocument:
+    """Meeting transcript (§F1): parse VTT/SRT/DOCX/text, or transcribe audio behind the guardrail."""
+    info = meeting if isinstance(meeting, dict) else {}
+    options = {
+        "title": document.title,
+        "date": str(info.get("date") or "") or None,
+        "participants": [str(p) for p in info.get("participants") or []],
+    }
+    try:
+        if (document.mime_type or "").startswith("audio/"):
+            level = max(int(document.classification), int(source.default_classification) if source else 1)
+            transcript = await transcription.transcribe(
+                data, filename, document.mime_type, classification=level
+            )
+            return meetings.document_from_transcript(transcript, **options)
+        return await asyncio.to_thread(
+            meetings.extract_meeting, data, document.mime_type, filename, **options
+        )
+    except (ExtractionError, transcription.TranscriptionError) as exc:
+        raise PermanentJobError(str(exc)) from exc
+
+
 async def _extract(
-    document: Document, version: DocumentVersion
+    document: Document, version: DocumentVersion, source: Source | None = None
 ) -> tuple[ExtractedDocument, str | None, bytes | None]:
     """The extracted document, the raw text before normalisation (``None`` for binary formats) and the
     original bytes (``None`` for text documents; images are extracted from them, §B5)."""
@@ -357,6 +382,9 @@ async def _extract(
         except ObjectStoreError as exc:
             raise PermanentJobError(f"Stockage d'objets inaccessible : {exc}") from exc
         filename = str((version.metadata_ or {}).get("filename") or document.title)
+        meeting = (document.metadata_ or {}).get("meeting")
+        if isinstance(meeting, dict) or meetings.is_transcript_file(document.mime_type, filename):
+            return await _extract_meeting(document, source, data, filename, meeting), None, None
         if needs_conversion(document.mime_type, filename, data):
             # Fallback converter (F6): MarkItDown MCP server, or a clear French status reason.
             try:
@@ -384,7 +412,14 @@ async def _ingest(
 ) -> None:
     # 1. extract ------------------------------------------------------------------------------------
     async with track_step(session, job, "extract", commit=True) as step:
-        extracted, raw_text, original = await _extract(document, version)
+        extracted, raw_text, original = await _extract(document, version, source)
+        if isinstance(extracted.metadata.get("meeting"), dict):
+            meeting_meta = extracted.metadata.pop("meeting")
+            previous = (document.metadata_ or {}).get("meeting")
+            document.metadata_ = {
+                **(document.metadata_ or {}),
+                "meeting": {**(previous if isinstance(previous, dict) else {}), **meeting_meta},
+            }
         text = extracted.text
         extraction_meta: dict[str, Any] = {"format": extracted.format, **extracted.metadata}
         if extracted.title:
@@ -402,6 +437,10 @@ async def _ingest(
             detail += f" · format source {extracted.metadata['source_format']}"
         if extracted.metadata.get("page_count"):
             detail += f" · {extracted.metadata['page_count']} page(s)"
+        if extracted.format == "transcript":
+            info = (document.metadata_ or {}).get("meeting") or {}
+            speakers = len(info.get("speakers") or [])
+            detail += f" · {speakers} intervenant(s) · {info.get('turn_count', 0)} interventions"
         step.detail = detail
 
     # 2. pii ------------------------------------------------------------------------------------------

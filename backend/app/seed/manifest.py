@@ -122,6 +122,13 @@ def import_file(doc: dict[str, Any], now: datetime) -> tuple[str, bytes, str]:
     return path.name, content, content_type
 
 
+def meeting_file(doc: dict[str, Any], now: datetime) -> tuple[str, bytes, str]:
+    """``(filename, rendered bytes, content type)`` of a ``mode: meeting`` transcript (§F1)."""
+    path = data_path(doc["file"])
+    content = render(path.read_text(encoding="utf-8"), now).encode("utf-8")
+    return path.name, content, "text/vtt" if path.suffix.lower() == ".vtt" else "text/plain"
+
+
 def import_records(doc: dict[str, Any], now: datetime | None = None) -> list[dict[str, Any]]:
     """Parsed records of an import file (rendered when ``now`` is given, raw tokens otherwise)."""
     path = data_path(doc["file"])
@@ -265,6 +272,11 @@ def validate_manifest(manifest: dict[str, Any] | None = None) -> list[str]:
                 stale = doc.get("stale_records")
                 if stale is not None and sum(1 for o in offsets if o > 90) != int(stale):
                     errors.append(f"Import {key} : {stale} enregistrements de plus de 90 jours attendus")
+        elif doc["mode"] == "meeting":  # §F1 transcript imported through /documents/meeting
+            if path.suffix.lower() not in {".vtt", ".srt", ".txt", ".docx"}:
+                errors.append(f"Réunion {key} : format de transcription inattendu {path.suffix}")
+            if not doc.get("participants") or int(doc["offset_days"]) <= 0:
+                errors.append(f"Réunion {key} : participants et offset_days positif requis")
         else:
             errors.append(f"Document {key} : mode inconnu {doc['mode']}")
 

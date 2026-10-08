@@ -188,6 +188,8 @@ class Statement:
     rationale: str | None = None
     decided_by: str | None = None
     confidence_reason: str | None = None
+    #: §F1 meeting action item (owner, due date, speaker, timestamp).
+    action_meta: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)
@@ -516,14 +518,30 @@ async def _collect_candidates(
     document: Document, source: Source, chunks: Sequence[Chunk], result: ExtractionResult
 ) -> list[Candidate]:
     source_kind = SourceKind(source.kind)
-    meeting = source_kind == SourceKind.note and is_meeting_record(document, chunks[0].text if chunks else "")
+    transcript = (document.metadata_ or {}).get("meeting")
+    transcript = transcript if isinstance(transcript, dict) and transcript.get("turns") is not None else None
+    meeting = transcript is not None or (
+        source_kind == SourceKind.note and is_meeting_record(document, chunks[0].text if chunks else "")
+    )
+    turn_state = None
+    if transcript is not None:  # §F1: speaker-attributed decisions and action items
+        from app.memory import meeting_extraction
+
+        turn_state = meeting_extraction.TurnState()
+        speakers = [str(s) for s in transcript.get("speakers") or []]
+        meeting_date = meeting_extraction.parse_meeting_date(transcript.get("date"))
     trust = source.effective_trust
     # §A3: low-trust sources lower the confidence and are never promoted to validated automatically.
     delta = _SOURCE_CONFIDENCE_DELTA.get(source_kind, 0.0) + _TRUST_CONFIDENCE_DELTA[trust]
     candidates: list[Candidate] = []
     by_text: dict[str, Candidate] = {}
     for chunk in chunks:
-        rules = extract_statements(chunk.text_redacted, section=chunk.section, source_kind=source_kind)
+        if turn_state is not None:
+            rules = meeting_extraction.extract_meeting_statements(
+                chunk.text_redacted, speakers, turn_state, meeting_date
+            )
+        else:
+            rules = extract_statements(chunk.text_redacted, section=chunk.section, source_kind=source_kind)
         cards = await extract_cards(document, chunk, source_kind, result.llm)
         card_statements = [st for st in (_card_statement(card) for card in cards or []) if st is not None]
         if cards is not None:
@@ -829,6 +847,10 @@ async def extract_from_document(session: AsyncSession, job: IngestionJob) -> dic
                 item.rationale = statement.rationale
                 item.decided_by = statement.decided_by
                 item.confidence_reason = statement.confidence_reason
+            elif statement.decided_by:
+                item.decided_by = statement.decided_by
+            if statement.action_meta:
+                item.action_meta = statement.action_meta
             result.created.append(item)
 
         for item in result.created:

@@ -114,7 +114,8 @@
     {"key": "cr-sprint6", "phase": 3, "mode": "text", "source": "cr", "file": "notes/cr-sprint-review-6.md",
      "title": "CR sprint review 6", "external_id": "cr-sprint-review-6", "author": "Camille Martin",
      "offset_days": 4, "classification": 1, "acl": ["project:*"], "tags": ["compte-rendu", "sprint-review"],
-     "demonstrates": "fraîcheur, décision QR code, risque d'adoption"}
+     "demonstrates": "fraîcheur, décision QR code, risque d'adoption"},
+    {"key": "reunion-point-pilote", "phase": 3, "mode": "meeting", "source": "cr", "file": "notes/reunion-point-pilote.vtt", "title": "Réunion — point d'avancement du pilote", "offset_days": 2, "classification": 1, "acl": ["project:*"], "tags": ["réunion", "transcription"], "participants": ["Camille Martin", "Inès Moreau", "Léo Bernard"], "demonstrates": "import de réunion (VTT) : locuteurs, horodatages, décisions et action attribuées"}
   ],
   "validations": [
     {"after_phase": 1, "kind": "decision", "contains": ["mobile native"], "reason": "Décision actée lors du kick-off."},
