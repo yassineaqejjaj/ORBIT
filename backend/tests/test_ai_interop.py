@@ -136,3 +136,86 @@ async def test_mcp_prompts_and_elicitation(
         review = await client.get_prompt("preparer_revue", {})
         assert asked == ["Sur quel sujet porte la revue ?"]
         assert "« hébergement Atlas »" in review.messages[0].content.text
+
+
+# --- E5 A2A -----------------------------------------------------------------------------------------
+
+
+async def test_agent_card_is_served(client: httpx.AsyncClient) -> None:
+    for path in ("/.well-known/agent-card.json", "/.well-known/agent.json"):
+        response = await client.get(path)
+        assert response.status_code == 200, response.text
+        card = response.json()
+        assert card["protocolVersion"] == "0.3.0" and card["name"] == "ORBIT"
+        assert card["url"].endswith("/api/v1") and card["preferredTransport"] == "HTTP+JSON"
+        assert {s["id"] for s in card["skills"]} == {"governed-context", "project-memory", "context-handoff"}
+        assert "orbitAgentKey" in card["securitySchemes"]
+
+
+async def test_signed_handoff_valid_invalid_and_replay(
+    admin_client: httpx.AsyncClient,
+    agent_client: Any,
+    agent_setup: AgentSetup,  # noqa: F811
+) -> None:
+    import jwt
+
+    from app.api.a2a import sign
+
+    slug = agent_setup.slug
+    await memory(admin_client, slug, title="Hébergement Atlas", content="Atlas est hébergé chez OVH.")
+    saved = await admin_client.post(
+        f"{API}/{slug}/context",
+        json={"task": "Hébergement Atlas", "min_relevance": 0, "save_snapshot": {"name": "handoff-atlas"}},
+    )
+    assert saved.status_code == 200, saved.text
+    second = await admin_client.post(
+        f"{API}/{slug}/agents", json={"name": "Agent Revue", "kind": "engineering", "clearance": 1}
+    )
+    assert second.status_code == 201, second.text
+    receiver_id = second.json()["agent"]["id"]
+    sender = agent_client(agent_setup.api_key)
+    receiver = agent_client(second.json()["api_key"])
+
+    issued = await sender.post(
+        f"{API}/{slug}/a2a/handoffs", json={"snapshot": "handoff-atlas@1", "audience": f"agent:{receiver_id}"}
+    )
+    assert issued.status_code == 201, issued.text
+    token = issued.json()["token"]
+    header = jwt.get_unverified_header(token)
+    assert header["alg"] == "HS256" and header["typ"] == "orbit-context-handoff+jwt"
+
+    wrong_receiver = await sender.post(f"{API}/{slug}/a2a/handoffs/receive", json={"token": token})
+    assert wrong_receiver.status_code == 403
+    head, payload, signature = token.split(".")
+    tampered = f"{head}.{payload}.{signature[:-4]}AAAA"
+    assert (
+        await receiver.post(f"{API}/{slug}/a2a/handoffs/receive", json={"token": tampered})
+    ).status_code == 401
+    forged = jwt.encode(
+        jwt.decode(token, options={"verify_signature": False}),
+        "autre-secret-0123456789abcdef0123456789",
+        "HS256",
+    )
+    assert (
+        await receiver.post(f"{API}/{slug}/a2a/handoffs/receive", json={"token": forged})
+    ).status_code == 401
+
+    received = await receiver.post(f"{API}/{slug}/a2a/handoffs/receive", json={"token": token})
+    assert received.status_code == 200, received.text
+    body = received.json()
+    assert body["verified"] is True and body["snapshot"]["name"] == "handoff-atlas"
+    assert body["issuer"] == f"agent:{agent_setup.agent_id}"
+    replay = await receiver.post(f"{API}/{slug}/a2a/handoffs/receive", json={"token": token})
+    assert replay.status_code == 409 and "rejeu" in replay.text
+
+    claims = jwt.decode(token, options={"verify_signature": False})
+    expired = sign({**claims, "jti": "expired-jti", "iat": claims["iat"] - 7200, "exp": claims["iat"] - 3600})
+    assert (
+        await receiver.post(f"{API}/{slug}/a2a/handoffs/receive", json={"token": expired})
+    ).status_code == 401
+
+    audit = (await admin_client.get(f"{API}/{slug}/audit", params={"action": "a2a", "limit": 50})).json()
+    items = audit.get("items", audit) if isinstance(audit, dict) else audit
+    actions = [a["action"] for a in items]
+    assert actions.count("a2a.handoff_issue") == 1 and actions.count("a2a.handoff_receive") == 1
+    assert actions.count("a2a.handoff_reject") == 5

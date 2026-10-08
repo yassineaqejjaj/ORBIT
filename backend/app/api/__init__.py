@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api import (
+    a2a,
     agents,
     ask,
     audit,
@@ -61,6 +62,7 @@ for module in (
     connectors,
     compliance,
     evaluation,
+    a2a,
 ):
     api_router.include_router(module.router)
 
