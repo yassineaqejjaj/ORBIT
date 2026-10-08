@@ -280,6 +280,7 @@ class Seeder:
                 await self.optional(f"Validations (phase {phase})", self.apply_validations(phase))
             await self.optional("Mémoire", self.seed_memory())
             await self.optional("Entités", self.seed_entities())
+            await self.optional("Évaluation", self.seed_eval_sets())
             await self.optional("Sessions", self.seed_sessions())
             if self.replay_history:
                 await self.optional("Historique des contextes", self.replay_context_history())
@@ -682,6 +683,46 @@ class Seeder:
                 continue
             await owner.post(f"{self.base}/entities", entity)
             say(f"  + {entity['name']} ({', '.join(entity.get('aliases', []))})")
+
+    async def seed_eval_sets(self) -> None:
+        """§E1 golden set « Référence Atlas »: reference questions, assisted generation, one queued run."""
+        eval_sets = self.manifest.get("eval_sets") or []
+        if not eval_sets:
+            return
+        title("Banc d'évaluation")
+        owner = await self.as_user(self.manifest["project"]["owner"])
+        existing = {s["name"] for s in await owner.get(f"{self.base}/evaluation/sets") or []}
+        for spec in eval_sets:
+            if spec["name"] in existing:
+                say(f"  = {spec['name']} (existant)")
+                continue
+            created = await owner.post(
+                f"{self.base}/evaluation/sets",
+                {"name": spec["name"], "description": spec.get("description", "")},
+            )
+            added = 0
+            for case in spec.get("cases", []):
+                expected = []
+                for ref in case.get("expected", []):
+                    found = await self._find_memory(owner, ref["scope"], ref["title"])
+                    if found is not None:
+                        expected.append(
+                            {"type": "memory", "id": found["lineage_id"], "title": found["title"]}
+                        )
+                if expected:
+                    await owner.post(
+                        f"{self.base}/evaluation/sets/{created['id']}/cases",
+                        {"question": case["question"], "expected": expected},
+                    )
+                    added += 1
+            generated = []
+            if spec.get("generate"):
+                generated = await owner.post(
+                    f"{self.base}/evaluation/sets/{created['id']}/generate", {"limit": spec["generate"]}
+                )
+            if spec.get("run"):
+                await owner.post(f"{self.base}/evaluation/sets/{created['id']}/runs", {})
+            say(f"  + {spec['name']} ({added} questions, {len(generated or [])} générées)")
 
     async def _seed_memory_item(self, owner: Api, item: dict[str, Any]) -> None:
         author = (

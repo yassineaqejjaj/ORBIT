@@ -176,6 +176,20 @@
   "entities": [
     {"name": "Personne à mobilité réduite", "kind": "public", "aliases": ["PMR"]}
   ],
+  "eval_sets": [
+    {"name": "Référence Atlas", "generate": 3, "run": true,
+     "description": "Questions de référence du projet Atlas (données fictives) : contraintes et façons de faire attendues dans le contexte.",
+     "cases": [
+      {"question": "Quel niveau d'accessibilité les applications doivent-elles respecter ?",
+       "expected": [{"scope": "long_term", "title": "Toutes les applications Nordalis respectent le RGAA niveau AA"}]},
+      {"question": "Où les données personnelles du portail peuvent-elles être hébergées ?",
+       "expected": [{"scope": "long_term", "title": "Hébergement des données personnelles dans l'UE obligatoire"}]},
+      {"question": "Combien de postes compte le plateau de Lille ?",
+       "expected": [{"scope": "project", "title": "Capacité du plateau de Lille"}]},
+      {"question": "Quand une user story est-elle considérée comme terminée ?",
+       "expected": [{"scope": "project", "title": "Définition de terminé d'une user story"}]}
+    ]}
+  ],
   "sessions": [
     {"id": "atlas-spec-redaction", "agent": "produit", "turns": [
       {"role": "user", "content": "Rédige la section « Check-in par QR code » de la spécification pour le pilote de Lyon."},
