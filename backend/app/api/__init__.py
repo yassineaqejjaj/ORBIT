@@ -12,6 +12,7 @@ from app.api import (
     context,
     documents,
     entities,
+    evaluation,
     feed,
     inbox,
     jobs,
@@ -59,6 +60,7 @@ for module in (
     teams,
     connectors,
     compliance,
+    evaluation,
 ):
     api_router.include_router(module.router)
 

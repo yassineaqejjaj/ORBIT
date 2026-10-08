@@ -110,6 +110,8 @@ async def run_job(session: AsyncSession, job: IngestionJob) -> None:
         JobKind.webhook: handle_webhook,
         JobKind.connector_sync: handle_connector_sync,
         JobKind.reflect: handle_reflect,
+        JobKind.evaluate: handle_evaluate,
+        JobKind.judge: handle_judge,
     }
     await handlers[JobKind(job.kind)](session, job)
 
@@ -119,6 +121,20 @@ async def handle_reflect(session: AsyncSession, job: IngestionJob) -> None:
     from app.memory.reflection import handle_reflect as reflect
 
     await reflect(session, job)
+
+
+async def handle_evaluate(session: AsyncSession, job: IngestionJob) -> None:
+    """Evaluation run of a golden set (docs/AI_CONTEXT_ENGINEERING.md §E1)."""
+    from app.evaluation.bench import handle_evaluate as evaluate
+
+    await evaluate(session, job)
+
+
+async def handle_judge(session: AsyncSession, job: IngestionJob) -> None:
+    """LLM judge of a served context (docs/AI_CONTEXT_ENGINEERING.md §E3)."""
+    from app.evaluation.judge import handle_judge as judge
+
+    await judge(session, job)
 
 
 async def handle_webhook(session: AsyncSession, job: IngestionJob) -> None:

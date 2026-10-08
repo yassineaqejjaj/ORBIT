@@ -84,6 +84,14 @@ class AuditAction(StrEnum):
     quarantine_release = "security.quarantine_release"
     poisoning_alert = "security.poisoning_alert"
     compliance_export = "compliance.export"
+    #: Chantier E (docs/AI_CONTEXT_ENGINEERING.md §E).
+    eval_set_change = "evaluation.set_change"
+    eval_run = "evaluation.run"
+    ranking_weights_change = "evaluation.ranking_weights"
+    judge_export = "evaluation.judge_export"
+    a2a_handoff_issue = "a2a.handoff_issue"
+    a2a_handoff_receive = "a2a.handoff_receive"
+    a2a_handoff_reject = "a2a.handoff_reject"
 
 
 @dataclass(frozen=True, slots=True)
