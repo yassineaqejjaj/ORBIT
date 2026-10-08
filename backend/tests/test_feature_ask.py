@@ -105,7 +105,9 @@ async def test_extractive_answer_is_cited_governed_and_persisted(
 
 async def test_not_found_answer(world: dict[str, Any]) -> None:
     out = await _ask(world["viewer"], world["slug"], question="Quelle est la couleur du chat du voisin ?")
-    assert out["answer"] == NOT_FOUND
+    # §C5: the context is insufficient → « je ne sais pas » assumed, with what is missing.
+    assert out["answer"].startswith("Je ne sais pas") or out["answer"] == NOT_FOUND
+    assert out["sufficiency"]["verdict"] == "insufficient"
     assert out["citations"] == []
     assert out["confidence"] == "low"
 

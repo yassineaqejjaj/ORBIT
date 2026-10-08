@@ -8,7 +8,12 @@ import { type ApiError, http, request } from "./client";
 import { queryKeys } from "./query-keys";
 import type { MemoryScope } from "@/lib/enums";
 
-import type { ContextItem, ISODateString, UUID } from "./types";
+import type {
+  ContextItem,
+  ISODateString,
+  UUID,
+  ContextSufficiency,
+} from "./types";
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
@@ -42,6 +47,8 @@ export interface AskOut {
   message_id: UUID;
   mode: AskMode;
   warnings: string[];
+  /** §C5 sufficiency of the context behind the answer (« je ne sais pas » when insufficient). */
+  sufficiency?: ContextSufficiency | null;
 }
 
 export interface AskMessage {
@@ -115,14 +122,24 @@ export const askApi = {
   listConversations: (slug: string, opts: Opts = {}) =>
     http.get<AskConversationSummary[]>(`${p(slug)}/ask/conversations`, opts),
   getConversation: (slug: string, id: UUID, opts: Opts = {}) =>
-    http.get<AskConversationDetail>(`${p(slug)}/ask/conversations/${encodeURIComponent(id)}`, opts),
+    http.get<AskConversationDetail>(
+      `${p(slug)}/ask/conversations/${encodeURIComponent(id)}`,
+      opts,
+    ),
   deleteConversation: (slug: string, id: UUID) =>
     http.delete(`${p(slug)}/ask/conversations/${encodeURIComponent(id)}`),
   sendFeedback: (slug: string, messageId: UUID, body: AskFeedbackIn) =>
-    http.post<AskMessage>(`${p(slug)}/ask/messages/${encodeURIComponent(messageId)}/feedback`, body),
-  getTeams: (slug: string, opts: Opts = {}) => http.get<TeamsIntegration>(`${p(slug)}/integrations/teams`, opts),
+    http.post<AskMessage>(
+      `${p(slug)}/ask/messages/${encodeURIComponent(messageId)}/feedback`,
+      body,
+    ),
+  getTeams: (slug: string, opts: Opts = {}) =>
+    http.get<TeamsIntegration>(`${p(slug)}/integrations/teams`, opts),
   putTeams: (slug: string, body: TeamsIntegrationIn) =>
-    request<TeamsIntegration>(`${p(slug)}/integrations/teams`, { method: "PUT", json: body }),
+    request<TeamsIntegration>(`${p(slug)}/integrations/teams`, {
+      method: "PUT",
+      json: body,
+    }),
   deleteTeams: (slug: string) => http.delete(`${p(slug)}/integrations/teams`),
 };
 
@@ -132,9 +149,12 @@ export const askApi = {
 
 export const askKeys = {
   all: (slug: string) => [...queryKeys.project.all(slug), "ask"] as const,
-  conversations: (slug: string) => [...askKeys.all(slug), "conversations"] as const,
-  conversation: (slug: string, id: UUID) => [...askKeys.all(slug), "conversation", id] as const,
-  teams: (slug: string) => [...queryKeys.project.all(slug), "integrations", "teams"] as const,
+  conversations: (slug: string) =>
+    [...askKeys.all(slug), "conversations"] as const,
+  conversation: (slug: string, id: UUID) =>
+    [...askKeys.all(slug), "conversation", id] as const,
+  teams: (slug: string) =>
+    [...queryKeys.project.all(slug), "integrations", "teams"] as const,
 };
 
 export function useAskConversations(slug: string) {
@@ -148,7 +168,8 @@ export function useAskConversations(slug: string) {
 export function useAskConversation(slug: string, id: UUID | null | undefined) {
   return useQuery<AskConversationDetail, ApiError>({
     queryKey: askKeys.conversation(slug, id ?? ""),
-    queryFn: ({ signal }) => askApi.getConversation(slug, id as string, { signal }),
+    queryFn: ({ signal }) =>
+      askApi.getConversation(slug, id as string, { signal }),
     enabled: Boolean(slug && id),
   });
 }
@@ -160,7 +181,9 @@ export function useAsk(slug: string) {
     onSuccess: (out) =>
       Promise.all([
         qc.invalidateQueries({ queryKey: askKeys.conversations(slug) }),
-        qc.invalidateQueries({ queryKey: askKeys.conversation(slug, out.conversation_id) }),
+        qc.invalidateQueries({
+          queryKey: askKeys.conversation(slug, out.conversation_id),
+        }),
         qc.invalidateQueries({ queryKey: queryKeys.project.context.all(slug) }),
       ]),
   });
@@ -170,16 +193,29 @@ export function useDeleteAskConversation(slug: string) {
   const qc = useQueryClient();
   return useMutation<unknown, ApiError, UUID>({
     mutationFn: (id) => askApi.deleteConversation(slug, id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: askKeys.conversations(slug) }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: askKeys.conversations(slug) }),
   });
 }
 
-export function useAskFeedback(slug: string, conversationId: UUID | null | undefined) {
+export function useAskFeedback(
+  slug: string,
+  conversationId: UUID | null | undefined,
+) {
   const qc = useQueryClient();
-  return useMutation<AskMessage, ApiError, { messageId: UUID; body: AskFeedbackIn }>({
-    mutationFn: ({ messageId, body }) => askApi.sendFeedback(slug, messageId, body),
+  return useMutation<
+    AskMessage,
+    ApiError,
+    { messageId: UUID; body: AskFeedbackIn }
+  >({
+    mutationFn: ({ messageId, body }) =>
+      askApi.sendFeedback(slug, messageId, body),
     onSuccess: () =>
-      conversationId ? qc.invalidateQueries({ queryKey: askKeys.conversation(slug, conversationId) }) : undefined,
+      conversationId
+        ? qc.invalidateQueries({
+            queryKey: askKeys.conversation(slug, conversationId),
+          })
+        : undefined,
   });
 }
 

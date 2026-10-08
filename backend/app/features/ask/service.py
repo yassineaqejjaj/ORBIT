@@ -26,6 +26,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.context import persistence, spotlight
 from app.context.assembler import assemble_context
 from app.db import utcnow
@@ -45,7 +46,7 @@ from app.llm import guardrail
 from app.memory.conflicts import content_terms
 from app.memory.extractor import classify_sentence, iter_sentences
 from app.models.features_ask import AskConversation, AskMessage
-from app.schemas.context import ContextItem, ContextRequestIn, FeedbackIn
+from app.schemas.context import ContextItem, ContextRequestIn, ContextSufficiency, FeedbackIn
 from app.services import audit
 
 logger = logging.getLogger("orbit.ask")
@@ -171,6 +172,24 @@ def extractive_answer(question: str, items: list[ContextItem]) -> Answer:
     cited = _unique_items(s.item for s in sentences)
     best = max(s.overlap for s in sentences)
     return Answer("\n".join(lines).strip(), cited, "extractive", relevance=best)
+
+
+ABSTAIN_TEXT = "Je ne sais pas : le contexte autorisé disponible ne suffit pas pour répondre de façon fiable."
+
+
+def abstain_answer(sufficiency: ContextSufficiency) -> Answer:
+    """§C5: answer « je ne sais pas » and say what is missing instead of guessing."""
+    lines = [ABSTAIN_TEXT]
+    if sufficiency.missing_subtopics:
+        lines.append("")
+        lines.append("**Non couvert par les sources du projet**")
+        lines.extend(f"- {topic}" for topic in sufficiency.missing_subtopics[:6])
+    return Answer(
+        "\n".join(lines),
+        [],
+        "extractive",
+        warnings=[f"Contexte insuffisant (score {sufficiency.score:.2f}) : ORBIT préfère ne pas répondre."],
+    )
 
 
 _LABEL_PREFIX = re.compile(r"^(?:d[ée]cision|contrainte|besoin|risque|r[èe]gle)\s*:\s*", re.IGNORECASE)
@@ -375,7 +394,19 @@ async def ask(
     )
     items = list(package.items)
 
-    answer = await llm_answer(question, history, items) or extractive_answer(question, items)
+    sufficiency = package.sufficiency
+    if (
+        settings.ask_abstain_when_insufficient
+        and sufficiency is not None
+        and sufficiency.verdict == "insufficient"
+    ):
+        answer = abstain_answer(sufficiency)  # §C5: « je ne sais pas » assumé
+    else:
+        answer = await llm_answer(question, history, items) or extractive_answer(question, items)
+        if sufficiency is not None and sufficiency.verdict == "partial" and sufficiency.missing_subtopics:
+            answer.warnings.append(
+                "Contexte partiel : non couvert — " + " ; ".join(sufficiency.missing_subtopics[:4])
+            )
     if answer.mode == "extractive" and llm.is_enabled():
         withheld = sum(1 for item in items if not guardrail.allows(item.classification))
         if withheld and not answer.warnings:
@@ -441,6 +472,7 @@ async def ask(
         mode=answer.mode,  # type: ignore[arg-type]
         warnings=answer.warnings,
         untrusted_content_notice=spotlight.MCP_NOTICE if spotlight.enabled() else None,
+        sufficiency=sufficiency,
     )
 
 

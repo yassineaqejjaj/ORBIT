@@ -40,6 +40,7 @@ from app.context import (
     rerank,
     retrieval,
     selection,
+    sufficiency,
 )
 from app.context import snapshots as snapshot_service
 from app.context.selection import Decision
@@ -616,6 +617,14 @@ async def _run(
             config=config,
             warnings=warnings,
         )
+        if settings.context_sufficiency:
+            package.sufficiency = sufficiency.assess(
+                understanding.task,
+                rewritten.subtopics,
+                included,
+                sufficient_threshold=resolved.profile.sufficient_threshold if resolved.profile else None,
+            )
+            span.set_attribute("orbit.sufficiency", package.sufficiency.verdict)
         if resolved.profile is not None:
             package.profile = AppliedProfile(**resolved.profile.as_dict())
         if progressive:
@@ -642,6 +651,7 @@ async def _run(
                 "exclusion_summary": {code.value: n for code, n in summary.items()},
                 "retrieval_sources": raw.sources_used,
                 "profile": resolved.profile.as_dict() if resolved.profile else None,
+                "sufficiency": package.sufficiency.model_dump(mode="json") if package.sufficiency else None,
                 "cache": {
                     "prefix_hash": package.cache_prefix_hash,
                     "prefix_tokens": package.cache_prefix_tokens,

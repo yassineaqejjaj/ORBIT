@@ -1,9 +1,22 @@
 "use client";
 
 import * as React from "react";
-import { Ban, CheckCircle2, FileText, Inbox, MessageSquareHeart, Timer } from "lucide-react";
+import {
+  Ban,
+  CheckCircle2,
+  FileText,
+  Inbox,
+  MessageSquareHeart,
+  Timer,
+} from "lucide-react";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -20,6 +33,7 @@ import {
 import { formatMs, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AssembledContext } from "./assembled-context";
+import { AssemblyInsights } from "./assembly-insights";
 import { ContextItemCard } from "./context-item-card";
 import { ExcludedList } from "./excluded-list";
 import { ExclusionSummary } from "./exclusion-summary";
@@ -42,7 +56,17 @@ export interface ContextResultProps {
 
 const HIGHLIGHT_MS = 2400;
 
-function ColumnHeader({ icon, title, count, description }: { icon: React.ReactNode; title: string; count?: number; description: string }) {
+function ColumnHeader({
+  icon,
+  title,
+  count,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  count?: number;
+  description: string;
+}) {
   return (
     <CardHeader className="gap-0.5 border-b border-border px-4 py-3">
       <CardTitle className="flex items-center gap-2 [&_svg]:size-4">
@@ -60,7 +84,14 @@ function ColumnHeader({ icon, title, count, description }: { icon: React.ReactNo
 }
 
 /** Full explanation of one assembled context: summary, stage waterfall, retained / excluded / served Markdown, feedback. */
-export function ContextResult({ pkg, slug, feedback, actor, minRelevance, onReuse }: ContextResultProps) {
+export function ContextResult({
+  pkg,
+  slug,
+  feedback,
+  actor,
+  minRelevance,
+  onReuse,
+}: ContextResultProps) {
   const isDesktop = useMediaQuery("(min-width: 1280px)");
   const [tab, setTab] = React.useState<ColumnKey>("retained");
   const [highlighted, setHighlighted] = React.useState<string | null>(null);
@@ -69,8 +100,14 @@ export function ContextResult({ pkg, slug, feedback, actor, minRelevance, onReus
   // Forces a commit even when the highlighted value does not change (clicking the same citation twice).
   const [, requestScroll] = React.useReducer((x: number) => x + 1, 0);
 
-  const titles = React.useMemo(() => buildCitationTitles(pkg.items), [pkg.items]);
-  const groups = React.useMemo(() => groupExclusions(pkg.excluded, pkg.exclusion_summary), [pkg.excluded, pkg.exclusion_summary]);
+  const titles = React.useMemo(
+    () => buildCitationTitles(pkg.items),
+    [pkg.items],
+  );
+  const groups = React.useMemo(
+    () => groupExclusions(pkg.excluded, pkg.exclusion_summary),
+    [pkg.excluded, pkg.exclusion_summary],
+  );
   const summaryEntries = React.useMemo(
     () => exclusionSummaryEntries(pkg.exclusion_summary, pkg.excluded),
     [pkg.exclusion_summary, pkg.excluded],
@@ -94,8 +131,13 @@ export function ContextResult({ pkg, slug, feedback, actor, minRelevance, onReus
     const el = document.getElementById(target);
     if (!el) return;
     pendingScroll.current = null;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+    const reduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    el.scrollIntoView({
+      behavior: reduce ? "auto" : "smooth",
+      block: "center",
+    });
     if (el.tagName === "ARTICLE") el.focus({ preventScroll: true });
   });
 
@@ -158,7 +200,12 @@ export function ContextResult({ pkg, slug, feedback, actor, minRelevance, onReus
   );
 
   const excluded = (
-    <ExcludedList groups={groups} citationTitles={titles} onRelatedCitation={focusCitation} focusedGroup={focusedGroup} />
+    <ExcludedList
+      groups={groups}
+      citationTitles={titles}
+      onRelatedCitation={focusCitation}
+      focusedGroup={focusedGroup}
+    />
   );
 
   const context = (
@@ -176,6 +223,8 @@ export function ContextResult({ pkg, slug, feedback, actor, minRelevance, onReus
     <div className="grid gap-4">
       <ResultSummary pkg={pkg} slug={slug} actor={actor} onReuse={onReuse} />
 
+      <AssemblyInsights pkg={pkg} />
+
       <div className="grid gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardHeader>
@@ -184,12 +233,16 @@ export function ContextResult({ pkg, slug, feedback, actor, minRelevance, onReus
               Cascade des étapes
             </CardTitle>
             <CardDescription>
-              Temps de chaque étape de l&apos;assemblage, proportionnels au total ({formatMs(pkg.timings.total)}).
+              Temps de chaque étape de l&apos;assemblage, proportionnels au
+              total ({formatMs(pkg.timings.total)}).
             </CardDescription>
           </CardHeader>
           <CardContent>
             <StageWaterfall timings={pkg.timings} />
-            <RetrievalRounds rounds={pkg.timings.rounds} className="mt-4 border-t border-border pt-4" />
+            <RetrievalRounds
+              rounds={pkg.timings.rounds}
+              className="mt-4 border-t border-border pt-4"
+            />
           </CardContent>
         </Card>
         <Card className="lg:col-span-2">
@@ -198,10 +251,17 @@ export function ContextResult({ pkg, slug, feedback, actor, minRelevance, onReus
               <Ban className="size-4 text-primary" aria-hidden />
               Exclusions par motif
             </CardTitle>
-            <CardDescription>Chaque exclusion est justifiée ; cliquez un motif pour voir les éléments.</CardDescription>
+            <CardDescription>
+              Chaque exclusion est justifiée ; cliquez un motif pour voir les
+              éléments.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <ExclusionSummary entries={summaryEntries} includedCount={pkg.items.length} onSelect={focusGroup} />
+            <ExclusionSummary
+              entries={summaryEntries}
+              includedCount={pkg.items.length}
+              onSelect={focusGroup}
+            />
           </CardContent>
         </Card>
       </div>
@@ -259,12 +319,18 @@ export function ContextResult({ pkg, slug, feedback, actor, minRelevance, onReus
             Évaluer ce contexte
           </CardTitle>
           <CardDescription>
-            Votre note et vos signalements alimentent l&apos;évaluation (FORGE) ; « Obsolète » propose l&apos;obsolescence de
-            l&apos;élément mémoire concerné.
+            Votre note et vos signalements alimentent l&apos;évaluation (FORGE)
+            ; « Obsolète » propose l&apos;obsolescence de l&apos;élément mémoire
+            concerné.
           </CardDescription>
         </CardHeader>
         <CardContent className={cn("max-w-3xl")}>
-          <FeedbackWidget slug={slug} requestId={pkg.request_id} items={pkg.items} existing={feedback} />
+          <FeedbackWidget
+            slug={slug}
+            requestId={pkg.request_id}
+            items={pkg.items}
+            existing={feedback}
+          />
         </CardContent>
       </Card>
     </div>

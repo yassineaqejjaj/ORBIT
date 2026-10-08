@@ -334,6 +334,7 @@ def context_result(package: ContextPackage) -> dict[str, Any]:
         "tokens_used": data["tokens_used"],
         "token_budget": data["token_budget"],
         "warnings": data["warnings"],
+        "sufficiency": data.get("sufficiency"),
         "cache_prefix_hash": data.get("cache_prefix_hash"),
         "cache_prefix_tokens": data.get("cache_prefix_tokens", 0),
         **({"cache_hints": data["cache_hints"]} if data.get("cache_hints") else {}),

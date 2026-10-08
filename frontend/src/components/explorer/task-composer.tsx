@@ -560,6 +560,20 @@ export function TaskComposer({
           </div>
           <div className="grid content-start gap-1.5">
             <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="explorer-progressive">Contexte progressif</Label>
+              <Switch
+                id="explorer-progressive"
+                size="sm"
+                checked={Boolean(form.progressive)}
+                onCheckedChange={(checked) => onChange({ progressive: checked })}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Résumé + index des sources et décisions (identifiants) ; l&apos;agent déplie le détail à la demande.
+            </p>
+          </div>
+          <div className="grid content-start gap-1.5">
+            <div className="flex items-center justify-between gap-2">
               <Label htmlFor="explorer-save-snapshot">Enregistrer comme snapshot</Label>
               <Switch
                 id="explorer-save-snapshot"

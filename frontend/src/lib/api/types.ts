@@ -729,6 +729,10 @@ export interface ContextRequestIn {
   base_snapshot?: SnapshotRef;
   save_snapshot?: { name: string };
   explain?: boolean;
+  /** §C2 `progressive`: summary + index of sources and decisions with ids. */
+  mode?: "full" | "progressive";
+  /** §C1: return Anthropic `cache_control` text blocks. */
+  cache_hints?: boolean;
 }
 
 export interface Scores {
@@ -852,6 +856,16 @@ export interface ContextPackage {
   index?: ContextIndexEntry[];
   /** §C3 profile applied (agent requests and « agir en tant que » simulations). */
   profile?: AppliedProfile | null;
+  /** §C5 is the served context enough to answer the task? */
+  sufficiency?: ContextSufficiency | null;
+}
+
+export interface ContextSufficiency {
+  score: number;
+  verdict: "sufficient" | "partial" | "insufficient";
+  missing_subtopics: string[];
+  covered_subtopics: string[];
+  explanation: string;
 }
 
 export type ContextProfileSection =

@@ -180,6 +180,17 @@ class ContextIndexEntry(ApiModel):
     tokens_full: int
 
 
+class ContextSufficiency(ApiModel):
+    """§C5: is the served context enough to answer the task?"""
+
+    score: float
+    verdict: Literal["sufficient", "partial", "insufficient"]
+    #: Sub-topics (chantier B decomposition, or the task itself) no served item covers.
+    missing_subtopics: list[str] = Field(default_factory=list)
+    covered_subtopics: list[str] = Field(default_factory=list)
+    explanation: str = ""
+
+
 class AppliedProfile(ApiModel):
     """§C3 context profile of the requesting agent's kind, as applied to this package."""
 
@@ -217,6 +228,7 @@ class ContextPackage(ApiModel):
     mode: Literal["full", "progressive"] = "full"
     index: list[ContextIndexEntry] = Field(default_factory=list)
     profile: AppliedProfile | None = None
+    sufficiency: ContextSufficiency | None = None
 
 
 class ItemFlag(InputModel):

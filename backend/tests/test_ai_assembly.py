@@ -320,3 +320,97 @@ async def test_compression_pruner_hook(monkeypatch: Any) -> None:
     monkeypatch.setattr(settings, "compression_mode", "extractive")
     assert compression.label() == "extractive"
     compression._pruner_cache.clear()
+
+
+# --- C5 context sufficiency ---------------------------------------------------------------------------
+
+
+def _decision(title: str, text: str, score: float) -> Any:
+    from app.context.selection import Decision
+    from app.enums import CandidateType, ReasonCode
+    from app.governance.policy import Candidate, Verdict
+
+    candidate = Candidate(
+        candidate_type=CandidateType.memory,
+        id=str(uuid.uuid4()),
+        title=title,
+        text=text,
+        classification=1,
+        acl_principals=["project:*"],
+        status="validated",
+        date=None,
+        score=score,
+    )
+    return Decision(candidate=candidate, verdict=Verdict(ReasonCode.INCLUDED_RELEVANT, ""))
+
+
+def test_sufficiency_verdicts() -> None:
+    from app.context import sufficiency
+
+    task = "Quel mode de check-in et quel tarif du parking pour le salon Atlas ?"
+    subtopics = ["check-in par QR code", "tarif du parking des exposants"]
+    checkin = _decision("Check-in Atlas", "Le check-in du salon Atlas se fait par QR code.", 0.9)
+    parking = _decision("Parking Atlas", "Le tarif du parking des exposants est de 5 euros.", 0.85)
+    unrelated = _decision("Cafétéria", "La cafétéria propose des menus végétariens.", 0.1)
+
+    empty = sufficiency.assess(task, subtopics, [])
+    assert empty.verdict == "insufficient" and empty.score == 0 and empty.missing_subtopics == subtopics
+    full = sufficiency.assess(task, subtopics, [checkin, parking])
+    assert full.verdict == "sufficient" and not full.missing_subtopics and full.score >= 0.75
+    half = sufficiency.assess(task, subtopics, [checkin])
+    assert half.verdict == "partial" and half.missing_subtopics == ["tarif du parking des exposants"]
+    assert half.covered_subtopics == ["check-in par QR code"]
+    off = sufficiency.assess(task, subtopics, [unrelated])
+    assert off.verdict == "insufficient" and len(off.missing_subtopics) == 2
+    # A profile threshold (§C3) can demand more.
+    assert (
+        sufficiency.assess(task, subtopics, [checkin, parking], sufficient_threshold=0.99).verdict
+        == "partial"
+    )
+    # Not decomposed: the task itself is the sub-topic.
+    single = sufficiency.assess("check-in salon Atlas", [], [checkin])
+    assert single.verdict == "sufficient" and single.covered_subtopics == ["check-in salon Atlas"]
+
+
+async def test_sufficiency_in_package_mcp_and_ask(
+    app: Any,
+    admin_client: httpx.AsyncClient,
+    agent_setup: AgentSetup,  # noqa: F811
+    monkeypatch: Any,
+) -> None:
+    from app.config import settings
+
+    slug = agent_setup.slug
+    await _seed(admin_client, slug)
+    good = await _context(admin_client, slug, "check-in du salon Atlas par QR code")
+    assert good["sufficiency"]["verdict"] in ("sufficient", "partial") and good["sufficiency"]["score"] > 0.4
+    assert good["config"]["compression"] == "learned-embeddings-mmr"
+    off = await _context(admin_client, slug, "Quelle est la couleur du chat du voisin ?", min_relevance=0.6)
+    assert off["sufficiency"]["verdict"] == "insufficient" and off["sufficiency"]["missing_subtopics"]
+    detail = (await admin_client.get(f"{API}/{slug}/context/requests/{off['request_id']}")).json()
+    assert detail["sufficiency"] == off["sufficiency"]
+
+    async with mcp_client(app, {"X-Orbit-Key": agent_setup.api_key}) as mcp:
+        result = payload(await mcp.call_tool("get_context", {"task": "check-in du salon Atlas par QR code"}))
+    assert result["sufficiency"]["verdict"] in ("sufficient", "partial")
+
+    asked = await admin_client.post(
+        f"{API}/{slug}/ask", json={"question": "Quelle est la couleur du chat du voisin ?"}
+    )
+    assert asked.status_code == 200, asked.text
+    body = asked.json()
+    assert body["sufficiency"]["verdict"] == "insufficient"
+    assert body["answer"].startswith("Je ne sais pas") and body["citations"] == []
+    assert any("insuffisant" in w for w in body["warnings"])
+    answered = (
+        await admin_client.post(f"{API}/{slug}/ask", json={"question": "Comment se fait le check-in Atlas ?"})
+    ).json()
+    assert not answered["answer"].startswith("Je ne sais pas") and answered["citations"]
+
+    monkeypatch.setattr(settings, "ask_abstain_when_insufficient", False)
+    legacy = (
+        await admin_client.post(
+            f"{API}/{slug}/ask", json={"question": "Quelle est la couleur du chat du voisin ?"}
+        )
+    ).json()
+    assert not legacy["answer"].startswith("Je ne sais pas")
