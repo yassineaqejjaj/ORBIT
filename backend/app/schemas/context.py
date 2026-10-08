@@ -58,6 +58,10 @@ class ContextRequestIn(InputModel):
         default=False,
         description="Contexte découpé en blocs avec points d'arrêt cache_control (format Anthropic)",
     )
+    as_of: datetime | None = Field(
+        default=None,
+        description="Mémoire « telle que connue au » : versions connues et valides à cette date (§D2)",
+    )
 
 
 class Scores(ApiModel):

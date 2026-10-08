@@ -172,7 +172,11 @@ def corpus(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     async def no_contradictions(*_args: Any, **_kwargs: Any) -> list[tuple[str, str]]:
         return []
 
+    async def no_procedures(*_args: Any, **_kwargs: Any) -> int:
+        return 0
+
     monkeypatch.setattr(retrieval, "retrieve", fake_retrieve)
+    monkeypatch.setattr(retrieval, "add_procedures", no_procedures)
     monkeypatch.setattr(selection, "load_contradictions", no_contradictions)
     return {"chunks": chunks, "decision": decision}
 

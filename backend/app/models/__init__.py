@@ -10,7 +10,7 @@ from app.models.features_ask import *  # noqa: F403  (feature tables)
 from app.models.features_feed import *  # noqa: F403  (feature tables)
 from app.models.governance import Tombstone
 from app.models.job import IngestionJob
-from app.models.memory import MemoryEvent, MemoryItem, MemoryProvenance, Relation
+from app.models.memory import Entity, EntityAlias, MemoryEvent, MemoryItem, MemoryProvenance, Relation
 from app.models.project import Project, ProjectMember
 from app.models.source import DEFAULT_ACL, Source, default_acl
 from app.models.user import User
@@ -27,6 +27,8 @@ __all__ = [
     "ContextSnapshot",
     "Document",
     "DocumentVersion",
+    "Entity",
+    "EntityAlias",
     "IngestionJob",
     "MemoryEvent",
     "MemoryItem",

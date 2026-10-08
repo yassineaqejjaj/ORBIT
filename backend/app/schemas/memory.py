@@ -10,6 +10,8 @@ from pydantic import Field
 
 from app.enums import (
     ActorType,
+    AgentKind,
+    Intent,
     MemoryEventType,
     MemoryKind,
     MemoryScope,
@@ -46,6 +48,7 @@ class MemoryItem(ApiModel):
     rationale: str | None = None
     decided_by: str | None = None
     confidence_reason: str | None = None
+    skill_meta: dict[str, Any] | None = None
     created_by_label: str = ""
     provenance_count: int = 0
     created_at: datetime
@@ -84,6 +87,8 @@ class Relation(ApiModel):
     other_title: str | None = None
     confidence: float
     detail: str | None
+    method: str | None = None
+    explanation: str | None = None
     created_at: datetime
 
 
@@ -102,6 +107,15 @@ class ProvenanceIn(InputModel):
     source_label: str | None = Field(default=None, max_length=300)
 
 
+class SkillMetaIn(InputModel):
+    """§D1 procedure metadata (Agent Skills ``SKILL.md`` front matter + injection rules)."""
+
+    name: str | None = Field(default=None, max_length=64, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    description: str | None = Field(default=None, max_length=1024)
+    task_types: list[Intent] = Field(default_factory=list, max_length=10)
+    agent_kinds: list[AgentKind] = Field(default_factory=list, max_length=10)
+
+
 class MemoryIn(InputModel):
     scope: MemoryScope
     kind: MemoryKind
@@ -118,6 +132,7 @@ class MemoryIn(InputModel):
     supersedes_id: uuid.UUID | None = None
     status: Literal["proposed", "validated"] | None = None
     provenance: list[ProvenanceIn] | None = Field(default=None, max_length=50)
+    skill_meta: SkillMetaIn | None = None
 
 
 class MemoryUpdateIn(InputModel):
@@ -127,6 +142,7 @@ class MemoryUpdateIn(InputModel):
     valid_to: datetime | None = None
     classification: ClassificationLevel | None = None
     kind: MemoryKind | None = None
+    skill_meta: SkillMetaIn | None = None
 
 
 class ReasonIn(InputModel):
@@ -159,3 +175,23 @@ class GraphEdge(ApiModel):
 class MemoryGraph(ApiModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
+
+
+class Skill(ApiModel):
+    """§D1 procedure served as an Agent Skill."""
+
+    name: str
+    description: str
+    task_types: list[str]
+    agent_kinds: list[str]
+    title: str
+    memory_id: uuid.UUID
+    lineage_id: uuid.UUID
+    version: int
+    status: MemoryStatus
+    classification: int
+    updated_at: datetime
+
+
+class SkillDetail(Skill):
+    skill_md: str

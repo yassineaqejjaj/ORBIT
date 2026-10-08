@@ -66,6 +66,7 @@ _TYPE_BOOST_MEMORY: dict[MemoryKind, float] = {
     MemoryKind.fact: 0.65,
     MemoryKind.preference: 0.6,
     MemoryKind.summary: 0.6,
+    MemoryKind.procedure: 0.75,
 }
 #: Proposed (not yet validated) memory items are slightly less authoritative.
 PROPOSED_FACTOR = 0.9

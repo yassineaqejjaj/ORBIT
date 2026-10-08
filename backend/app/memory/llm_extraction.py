@@ -40,9 +40,10 @@ MIN_QUOTE_LENGTH = 12
 
 SYSTEM_PROMPT = (
     "Tu extrais la mémoire d'un projet à partir d'un fragment de document (en français). "
-    "Identifie uniquement les décisions, besoins utilisateurs, contraintes, risques et faits chiffrés "
+    "Identifie uniquement les décisions, besoins utilisateurs, contraintes, risques, faits chiffrés "
+    "et procédures (définitions de « terminé », conventions, checklists) "
     "explicitement présents dans le fragment. Pour chacun, produis une fiche :\n"
-    '- "kind" : "decision" | "requirement" | "constraint" | "risk" | "fact" ;\n'
+    '- "kind" : "decision" | "requirement" | "constraint" | "risk" | "fact" | "procedure" ;\n'
     '- "title" : titre court (≤ 90 caractères) ;\n'
     '- "statement" : l\'énoncé autonome, fidèle au texte ;\n'
     '- "decided_by" : qui a décidé (personne, rôle ou instance) si le texte le dit, sinon null ;\n'
@@ -74,7 +75,7 @@ def is_grounded(quote: str, fragment: str) -> bool:
 class MemoryCard(BaseModel):
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
-    kind: Literal["decision", "requirement", "constraint", "risk", "fact"]
+    kind: Literal["decision", "requirement", "constraint", "risk", "fact", "procedure"]
     title: str = Field(min_length=1, max_length=300)
     statement: str = Field(min_length=12, max_length=700)
     decided_by: str | None = Field(default=None, max_length=200)

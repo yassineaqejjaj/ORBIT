@@ -275,6 +275,10 @@ Variables d'environnement préfixées `ORBIT_` (voir [`.env.example`](.env.examp
 | `ORBIT_COMPRESSION_MODE` / `ORBIT_COMPRESSION_PRUNER` | `learned` / vide | Compression au niveau phrase (§C4) : pertinence par embeddings + redondance (+ modèle d'élagage local `module:fonction`), citations préservées ; `extractive` = repli simple |
 | `ORBIT_CONTEXT_SUFFICIENCY` / `ORBIT_SUFFICIENCY_SUFFICIENT_THRESHOLD` / `ORBIT_SUFFICIENCY_PARTIAL_THRESHOLD` | `true` / `0.75` / `0.4` | Suffisance du contexte (§C5) : score, verdict `sufficient`/`partial`/`insufficient`, sous-sujets manquants |
 | `ORBIT_ASK_ABSTAIN_WHEN_INSUFFICIENT` | `true` | « Demander à ORBIT » répond « Je ne sais pas » quand le contexte est insuffisant |
+| `ORBIT_MEMORY_SKILLS` / `ORBIT_SKILLS_CONTEXT_MAX` | `true` / `3` | Mémoire procédurale (§D1) : procédures servies comme skills (`/projects/{slug}/skills`, MCP `list_skills`/`get_skill`) et section « Façons de faire » |
+| `ORBIT_MEMORY_ENTITY_ALIASES` | `true` | Résolution d'entités (§D2) : les alias élargissent la recherche |
+| `ORBIT_MEMORY_CONTRADICTION_MODE` / `ORBIT_MEMORY_NLI_MODEL` / `ORBIT_MEMORY_CONTRADICTION_THRESHOLD` | `auto` / vide / `0.7` | Contradictions par modèle (§D3) : crochet NLI local, sinon LLM-juge si le garde-fou l'autorise, sinon marqueurs lexicaux ; score et explication stockés |
+| `ORBIT_MEMORY_REFLECTION` | `true` | Réflexion mensuelle « ce qui a changé » (§D4), proposée en mémoire long terme |
 | `ORBIT_ENCRYPTION_KEY` | vide | Clé Fernet chiffrant les secrets des connecteurs, webhooks et Teams ; **requise** pour les créer |
 | `ORBIT_CONNECTOR_DEFAULT_SCHEDULE_MINUTES` | `60` | Fréquence de synchronisation par défaut des connecteurs |
 | `ORBIT_MCP_ALLOW_CUSTOM` | `false` | Autorise des serveurs MCP hors presets (administrateurs uniquement) |

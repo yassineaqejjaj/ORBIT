@@ -59,6 +59,7 @@ class JobKind(StrEnum):
     extract_memory = "extract_memory"
     webhook = "webhook"
     connector_sync = "connector_sync"
+    reflect = "reflect"
 
 
 class JobStatus(StrEnum):
@@ -83,6 +84,7 @@ class MemoryKind(StrEnum):
     preference = "preference"
     summary = "summary"
     risk = "risk"
+    procedure = "procedure"
 
 
 class MemoryStatus(StrEnum):
@@ -333,6 +335,7 @@ MEMORY_KIND_LABELS: dict[MemoryKind, str] = {
     MemoryKind.preference: "Préférence",
     MemoryKind.summary: "Synthèse",
     MemoryKind.risk: "Risque",
+    MemoryKind.procedure: "Procédure",
 }
 
 PII_LABELS: dict[PiiType, str] = {

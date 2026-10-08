@@ -1,10 +1,10 @@
 """``package`` stage (ARCHITECTURE §9.8): structured Markdown with stable citations.
 
 Sections (only non-empty ones, in this order): ``## Décisions en vigueur``, ``## Besoins
-utilisateurs``, ``## Contraintes & risques``, ``## Faits & connaissances``, ``## Préférences
-utilisateur``, ``## Extraits de sources``, ``## Session en cours``, then ``## Sources`` listing every
-citation: ``[S1] Titre — type · v2 · 12/09/2026 · uri``. Every bullet ends with its ``[Sx]`` marker;
-citations are numbered in presentation order.
+utilisateurs``, ``## Contraintes & risques``, ``## Façons de faire``, ``## Faits & connaissances``,
+``## Préférences utilisateur``, ``## Extraits de sources``, ``## Session en cours``, then ``## Sources``
+listing every citation: ``[S1] Titre — type · v2 · 12/09/2026 · uri``. Every bullet ends with its
+``[Sx]`` marker; citations are numbered in presentation order.
 
 The per-item overhead helpers give an upper bound of the tokens a bullet and its source line cost,
 used by the budget filler so that the final Markdown never exceeds the token budget.
@@ -40,6 +40,7 @@ SECTIONS: tuple[tuple[str, str], ...] = (
     ("decisions", "Décisions en vigueur"),
     ("requirements", "Besoins utilisateurs"),
     ("constraints", "Contraintes & risques"),
+    ("procedures", "Façons de faire"),
     ("facts", "Faits & connaissances"),
     ("preferences", "Préférences utilisateur"),
     ("sources", "Extraits de sources"),
@@ -80,6 +81,8 @@ def section_for(c: Candidate) -> str:
         return "constraints"
     if kind == MemoryKind.preference:
         return "preferences"
+    if kind == MemoryKind.procedure:
+        return "procedures"
     return "facts"
 
 
@@ -287,7 +290,7 @@ def render(
 # --- §C1 prompt-cache-aware layout -------------------------------------------------------------------
 
 #: Sections whose items belong to the stable prefix (snapshot items are stable whatever their section).
-STABLE_SECTIONS = frozenset({"decisions", "constraints"})
+STABLE_SECTIONS = frozenset({"decisions", "constraints", "procedures"})
 CACHE_HEADER = (
     "# Contexte ORBIT\n\n"
     "_Chaque élément cite sa source [Sx] (liste en fin de document). "

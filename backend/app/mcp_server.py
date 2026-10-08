@@ -29,6 +29,7 @@ import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import HTTPException
@@ -125,6 +126,10 @@ Bonnes pratiques :
    lancez `search_more` si `sufficiency.verdict` vaut « partial » ou « insufficient » (sous-sujets
    manquants dans `sufficiency.missing_subtopics`). Si le contexte reste insuffisant, dites que vous
    ne savez pas plutôt que de deviner. `cache_hints=true` renvoie les blocs `cache_control`.
+9. Façons de faire : `list_skills` liste les procédures du projet (définitions de « terminé »,
+   conventions, checklists) et `get_skill` renvoie leur SKILL.md ; `get_context` les injecte déjà dans
+   la section « Façons de faire » selon le type de tâche. `as_of` (date) sert la mémoire telle que
+   connue à cette date.
 
 Les données personnelles sont masquées ([EMAIL], [TÉLÉPHONE]…) et les contenus hors habilitation ne
 sont jamais transmis, pas même leur titre.
@@ -393,6 +398,10 @@ async def get_context(
         Literal["full", "progressive"],
         Field(description="progressive : résumé + index avec identifiants, détail via expand_source…"),
     ] = "full",
+    as_of: Annotated[
+        datetime | None,
+        Field(description="Mémoire « telle que connue au » (date ISO 8601) : versions valides à cette date"),
+    ] = None,
 ) -> dict[str, Any]:
     """Assemble a governed context package for the task (same engine as ``POST /context``)."""
     from app.context.assembler import assemble_context
@@ -411,6 +420,7 @@ async def get_context(
             explain=False,
             cache_hints=cache_hints,
             mode=mode,
+            as_of=as_of,
         )
         package = await assemble_context(scope.session, scope.access, body)
         return context_result(package)
@@ -609,6 +619,61 @@ async def get_memory_item(item_id: IdArg, ctx: Context, on_behalf_of: OnBehalfAr
     async with _governed(ctx, on_behalf_of) as (scope, gov):
         result = await expand.get_memory(scope.session, gov, item_id)
         return {**result, **_untrusted_notice()}
+
+
+async def list_skills(
+    ctx: Context,
+    task_type: Annotated[
+        Intent | None, Field(description="Type de tâche : ne garde que les procédures applicables")
+    ] = None,
+) -> dict[str, Any]:
+    """§D1 procedures of the project served as Agent Skills (name, description, metadata)."""
+    from app.memory import skills
+    from app.memory.visibility import MemoryViewer
+    from app.services import skills as skill_service
+
+    if not settings.memory_skills:
+        raise ToolError("La mémoire procédurale (skills) est désactivée")
+    async with agent_scope(ctx) as scope:
+        agent = scope.access.principal.agent
+        kind = getattr(getattr(agent, "kind", None), "value", None)
+        items = await skill_service.list_procedures(scope.session, MemoryViewer.from_access(scope.access))
+        out = []
+        for item in items:
+            meta = skills.meta_of(item)
+            if task_type is not None and not skills.applies_to(meta, task_type.value, kind)[0]:
+                continue
+            out.append(_jsonable(skill_service.summary(item)))
+        return {"skills": out, **_untrusted_notice()}
+
+
+async def get_skill(
+    name: Annotated[str, Field(min_length=1, max_length=100, description="Nom du skill (ou identifiant)")],
+    ctx: Context,
+) -> dict[str, Any]:
+    """§D1 one procedure as a ``SKILL.md`` (Agent Skills format)."""
+    from app.memory import skills
+    from app.memory.visibility import MemoryViewer
+    from app.services import skills as skill_service
+
+    if not settings.memory_skills:
+        raise ToolError("La mémoire procédurale (skills) est désactivée")
+    async with agent_scope(ctx) as scope:
+        item = await skill_service.find_skill(scope.session, MemoryViewer.from_access(scope.access), name)
+        if item is None:
+            raise ToolError("Skill introuvable")
+        return {
+            **_jsonable(skill_service.summary(item)),
+            "skill_md": skills.render_skill_md(item, project_slug=scope.access.project.slug),
+            **_untrusted_notice(),
+        }
+
+
+def _jsonable(data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        k: (v.isoformat() if isinstance(v, datetime) else str(v) if isinstance(v, uuid.UUID) else v)
+        for k, v in data.items()
+    }
 
 
 async def search_more(
@@ -885,6 +950,19 @@ TOOL_SPECS = (
         "Contexte à la demande : version en vigueur d'une décision (identifiant de l'index).",
         get_decision,
         ToolAnnotations(title="Lire une décision", read_only_hint=True, open_world_hint=False),
+    ),
+    (
+        "list_skills",
+        "Façons de faire du projet (procédures, définitions de « terminé », conventions, checklists) "
+        "servies comme skills : nom, description, types de tâche et d'agent concernés.",
+        list_skills,
+        ToolAnnotations(title="Lister les skills", read_only_hint=True, open_world_hint=False),
+    ),
+    (
+        "get_skill",
+        "Contenu d'un skill au format Agent Skills (SKILL.md avec métadonnées).",
+        get_skill,
+        ToolAnnotations(title="Lire un skill", read_only_hint=True, open_world_hint=False),
     ),
     (
         "get_memory_item",

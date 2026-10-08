@@ -763,6 +763,92 @@ async def anchor_decision_hits(
     ]
 
 
+async def add_procedures(
+    session: AsyncSession,
+    raw: RawRetrieval,
+    project_id: uuid.UUID,
+    *,
+    intent: str | None,
+    agent_kind: str | None,
+    limit: int,
+) -> int:
+    """§D1: anchor validated procedures whose task types / agent kinds match the request (« Façons de
+    faire »), at the tail of the memory hits. Governance (ACL, clearance) applies as for any candidate."""
+    if limit <= 0:
+        return 0
+    from app.memory import skills
+
+    known = {h.id for h in raw.memory_hits}
+    rows = await session.scalars(
+        select(MemoryItem)
+        .where(
+            or_(MemoryItem.project_id == project_id, MemoryItem.project_id.is_(None)),
+            MemoryItem.kind == MemoryKind.procedure,
+            MemoryItem.is_current.is_(True),
+            MemoryItem.status == MemoryStatus.validated,
+        )
+        .order_by(MemoryItem.updated_at.desc())
+        .limit(50)
+    )
+    ids: list[str] = []
+    for item in rows:
+        meta = skills.meta_of(item)
+        targeted = bool(meta["task_types"] or meta["agent_kinds"])
+        if str(item.id) in known or not targeted or not skills.applies_to(meta, intent, agent_kind)[0]:
+            continue
+        ids.append(str(item.id))
+        if len(ids) >= limit:
+            break
+    if not ids:
+        return 0
+    tail_rrf = min((h.rrf for h in raw.memory_hits), default=0.0)
+    tail_norm = min((h.rrf_norm for h in raw.memory_hits), default=0.0)
+    raw.memory_hits.extend(IndexHit(id=i, rrf=tail_rrf, rrf_norm=tail_norm, via="procedure") for i in ids)
+    resolution, by_lineage = await hydrate_memory(session, project_id, ids, [])
+    raw.memory_resolution.update(resolution)
+    raw.memory_by_lineage.update(by_lineage)
+    return len(ids)
+
+
+async def apply_as_of(session: AsyncSession, raw: RawRetrieval, as_of: datetime) -> int:
+    """§D2 « tel que connu au <date> »: replace every hydrated memory row by the version of its lineage
+    known at ``as_of`` (created before it, validity window covering it); drop lineages unknown then.
+    Returns the number of memory rows dropped."""
+    lineages = {row.item.lineage_id for row in raw.memory_resolution.values()}
+    if not lineages:
+        return 0
+    versions = await session.scalars(
+        select(MemoryItem)
+        .where(MemoryItem.lineage_id.in_(lineages), MemoryItem.created_at <= as_of)
+        .order_by(MemoryItem.lineage_id, MemoryItem.version.desc())
+    )
+    known: dict[uuid.UUID, MemoryItem] = {}
+    for item in versions:
+        known.setdefault(item.lineage_id, item)
+    rows: dict[uuid.UUID, MemoryRow] = {}
+    for lineage_id, item in known.items():
+        if item.valid_from and item.valid_from > as_of:
+            continue
+        if item.valid_to is not None and item.valid_to <= as_of:
+            continue
+        if MemoryStatus(item.status) == MemoryStatus.forgotten:
+            continue
+        rows[lineage_id] = MemoryRow(item=item)
+    await _enrich_memory(session, list(rows.values()))
+    dropped = 0
+    for key, row in list(raw.memory_resolution.items()):
+        replacement = rows.get(row.item.lineage_id)
+        if replacement is None:
+            del raw.memory_resolution[key]
+            dropped += 1
+        else:
+            if MemoryStatus(replacement.item.status) != MemoryStatus.superseded:
+                replacement.superseded_by = None  # later supersessions were not known at that date
+            raw.memory_resolution[key] = replacement
+    raw.memory_by_lineage = {str(lid): row for lid, row in rows.items()}
+    return dropped
+
+
 async def fetch_embeddings(kind: str, ids: Sequence[str]) -> dict[str, list[float]]:
     """Stored embeddings of indexed items (``{id: vector}``). Raises on index errors."""
     if not ids:
@@ -877,6 +963,7 @@ def memory_candidate(row: MemoryRow) -> Candidate:
         provenance_chunk_ids=row.provenance_chunk_ids,
         trust=row.trust,
         tokens=estimate_tokens(item.content or ""),
+        skill_meta=item.skill_meta,
     )
 
 

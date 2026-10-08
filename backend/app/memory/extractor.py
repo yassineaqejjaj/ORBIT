@@ -78,7 +78,8 @@ _SENTENCE_SPLIT = re.compile(r"(?<=[.!?;])\s+(?=[A-ZÉÈÊÀÂÎÔÛÇ«\"(\[])"
 
 _LABEL = re.compile(
     r"^(?P<label>d[ée]cisions?|besoins?|exigences?|user\s+story|contraintes?|risques?|"
-    r"points?\s+de\s+vigilance|faits?)\s*(?:n[°o]\s*\d+\s*)?\s*[:：]\s*(?P<body>.+)$",
+    r"points?\s+de\s+vigilance|faits?|proc[ée]dures?|checklists?|conventions?|"
+    r"d[ée]finition\s+(?:de\s+(?:termin[ée]|fini|pr[êe]t)|of\s+done)|dod|gabarits?)\s*(?:n[°o]\s*\d+\s*)?\s*[:：]\s*(?P<body>.+)$",
     re.IGNORECASE,
 )
 _LABEL_KINDS: tuple[tuple[str, MemoryKind], ...] = (
@@ -90,10 +91,23 @@ _LABEL_KINDS: tuple[tuple[str, MemoryKind], ...] = (
     ("risque", MemoryKind.risk),
     ("point", MemoryKind.risk),
     ("fait", MemoryKind.fact),
+    ("procedure", MemoryKind.procedure),
+    ("checklist", MemoryKind.procedure),
+    ("convention", MemoryKind.procedure),
+    ("definition", MemoryKind.procedure),
+    ("dod", MemoryKind.procedure),
+    ("gabarit", MemoryKind.procedure),
 )
 _SECTION_KINDS: tuple[tuple[re.Pattern[str], MemoryKind], ...] = (
     (re.compile(r"\b(?:releve des )?decisions?\b"), MemoryKind.decision),
     (re.compile(r"\brisques?\b|\bpoints? de vigilance\b"), MemoryKind.risk),
+    (
+        re.compile(
+            r"\bdefinitions? (?:of done|de (?:termine|fini|pret))\b|\bconventions?\b|\bchecklists?\b|"
+            r"\bprocedures?\b|\bbonnes pratiques\b|\bfacons de faire\b|\bgabarits?\b"
+        ),
+        MemoryKind.procedure,
+    ),
     (re.compile(r"\bcontraintes?\b"), MemoryKind.constraint),
     (re.compile(r"\bbesoins?\b|\bexigences?\b|\buser stories\b|\battentes\b"), MemoryKind.requirement),
 )
@@ -128,6 +142,14 @@ _USERS_WANT = re.compile(
     r"|\bil faut (?:pouvoir|permettre)\b|\bbesoin (?:de|d')\b"
 )
 _RISK = re.compile(r"\brisques? (?:de|d'|que|qu'|d'une?|majeur|principal|identifie)\b|\bpoint de vigilance\b")
+#: §D1 procedural statements (definitions of done, conventions, checklists, mandatory steps).
+_PROCEDURE = re.compile(
+    r"\b(?:est (?:consideree? |considerees? )?terminee?s? (?:quand|lorsque|si|des que)|definition of done|"
+    r"definition de (?:termine|fini|pret)|par convention|la convention (?:est|veut)|"
+    r"avant (?:de |chaque )(?:livrer|merger|deployer|livraison|mise en production|release)|"
+    r"chaque (?:pull request|pr|merge request|livraison|user story|ticket|story) doit|"
+    r"etapes? (?:a suivre|obligatoires?))\b"
+)
 _CONSTRAINT = re.compile(
     r"\b(?:ne doit pas|ne doivent pas|doit|doivent|obligatoire(?:ment)?|imperati(?:f|ve|vement)|interdit|"
     r"exige que|au plus tard|au maximum|au minimum|conformite|conforme (?:a|au|aux))\b"
@@ -375,6 +397,8 @@ def classify_sentence(
         return None  # « Il confirme… », « Elle valide… »: meaningless out of their paragraph
     if section_kind is not None:
         return Statement(section_kind, make_title(text), text, 0.7, False, f"section:{section_kind.value}")
+    if _PROCEDURE.search(folded):
+        return Statement(MemoryKind.procedure, make_title(text), text, 0.65, False, "procedure_phrase")
     if _USERS_WANT.search(folded):
         return Statement(MemoryKind.requirement, make_title(text), text, 0.68, False, "users_want")
     if _RISK.search(folded):

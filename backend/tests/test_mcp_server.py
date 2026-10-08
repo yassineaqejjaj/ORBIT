@@ -70,6 +70,8 @@ EXPECTED_TOOLS = {
     "get_decision",
     "get_memory_item",
     "search_more",
+    "list_skills",
+    "get_skill",
 }
 
 # --- Pure units -----------------------------------------------------------------------------------------
@@ -91,6 +93,8 @@ async def test_tools_registered_exactly_as_contract() -> None:
         "get_decision": {"decision_id"},
         "get_memory_item": {"item_id"},
         "search_more": {"query"},
+        "list_skills": set(),
+        "get_skill": {"name"},
     }
     props = set(tools["get_context"].input_schema["properties"])
     assert props == {
@@ -104,6 +108,7 @@ async def test_tools_registered_exactly_as_contract() -> None:
         "save_snapshot",
         "cache_hints",
         "mode",
+        "as_of",
     }
     assert "ctx" not in json.dumps([t.input_schema for t in tools.values()])
     assert all(tool.description for tool in tools.values())

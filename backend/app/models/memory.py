@@ -94,6 +94,8 @@ class MemoryItem(UUIDPkMixin, TimestampMixin, Base):
     rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     decided_by: Mapped[str | None] = mapped_column(Text, nullable=True)
     confidence_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: §D1 procedure (skill) metadata — ``{"name", "description", "task_types", "agent_kinds"}`` (h004).
+    skill_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
 
 class MemoryProvenance(UUIDPkMixin, CreatedAtMixin, Base):
@@ -166,3 +168,46 @@ class Relation(UUIDPkMixin, CreatedAtMixin, Base):
     dst_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     confidence: Mapped[float] = mapped_column(REAL, nullable=False, default=1.0, server_default=text("1"))
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: §D3 contradiction detection: ``nli`` | ``llm`` | ``lexical`` and the model's explanation (h004).
+    method: Mapped[str | None] = mapped_column(Text, nullable=True)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Entity(UUIDPkMixin, TimestampMixin, Base):
+    """§D2 resolved entity of a project (person, team, product, system…); ``merged_into_id`` when merged."""
+
+    __tablename__ = "entities"
+    __table_args__ = (Index("ix_entities_project_id", "project_id"),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(
+        Text, nullable=False, default="concept", server_default=text("'concept'")
+    )
+    merged_into_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("entities.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class EntityAlias(UUIDPkMixin, CreatedAtMixin, Base):
+    """Surface form of an entity; ``merged_from_id`` remembers the entity it came from (unmerge)."""
+
+    __tablename__ = "entity_aliases"
+    __table_args__ = (
+        Index("ix_entity_aliases_entity_id", "entity_id"),
+        Index("ix_entity_aliases_project_id_normalized", "project_id", "normalized"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), nullable=False
+    )
+    alias: Mapped[str] = mapped_column(Text, nullable=False)
+    normalized: Mapped[str] = mapped_column(Text, nullable=False)
+    merged_from_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("entities.id", ondelete="SET NULL"), nullable=True
+    )

@@ -170,6 +170,23 @@ class Settings(BaseSettings):
     #: « Demander à ORBIT » answers « je ne sais pas » when the context is insufficient.
     ask_abstain_when_insufficient: bool = True
 
+    # --- Memory (docs/AI_CONTEXT_ENGINEERING.md §D) ----------------------------------------------
+    #: §D1 procedures served as skills and injected in the « Façons de faire » section.
+    memory_skills: bool = True
+    #: Max procedures anchored in a context when their task types / agent kinds match the request.
+    skills_context_max: int = Field(default=3, ge=0, le=20)
+    #: §D2 entity aliases used to expand retrieval queries.
+    memory_entity_aliases: bool = True
+    #: §D3 contradiction detection: ``auto`` (NLI hook if configured, else LLM judge if the guardrail
+    #: allows, else lexical markers), ``nli``, ``llm`` or ``lexical`` (lexical markers always the fallback).
+    memory_contradiction_mode: Literal["auto", "nli", "llm", "lexical"] = "auto"
+    #: Optional local NLI hook ``package.module:function`` (premise, hypothesis) -> P(contradiction).
+    memory_nli_model: str = ""
+    #: Model contradiction probability above which a conflict is flagged.
+    memory_contradiction_threshold: float = Field(default=0.7, ge=0, le=1)
+    #: §D4 monthly reflection « ce qui a changé » (proposed long-term summary, human validation).
+    memory_reflection: bool = True
+
     # --- Observability ---------------------------------------------------------------------------
     otlp_endpoint: str = ""
     otlp_headers: str = ""  # "key1=value1,key2=value2" (e.g. Langfuse basic auth)

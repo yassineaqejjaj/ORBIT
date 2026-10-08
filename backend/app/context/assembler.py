@@ -24,7 +24,7 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -50,8 +50,10 @@ from app.db import utcnow
 from app.deps import ProjectAccess
 from app.enums import (
     GOVERNANCE_ORDER,
+    AgentKind,
     ContextRequestStatus,
     Intent,
+    MemoryKind,
     MemoryScope,
     PrincipalKind,
     ReasonCode,
@@ -60,8 +62,9 @@ from app.enums import (
 )
 from app.errors import ApiError, forbidden, not_found, validation_error
 from app.governance.acl import effective_clearance, effective_principals
-from app.governance.policy import Candidate, GovernanceContext, Verdict, evaluate
+from app.governance.policy import Candidate, GovernanceContext, Verdict, evaluate, format_date_fr
 from app.llm import client as llm_client
+from app.memory import skills
 from app.models import Agent, ContextRequest, ContextSnapshot, User
 from app.observability.metrics import observe_cache_prefix, observe_context_request
 from app.observability.tracing import current_trace_id, get_tracer
@@ -311,6 +314,30 @@ def _apply_profile_sections(
     return kept
 
 
+def _aware(value: datetime | None) -> datetime | None:
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=UTC)
+
+
+def _apply_procedure_scope(
+    intent: str, agent_kind: str | None, eligible: list[Candidate], excluded: list[Decision]
+) -> list[Candidate]:
+    """§D1: a procedure restricted to other task types / agent kinds is not served (explained)."""
+    kept: list[Candidate] = []
+    for candidate in eligible:
+        ok, detail = (
+            skills.applies_to(candidate.skill_meta, intent, agent_kind)
+            if candidate.memory_kind == MemoryKind.procedure and not candidate.pinned
+            else (True, "")
+        )
+        if ok:
+            kept.append(candidate)
+        else:
+            excluded.append(Decision(candidate=candidate, verdict=Verdict(ReasonCode.EXCLUDED_SCOPE, detail)))
+    return kept
+
+
 def progressive_index(included: list[Decision]) -> list[ContextIndexEntry]:
     entries = []
     for d in included:
@@ -516,6 +543,23 @@ async def _run(
         span.set_attribute("orbit.rounds", len(timer.rounds))
         span.set_attribute("orbit.chunk_hits", len(raw.chunk_hits))
         span.set_attribute("orbit.memory_hits", len(raw.memory_hits))
+        agent_kind = AgentKind(resolved.agent.kind).value if resolved.agent is not None else None
+        if settings.memory_skills and resolved.scopes:
+            await retrieval.add_procedures(
+                session,
+                raw,
+                resolved.project_id,
+                intent=understanding.intent.value,
+                agent_kind=agent_kind,
+                limit=settings.skills_context_max,
+            )
+        as_of = _aware(body.as_of)
+        if as_of is not None:
+            await retrieval.apply_as_of(session, raw, as_of)
+            raw.warnings.append(
+                f"Mémoire telle que connue au {format_date_fr(as_of)} "
+                "(les extraits de sources reflètent leur état actuel)"
+            )
 
     with timer.stage("fuse") as span:
         candidates: list[Candidate] = retrieval.fuse(raw, session_id=body.session_id)
@@ -532,7 +576,7 @@ async def _run(
         span.set_attribute("orbit.reranker", reranker_used)
 
     with timer.stage("govern") as span:
-        ctx = _governance_context(resolved, now)
+        ctx = _governance_context(resolved, as_of or now)
         eligible: list[Candidate] = []
         excluded: list[Decision] = []
         for candidate in candidates:
@@ -541,6 +585,7 @@ async def _run(
                 eligible.append(candidate)
             else:
                 excluded.append(Decision(candidate=candidate, verdict=verdict))
+        eligible = _apply_procedure_scope(understanding.intent.value, agent_kind, eligible, excluded)
         if resolved.profile is not None:
             eligible = _apply_profile_sections(resolved.profile, eligible, excluded)
         span.set_attribute("orbit.eligible", len(eligible))

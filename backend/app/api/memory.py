@@ -12,7 +12,8 @@ Route order matters: ``/memory/graph`` and ``/memory/consolidate`` are declared 
 from __future__ import annotations
 
 import uuid
-from typing import Annotated, Literal
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func, or_, select
@@ -138,6 +139,31 @@ async def _commit_and_serialize(session: AsyncSession, item: MemoryItemRow) -> M
 # --- Listing & creation -------------------------------------------------------------------------------
 
 
+def _as_of_conditions(as_of: datetime, project_id: uuid.UUID) -> list[Any]:
+    """§D2 « tel que connu au <date> »: latest version of each lineage created by ``as_of`` whose
+    validity window covers it (forgotten items excluded)."""
+    ranked = (
+        select(
+            MemoryItemRow.id.label("id"),
+            func.row_number()
+            .over(partition_by=MemoryItemRow.lineage_id, order_by=MemoryItemRow.version.desc())
+            .label("rank"),
+        )
+        .where(
+            MemoryItemRow.created_at <= as_of,
+            or_(MemoryItemRow.project_id == project_id, MemoryItemRow.project_id.is_(None)),
+        )
+        .subquery()
+    )
+    known = select(ranked.c.id).where(ranked.c.rank == 1)
+    return [
+        MemoryItemRow.id.in_(known),
+        MemoryItemRow.valid_from <= as_of,
+        or_(MemoryItemRow.valid_to.is_(None), MemoryItemRow.valid_to > as_of),
+        MemoryItemRow.status != MemoryStatus.forgotten,
+    ]
+
+
 @router.get(
     "", response_model=Page[MemoryItem], summary="Items mémoire (versions courantes, filtrés par droits)"
 )
@@ -150,10 +176,14 @@ async def list_memory(
     status_: MemoryStatus | None = Query(default=None, alias="status"),
     q: str | None = Query(default=None, max_length=200),
     include_history: bool = Query(default=False),
+    as_of: datetime | None = Query(default=None, description="Mémoire telle que connue à cette date (§D2)"),
 ) -> Page[MemoryItem]:
     viewer = MemoryViewer.from_access(access)
     conditions = [visibility_clause(viewer)]
-    if not include_history:
+    if as_of is not None:
+        when = as_of if as_of.tzinfo else as_of.replace(tzinfo=UTC)
+        conditions.extend(_as_of_conditions(when, viewer.project_id))
+    elif not include_history:
         conditions.append(MemoryItemRow.is_current.is_(True))
     if scope is not None:
         conditions.append(MemoryItemRow.scope == scope)
@@ -436,6 +466,8 @@ async def _relations(
                 other_title=title,
                 confidence=float(relation.confidence),
                 detail=relation.detail,
+                method=relation.method,
+                explanation=relation.explanation,
                 created_at=relation.created_at,
             )
         )

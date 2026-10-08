@@ -65,7 +65,7 @@ from app.enums import (
 )
 from app.errors import conflict, validation_error
 from app.governance.acl import merge_acls, user_principal
-from app.memory import short_term
+from app.memory import short_term, skills
 from app.memory.conflicts import cosine as cosine_similarity
 from app.memory.conflicts import (
     divergences,
@@ -133,6 +133,7 @@ VERSIONED_FIELDS: tuple[str, ...] = (
     "kind",
     "scope",
     "confidence",
+    "skill_meta",
 )
 _RELATION_FIELDS = ("title", "content", "kind")
 
@@ -524,6 +525,9 @@ async def create_item(
         valid_to=data.valid_to,
         created_by_type=resolved.type,
         created_by_id=resolved.id,
+        skill_meta=skills.normalize_meta(data.skill_meta, data.title, data.content)
+        if kind == MemoryKind.procedure
+        else None,
     )
     session.add(item)
     await session.flush()
@@ -637,6 +641,8 @@ async def new_version(
             value = _clamp(value)
         elif field == "tags":
             value = list(value)
+        elif field == "skill_meta":
+            value = skills.normalize_meta(value, requested.get("title") or current.title)
         old_value = getattr(current, field)
         if old_value != value:
             values[field] = value

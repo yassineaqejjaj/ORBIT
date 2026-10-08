@@ -51,7 +51,13 @@ MEMORY_SCOPE_LABELS: dict[MemoryScope, str] = {
 
 #: Grammatical gender of memory kind labels (for « décision validée » / « besoin validé »).
 _FEMININE_KINDS: frozenset[MemoryKind] = frozenset(
-    {MemoryKind.decision, MemoryKind.constraint, MemoryKind.preference, MemoryKind.summary}
+    {
+        MemoryKind.decision,
+        MemoryKind.constraint,
+        MemoryKind.preference,
+        MemoryKind.summary,
+        MemoryKind.procedure,
+    }
 )
 
 _ACL_ENTRY_LABELS: dict[str, str] = {
@@ -168,6 +174,8 @@ class Candidate:
     #: Trust of the originating source (§A3): ``high`` / ``medium`` / ``low``.
     trust: str = "high"
     tokens: int = 0
+    #: §D1 procedure (skill) metadata: ``task_types`` (intents) / ``agent_kinds`` it applies to.
+    skill_meta: dict[str, Any] | None = None
     scores: ScoreBreakdown = field(default_factory=ScoreBreakdown)
     retrieved_by: set[str] = field(default_factory=set)
 
