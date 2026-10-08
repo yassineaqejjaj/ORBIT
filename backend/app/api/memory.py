@@ -281,6 +281,27 @@ async def consolidate_memory(access: EditorAccess, session: SessionDep) -> Job:
     return Job.model_validate(job)
 
 
+@router.post("/reflect", response_model=Job, summary="Lancer la réflexion « ce qui a changé » d'un mois")
+async def reflect_memory(
+    access: EditorAccess,
+    session: SessionDep,
+    month: str | None = Query(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="AAAA-MM"),
+) -> Job:
+    """§D4: proposed long-term summary of the month's memory changes (default: previous month)."""
+    from app.memory import reflection
+
+    label = reflection.month_of(month).label
+    job = await enqueue_job(
+        session,
+        access.project_id,
+        JobKind.reflect,
+        payload={"month": label, "trigger": "manual", "actor": actor_payload(access.principal.actor)},
+    )
+    await session.commit()
+    await session.refresh(job)
+    return Job.model_validate(job)
+
+
 # --- Graph --------------------------------------------------------------------------------------------
 
 

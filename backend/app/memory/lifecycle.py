@@ -65,7 +65,7 @@ from app.enums import (
 )
 from app.errors import conflict, validation_error
 from app.governance.acl import merge_acls, user_principal
-from app.memory import contradiction, short_term, skills
+from app.memory import contradiction, reflection, short_term, skills
 from app.memory.conflicts import cosine as cosine_similarity
 from app.memory.conflicts import (
     divergences,
@@ -1615,5 +1615,6 @@ async def run_periodic_maintenance(session: AsyncSession) -> dict[str, int]:
         "expired_short_term": await _expire_short_term(session, now),
         "decayed_long_term": await _decay_long_term(session, now),
         "consolidations_enqueued": await _trigger_consolidations(session, now),
+        "reflections_enqueued": await reflection.trigger_reflections(session, now),
     }
     return {key: value for key, value in counters.items() if value}

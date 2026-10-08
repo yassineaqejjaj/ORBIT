@@ -353,3 +353,85 @@ async def test_conflict_stores_method_score_and_explanation(
     detail = (await admin_client.get(f"{API}/{slug}/memory/{first['id']}")).json()
     relation = next(r for r in detail["relations"] if r["rel_type"] == "contradicts")
     assert relation["method"] == "nli" and round(relation["score"], 3) == 0.93
+
+
+# --- D4 monthly reflection ------------------------------------------------------------------------------
+
+
+async def _run_reflect_jobs() -> int:
+    from app.db import get_sessionmaker
+    from app.enums import JobKind
+    from app.ingestion.queue import claim_next_job
+    from app.worker import Worker
+
+    worker = Worker(concurrency=1, worker_id="test-reflection")
+    processed = 0
+    for _ in range(20):
+        async with get_sessionmaker()() as session:
+            job = await claim_next_job(session, worker.worker_id, kinds=(JobKind.reflect,))
+        if job is None:
+            break
+        await worker._process(job.id)
+        processed += 1
+    return processed
+
+
+async def test_monthly_reflection_job(
+    admin_client: httpx.AsyncClient,
+    project: JSON,
+    fake_llm: Callable[..., FakeLLM],  # noqa: F811
+) -> None:
+    slug = str(project["slug"])
+    fake = fake_llm(lambda _prompt: "Le check-in passe au QR code.", llm_max_classification=1)
+    proposed = await _memory(
+        admin_client,
+        slug,
+        status="proposed",
+        title="Check-in par QR code",
+        content="Décision : le check-in du salon Atlas se fait par QR code.",
+    )
+    assert (
+        await admin_client.post(f"{API}/{slug}/memory/{proposed['id']}/validate", json={})
+    ).status_code == 200
+    old = await _memory(
+        admin_client, slug, kind="fact", title="Horaires du salon", content="Fait : le salon ouvre à 9 h."
+    )
+    obsolete = await admin_client.post(
+        f"{API}/{slug}/memory/{old['id']}/obsolete", json={"reason": "Horaires revus par le comité"}
+    )
+    assert obsolete.status_code == 200, obsolete.text
+    await _memory(
+        admin_client,
+        slug,
+        status="proposed",
+        title="Budget",
+        content="Décision : budget confidentiel.",
+        classification=3,
+        acl_principals=["role:owner"],
+    )
+    month = datetime.now(UTC).strftime("%Y-%m")
+    job = await admin_client.post(f"{API}/{slug}/memory/reflect", params={"month": month})
+    assert job.status_code == 200 and job.json()["kind"] == "reflect"
+    await drain()
+
+    assert await _run_reflect_jobs() >= 1
+    jobs = (await admin_client.get(f"{API}/{slug}/jobs")).json()["items"]
+    done = next(j for j in jobs if j["id"] == job.json()["id"])
+    assert done["status"] == "succeeded", done
+    listed = (await admin_client.get(f"{API}/{slug}/memory", params={"kind": "summary"})).json()["items"]
+    summary = next(i for i in listed if f"reflection:{month}" in i["tags"])
+    assert summary["status"] == "proposed" and summary["scope"] == "long_term"
+    content = summary["content"]
+    assert content.startswith("Ce qui a changé dans la mémoire du projet en")
+    assert "### Décisions et éléments validés" in content and "« Check-in par QR code »" in content
+    assert "### Devenus obsolètes" in content and "Horaires revus par le comité" in content
+    assert "Budget" not in content  # restricted items are never summarised
+    assert "Synthèse : Le check-in passe au QR code." in content and len(fake.requests) == 1
+    detail = (await admin_client.get(f"{API}/{slug}/memory/{summary['id']}")).json()
+    assert detail["provenance"] and detail["provenance"][0]["source_label"].startswith("Journal mémoire · J1")
+
+    # Idempotent: a second run for the same month proposes nothing new.
+    await admin_client.post(f"{API}/{slug}/memory/reflect", params={"month": month})
+    await _run_reflect_jobs()
+    again = (await admin_client.get(f"{API}/{slug}/memory", params={"kind": "summary"})).json()["items"]
+    assert sum(f"reflection:{month}" in i["tags"] for i in again) == 1

@@ -109,8 +109,16 @@ async def run_job(session: AsyncSession, job: IngestionJob) -> None:
         JobKind.extract_memory: handle_extract_memory,
         JobKind.webhook: handle_webhook,
         JobKind.connector_sync: handle_connector_sync,
+        JobKind.reflect: handle_reflect,
     }
     await handlers[JobKind(job.kind)](session, job)
+
+
+async def handle_reflect(session: AsyncSession, job: IngestionJob) -> None:
+    """Monthly memory reflection (docs/AI_CONTEXT_ENGINEERING.md §D4)."""
+    from app.memory.reflection import handle_reflect as reflect
+
+    await reflect(session, job)
 
 
 async def handle_webhook(session: AsyncSession, job: IngestionJob) -> None:
