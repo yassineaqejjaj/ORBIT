@@ -48,6 +48,7 @@ import type {
   DocumentSummary,
   DocumentUpdateIn,
   DocumentUploadIn,
+  MeetingImportIn,
   Job,
   JobListParams,
   JobWithDocument,
@@ -424,6 +425,14 @@ export function useDocument(slug: string, documentId: UUID | undefined, options?
 export function useUploadDocuments(slug: string, options?: MutationOpts<DocumentSummary[], DocumentUploadIn>) {
   return useApiMutation<DocumentSummary[], DocumentUploadIn>(
     (input) => api.uploadDocuments(slug, input),
+    (qc) => invalidateIngestion(qc, slug),
+    options,
+  );
+}
+
+export function useImportMeeting(slug: string, options?: MutationOpts<DocumentSummary, MeetingImportIn>) {
+  return useApiMutation<DocumentSummary, MeetingImportIn>(
+    (input) => api.importMeeting(slug, input),
     (qc) => invalidateIngestion(qc, slug),
     options,
   );

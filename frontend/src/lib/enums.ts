@@ -48,6 +48,7 @@ export type IconName =
   | "Heart"
   | "ScrollText"
   | "ClipboardCheck"
+  | "ListTodo"
   | "TriangleAlert"
   | "Package"
   | "Palette"
@@ -279,6 +280,7 @@ export const MEMORY_KINDS = [
   "summary",
   "risk",
   "procedure",
+  "action",
 ] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
 
@@ -295,6 +297,12 @@ export const MEMORY_KIND_META: Record<MemoryKind, EnumMeta & { icon: IconName }>
     tone: "green",
     icon: "ClipboardCheck",
     description: "Façon de faire : définition de « terminé », convention, checklist (servie comme skill)",
+  },
+  action: {
+    label: "Action",
+    tone: "amber",
+    icon: "ListTodo",
+    description: "Action décidée en réunion : responsable et échéance",
   },
 };
 

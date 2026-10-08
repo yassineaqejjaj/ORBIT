@@ -312,8 +312,19 @@ export interface MemoryItem {
   created_by_label: string | null;
   provenance_count: number;
   skill_meta?: SkillMeta | null;
+  /** §F1 meeting action item. */
+  action_meta?: ActionMeta | null;
   created_at: ISODateString;
   updated_at: ISODateString;
+}
+
+/** §F1 action item of a meeting: owner, due date (ISO when resolved), speaker and timestamp. */
+export interface ActionMeta {
+  owner?: string | null;
+  due_date?: string | null;
+  due_text?: string | null;
+  speaker?: string | null;
+  timestamp?: string | null;
 }
 
 /** §D1 procedure (skill) metadata. Empty lists = applies to every task / agent kind. */
@@ -565,6 +576,39 @@ export interface DocumentUploadIn {
   acl_principals?: string[];
   /** Sent as CSV. */
   tags?: string[];
+}
+
+/** Multipart fields of `POST /documents/meeting` (§F1). */
+export interface MeetingImportIn {
+  file: File;
+  title?: string;
+  /** AAAA-MM-JJ */
+  meeting_date?: string;
+  /** Sent as CSV. */
+  participants?: string[];
+  source_id?: UUID;
+  classification?: Classification;
+  tags?: string[];
+}
+
+/** One speaker turn of `DocumentDetail.metadata.meeting.turns` (seconds). */
+export interface MeetingTurn {
+  speaker: string | null;
+  text: string;
+  start?: number;
+  end?: number;
+}
+
+/** `DocumentDetail.metadata.meeting` of an imported meeting (§F1). */
+export interface MeetingMeta {
+  date?: string | null;
+  participants?: string[];
+  audio?: boolean;
+  format?: string;
+  speakers?: string[];
+  turn_count?: number;
+  duration_seconds?: number | null;
+  turns?: MeetingTurn[];
 }
 
 export interface TextDocumentIn {

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, FileSpreadsheet, NotebookPen, Plus, UploadCloud } from "lucide-react";
+import { ChevronDown, FileSpreadsheet, Mic, NotebookPen, Plus, UploadCloud } from "lucide-react";
 
 import { projectHref } from "@/components/layout/nav";
 import { Button, type ButtonProps } from "@/components/ui/button";
@@ -15,10 +15,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { DocumentSummary } from "@/lib/api/types";
 import { ImportDialog } from "./import-dialog";
+import { MeetingDialog } from "./meeting-dialog";
 import { NoteDialog } from "./note-dialog";
 import { UploadDialog } from "./upload-dialog";
 
-type DialogKind = "upload" | "note" | "import" | null;
+type DialogKind = "upload" | "note" | "import" | "meeting" | null;
 
 export interface AddContentMenuProps {
   slug: string;
@@ -31,7 +32,7 @@ export interface AddContentMenuProps {
   align?: "start" | "end";
 }
 
-/** "Ajouter" menu → upload files, write a note, or import a JSON/CSV batch (editor+). */
+/** "Ajouter" menu → upload files, write a note, import a meeting or a JSON/CSV batch (editor+). */
 export function AddContentMenu({
   slug,
   label = "Ajouter",
@@ -72,6 +73,13 @@ export function AddContentMenu({
               <span className="text-xs text-muted-foreground">Compte rendu, ticket, fiche CRM, retour…</span>
             </span>
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setDialog("meeting")} className="items-start py-2">
+            <Mic className="mt-0.5 text-brand" aria-hidden />
+            <span className="grid gap-0.5">
+              <span className="font-medium">Importer une réunion</span>
+              <span className="text-xs text-muted-foreground">Transcription VTT, SRT, DOCX, texte ou audio</span>
+            </span>
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setDialog("import")} className="items-start py-2">
             <FileSpreadsheet className="mt-0.5 text-brand" aria-hidden />
             <span className="grid gap-0.5">
@@ -87,6 +95,13 @@ export function AddContentMenu({
         slug={slug}
         open={dialog === "note"}
         onOpenChange={setOpen("note")}
+        defaultSourceId={defaultSourceId}
+        onCreated={openDocument}
+      />
+      <MeetingDialog
+        slug={slug}
+        open={dialog === "meeting"}
+        onOpenChange={setOpen("meeting")}
         defaultSourceId={defaultSourceId}
         onCreated={openDocument}
       />

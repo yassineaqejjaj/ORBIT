@@ -31,6 +31,7 @@ import type {
   DocumentSummary,
   DocumentUpdateIn,
   DocumentUploadIn,
+  MeetingImportIn,
   ForgetIn,
   Job,
   JobListParams,
@@ -269,6 +270,19 @@ export function uploadDocuments(slug: string, input: DocumentUploadIn): Promise<
   if (input.acl_principals?.length) form.append("acl_principals", input.acl_principals.join(","));
   if (input.tags?.length) form.append("tags", input.tags.join(","));
   return http.upload<DocumentSummary[]>(`${p(slug)}/documents/upload`, form);
+}
+
+/** POST /projects/{slug}/documents/meeting (editor, multipart transcript or audio) → DocumentSummary (§F1) */
+export function importMeeting(slug: string, input: MeetingImportIn): Promise<DocumentSummary> {
+  const form = new FormData();
+  form.append("file", input.file, input.file.name);
+  if (input.title) form.append("title", input.title);
+  if (input.meeting_date) form.append("meeting_date", input.meeting_date);
+  if (input.participants?.length) form.append("participants", input.participants.join(","));
+  if (input.source_id) form.append("source_id", input.source_id);
+  if (input.classification !== undefined) form.append("classification", String(input.classification));
+  if (input.tags?.length) form.append("tags", input.tags.join(","));
+  return http.upload<DocumentSummary>(`${p(slug)}/documents/meeting`, form);
 }
 
 /** POST /projects/{slug}/documents/text (editor) → DocumentSummary */
