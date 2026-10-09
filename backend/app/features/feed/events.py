@@ -24,7 +24,7 @@ from sqlalchemy.types import Text
 
 from app.db import utcnow
 from app.enums import MEMORY_KIND_LABELS, JobKind, JobStatus, MemoryKind, MemoryScope
-from app.features.feed.types import ChangeType
+from app.features.feed.types import OPT_IN_TYPES, ChangeType
 from app.governance.acl import PROJECT_ALL
 from app.models import ContextSnapshot, Document, IngestionJob, MemoryItem, Project
 from app.models.features_feed import ChangeEvent, Webhook, WebhookDelivery
@@ -362,7 +362,12 @@ def webhook_payload(event: ChangeEvent, project: Project | None) -> dict[str, An
         "title": event.title if public else RESTRICTED_TITLE,
         "summary": event.summary if public else "",
     }
-    if public:
+    if public and event.type == ChangeType.context_served.value:
+        # ids and counters only: neither the requester's name nor any content
+        payload["title"] = "Contexte servi"
+        payload["summary"] = ""
+        payload["data"] = {k: v for k, v in (event.data or {}).items() if not isinstance(v, dict | list)}
+    elif public:
         payload["actor"] = event.actor_label
         payload["data"] = {k: v for k, v in (event.data or {}).items() if not isinstance(v, dict | list)}
     return payload
@@ -375,7 +380,12 @@ async def enqueue_deliveries(session: AsyncSession, event: ChangeEvent) -> int:
             select(Webhook).where(Webhook.project_id == event.project_id, Webhook.enabled.is_(True))
         )
     )
-    targets = [hook for hook in hooks if not hook.types or event.type in hook.types]
+    # Opt-in types (context.served) need an explicit selection: an empty list means « all other types ».
+    targets = [
+        hook
+        for hook in hooks
+        if (event.type in hook.types if event.type in OPT_IN_TYPES else (not hook.types or event.type in hook.types))
+    ]
     if not targets:
         return 0
     project = await session.get(Project, event.project_id)

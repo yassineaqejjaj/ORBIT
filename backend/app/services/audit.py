@@ -168,6 +168,9 @@ async def record(
         await on_audit(
             session, project_id, resolved.label, str(action), target_type, target_id, summary, details or {}
         )
+        from app.features.live import hooks as live_hooks
+
+        await live_hooks.on_audit(session, project_id, str(action), target_id)
     return entry
 
 

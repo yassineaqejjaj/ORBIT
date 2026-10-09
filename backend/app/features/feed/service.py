@@ -28,7 +28,8 @@ from app.features.feed.schemas import (
     SinceSnapshot,
     SnapshotRef,
 )
-from app.features.feed.types import ChangeType, type_label
+from app.features.feed.context_events import PRIVATE_DATA_KEYS
+from app.features.feed.types import OPT_IN_TYPES, ChangeType, type_label
 from app.governance import freshness
 from app.governance.acl import acl_allows, effective_principals, principals_for_member
 from app.memory.visibility import MemoryViewer, can_view
@@ -65,6 +66,8 @@ class FeedViewer:
 def to_out(event: ChangeEvent) -> ChangeEventOut:
     out = ChangeEventOut.model_validate(event)
     out.type_label = type_label(event.type)
+    if event.type == ChangeType.context_served.value:
+        out.data = {k: v for k, v in out.data.items() if k not in PRIVATE_DATA_KEYS}
     return out
 
 
@@ -253,6 +256,8 @@ async def build_digest(
     until = until or utcnow()
     since = until - PERIODS[period]
     conditions = _conditions(viewer, since, types, until)
+    if not types:  # high-volume opt-in types (context.served) only appear when asked for
+        conditions.append(ChangeEvent.type.not_in(list(OPT_IN_TYPES)))
     counts = dict(
         (
             await session.execute(
