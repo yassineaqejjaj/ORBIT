@@ -118,7 +118,7 @@ export function OverviewView() {
 
           {/* DOM order = mobile order: state, to-do, flow, decisions, ingestion, memory, sources, activity. */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-12">
-            <ProjectHealthCard overview={data} className="md:col-span-2 lg:col-span-7" />
+            <ProjectHealthCard overview={data} className="md:col-span-2 lg:col-span-7 lg:self-start" />
             <AttentionList slug={slug} alerts={data.alerts} className="md:col-span-2 lg:col-span-5" />
             <OrbitFlow slug={slug} overview={data} className="md:col-span-2 lg:col-span-12" />
             <ActiveDecisions slug={slug} decisions={data.latest_decisions} className="md:col-span-2 lg:col-span-7" />
