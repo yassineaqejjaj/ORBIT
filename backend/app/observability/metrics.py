@@ -48,6 +48,18 @@ CONTEXT_CACHE_PREFIX_TOKENS_TOTAL = Counter(
     "Tokens of stable prefixes served, by reuse result (hit = cacheable tokens).",
     ["result"],
 )
+CONTEXT_EVENTS_TOTAL = Counter(
+    "orbit_context_events_total",
+    "`context.served` change events, by outcome (emitted, coalesced, skipped).",
+    ["outcome"],
+)
+LIVE_EVENTS_PUBLISHED_TOTAL = Counter(
+    "orbit_live_events_published_total", "Live events published on the bus, by kind.", ["kind"]
+)
+LIVE_EVENTS_DELIVERED_TOTAL = Counter(
+    "orbit_live_events_delivered_total", "Live events written to SSE clients, by kind.", ["kind"]
+)
+LIVE_CONNECTIONS = Gauge("orbit_live_stream_connections", "Open SSE connections on this process.")
 
 
 def observe_cache_prefix(*, reused: bool, tokens: int) -> None:

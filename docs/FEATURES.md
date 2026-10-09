@@ -49,6 +49,19 @@ déterministe ; compteur Prometheus `orbit_llm_guardrail_skips_total{reason}`. S
 - UI : timeline groupée par jour, filtres par type, encart « Depuis le snapshot … » (sélecteur), réglages d'abonnement,
   gestion des webhooks dans Paramètres (onglet *Webhooks*).
 
+### F2 bis — Événements de contexte en direct
+
+- `context.served` : émis après persistance d'une requête de contexte (REST, MCP, « Demander à ORBIT » ; jamais pour les
+  runs d'évaluation). `data` = identifiants et compteurs uniquement (`request_id`, `trace_id`, `agent_id/name`, `on_behalf_of`
+  — jamais renvoyé par l'API —, `intent`, `included_count`, `excluded_count`, `tokens_used`, `token_budget`, `latency_ms`,
+  `sufficiency`, `snapshot`, `max_classification`, `count`) ; **jamais** la tâche, les extraits ni les titres. Classification de
+  l'événement = max des éléments servis (masqué au-delà de l'habilitation). Fusion par demandeur sur
+  `ORBIT_CONTEXT_EVENTS_COALESCE_SECONDS` (compteur `count`). Webhooks : opt-in (un webhook sans type ne le reçoit pas), absent du digest
+  sauf s'il est choisi dans l'abonnement.
+- `GET /projects/{slug}/events/stream` (SSE, cookie ou Bearer, rôle lecteur) : `context.served`, `ingestion.updated`,
+  `memory.changed`, `snapshot.created` (identifiants seulement), `degraded`, `reconnect` ; heartbeat 15 s, `Last-Event-ID`,
+  diffusion Valkey pub/sub publiée après commit, filtrage par habilitation/ACL de l'abonné. L'interface se replie sur un polling de 10 s.
+
 ## F3 — Extraction de mémoire assistée par LLM
 
 - `app/memory/llm_extraction.py` : prompt structuré → JSON validé (pydantic) de « fiches » `{kind, title, statement, decided_by?, decided_at?,

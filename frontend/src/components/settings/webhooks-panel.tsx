@@ -134,7 +134,7 @@ export function WebhooksPanel() {
                   <div className="flex flex-wrap gap-1">
                     {hook.types.length === 0 ? (
                       <Badge tone="blue" size="sm">
-                        Tous les changements
+                        Tous les changements (hors contextes servis)
                       </Badge>
                     ) : (
                       hook.types.map((type) => (
@@ -295,17 +295,26 @@ function WebhookFormDialog({
           </Field>
           <fieldset className="grid gap-2">
             <legend className="mb-1 text-[13px] font-medium">Événements</legend>
-            <p className="text-xs text-muted-foreground">Aucun type coché = tous les changements.</p>
+            <p className="text-xs text-muted-foreground">
+              Aucun type coché = tous les changements, hors « Contexte servi » qui doit être coché explicitement.
+            </p>
             <div className="grid gap-1.5 sm:grid-cols-2">
               {CHANGE_TYPES.map((type) => (
                 <div key={type} className="flex items-center gap-2">
                   <Checkbox id={`wh-${type}`} checked={types.includes(type)} onCheckedChange={() => toggle(type)} />
                   <Label htmlFor={`wh-${type}`} className="text-[13px] font-normal">
                     {CHANGE_TYPE_LABELS[type]}
+                    {type === "context.served" ? <span className="ml-1 text-xs text-muted-foreground">(sur demande)</span> : null}
                   </Label>
                 </div>
               ))}
             </div>
+            {types.includes("context.served") ? (
+              <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                « Contexte servi » n&apos;envoie que des identifiants et des compteurs (agent, requête, nombre d&apos;éléments,
+                jetons) : jamais la question posée, ni les extraits ou titres du contexte.
+              </p>
+            ) : null}
           </fieldset>
           <DialogFooter>
             <Button type="button" variant="secondary" onClick={onClose}>

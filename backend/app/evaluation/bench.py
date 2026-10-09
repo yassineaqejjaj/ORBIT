@@ -215,7 +215,10 @@ async def execute_run(session: AsyncSession, run: EvalRun) -> EvalRun:
         expected = expected_keys(case.expected or [])
         question, case_id = case.question, case.id
         package = await assemble_context(
-            session, access, ContextRequestIn(task=question, explain=False, min_relevance=0)
+            session,
+            access,
+            ContextRequestIn(task=question, explain=False, min_relevance=0),
+            emit_events=False,
         )
         request = await session.get(ContextRequest, package.request_id)
         if request is not None:

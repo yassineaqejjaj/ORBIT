@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import utcnow
 from app.enums import JobKind, JobStatus, JobStepStatus
+from app.features.live import hooks as live_hooks
 from app.models import IngestionJob
 from app.observability.metrics import record_ingestion_job
 
@@ -117,6 +118,7 @@ async def claim_next_job(
     job.started_at = now
     job.finished_at = None
     job.steps = []
+    live_hooks.job_updated(session, job)
     await session.commit()
     return job
 
@@ -129,6 +131,7 @@ async def mark_succeeded(session: AsyncSession, job: IngestionJob) -> None:
     job.locked_at = None
     job.error = None
     await session.flush()
+    live_hooks.job_updated(session, job)
     record_ingestion_job("succeeded")
 
 
@@ -148,11 +151,13 @@ async def mark_failed(
         job.status = JobStatus.queued
         job.run_after = utcnow() + timedelta(seconds=backoff_delay(job.attempts))
         await session.flush()
+        live_hooks.job_updated(session, job)
         record_ingestion_job("retried")
         return True
     job.status = JobStatus.failed
     job.finished_at = utcnow()
     await session.flush()
+    live_hooks.job_updated(session, job)
     record_ingestion_job("failed")
     return False
 

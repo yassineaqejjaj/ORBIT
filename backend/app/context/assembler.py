@@ -523,7 +523,12 @@ def _round(
 
 
 async def _run(
-    session: AsyncSession, resolved: ResolvedRequest, timer: _Timer, request_id: uuid.UUID, trace_id: str
+    session: AsyncSession,
+    resolved: ResolvedRequest,
+    timer: _Timer,
+    request_id: uuid.UUID,
+    trace_id: str,
+    emit_events: bool = True,
 ) -> ContextPackage:
     body = resolved.body
     access = resolved.access
@@ -825,6 +830,29 @@ async def _run(
     row.latency_ms = round(total)
     row.timings = timings
     package.timings = ContextTimings(**timings)
+    if emit_events:
+        from app.features.feed import context_events
+
+        await context_events.record(
+            session,
+            context_events.Served(
+                project_id=resolved.project_id,
+                request_id=request_id,
+                trace_id=trace_id,
+                agent_id=resolved.agent.id if resolved.agent else None,
+                agent_name=resolved.agent.name if resolved.agent else None,
+                on_behalf_of=resolved.on_behalf_of.id if resolved.on_behalf_of else None,
+                intent=str(understanding.intent),
+                included_count=len(included),
+                excluded_count=len(excluded),
+                tokens_used=packaged.tokens_used,
+                token_budget=resolved.token_budget,
+                latency_ms=round(total),
+                sufficiency=package.sufficiency.verdict if package.sufficiency else None,
+                snapshot=f"{package.snapshot.name}@v{package.snapshot.version}" if package.snapshot else None,
+                max_classification=max((int(d.candidate.classification) for d in included), default=0),
+            ),
+        )
     from app.evaluation import judge
 
     await judge.maybe_enqueue(session, resolved.project_id, request_id)  # §E3 sampled LLM judge
@@ -867,9 +895,12 @@ async def _record_failure(
 
 
 async def assemble_context(
-    session: AsyncSession, access: ProjectAccess, request: ContextRequestIn
+    session: AsyncSession, access: ProjectAccess, request: ContextRequestIn, *, emit_events: bool = True
 ) -> ContextPackage:
-    """Assemble, persist and return a governed context package (commits its own records)."""
+    """Assemble, persist and return a governed context package (commits its own records).
+
+    ``emit_events=False`` (evaluation runs) skips the ``context.served`` change event.
+    """
     resolved = await resolve_request(session, access, request)
     timer = _Timer()
     request_id = uuid.uuid4()
@@ -881,7 +912,7 @@ async def assemble_context(
         span.set_attribute("orbit.request_id", str(request_id))
         trace_id = current_trace_id()
         try:
-            package = await _run(session, resolved, timer, request_id, trace_id)
+            package = await _run(session, resolved, timer, request_id, trace_id, emit_events)
         except ApiError:
             await session.rollback()
             raise

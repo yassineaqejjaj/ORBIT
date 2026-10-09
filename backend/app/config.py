@@ -90,6 +90,16 @@ class Settings(BaseSettings):
     smtp_starttls: bool = True
     webhook_timeout_seconds: float = 10.0
     webhook_max_failures: int = 20
+    # --- Live context events (change feed `context.served` + SSE stream) ---
+    #: Record a `context.served` change event for every served context (never any content).
+    context_events: bool = True
+    #: Events of the same agent within this window are coalesced into one event with a counter (0 = off).
+    context_events_coalesce_seconds: int = Field(default=30, ge=0, le=3600)
+    #: Live SSE stream `/projects/{slug}/events/stream`.
+    live_stream: bool = True
+    live_stream_heartbeat_seconds: float = Field(default=15.0, ge=0.05, le=60)
+    live_stream_max_connections_per_user: int = Field(default=6, ge=1, le=100)
+    live_stream_max_connections_total: int = Field(default=500, ge=1, le=10_000)
     connector_default_schedule_minutes: int = 60
     # --- MCP connectors (docs/FEATURES.md F6) ---
     #: Allow custom MCP servers (arbitrary command or URL) — platform admins only.

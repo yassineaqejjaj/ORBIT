@@ -94,6 +94,7 @@ export const CHANGE_TYPES = [
   "document.stale",
   "snapshot.created",
   "connector.synced",
+  "context.served",
 ] as const;
 export type ChangeType = (typeof CHANGE_TYPES)[number];
 
@@ -111,6 +112,7 @@ export const CHANGE_TYPE_LABELS: Record<ChangeType, string> = {
   "document.stale": "Document périmé",
   "snapshot.created": "Snapshot enregistré",
   "connector.synced": "Connecteur synchronisé",
+  "context.served": "Contexte servi",
 };
 
 export interface ChangeEvent {
@@ -365,8 +367,14 @@ export function useDismissConflict(slug: string) {
   });
 }
 
-export function useChanges(slug: string, params: ChangesParams, enabled = true) {
+export function useChanges(
+  slug: string,
+  params: ChangesParams,
+  enabled = true,
+  refetchInterval?: () => number | false,
+) {
   return useQuery<Page<ChangeEvent>, ApiError>({
+    refetchInterval,
     queryKey: featuresFeedKeys.changesList(slug, params),
     queryFn: ({ signal }) => featuresFeedApi.listChanges(slug, params, { signal }),
     enabled: Boolean(slug) && enabled,

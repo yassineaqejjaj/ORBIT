@@ -19,6 +19,7 @@ class ChangeType(StrEnum):
     document_stale = "document.stale"
     snapshot_created = "snapshot.created"
     connector_synced = "connector.synced"
+    context_served = "context.served"
 
 
 CHANGE_TYPE_LABELS: dict[str, str] = {
@@ -35,7 +36,11 @@ CHANGE_TYPE_LABELS: dict[str, str] = {
     ChangeType.document_stale: "Document périmé",
     ChangeType.snapshot_created: "Snapshot enregistré",
     ChangeType.connector_synced: "Connecteur synchronisé",
+    ChangeType.context_served: "Contexte servi",
 }
+
+#: Types a webhook only receives when explicitly selected (an empty selection = every *other* type).
+OPT_IN_TYPES: frozenset[str] = frozenset({ChangeType.context_served.value})
 
 ALL_TYPES: tuple[str, ...] = tuple(t.value for t in ChangeType)
 #: Pseudo-type of webhook test deliveries.

@@ -10,6 +10,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CurrentProjectProvider } from "@/hooks/use-current-project";
 import { useProject } from "@/lib/api/hooks";
+import { LiveEventsProvider } from "@/lib/live/live-events";
 
 const LAST_PROJECT_KEY = "orbit:last-project";
 
@@ -81,7 +82,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
 
   return (
     <CurrentProjectProvider project={project.data}>
-      {children}
+      <LiveEventsProvider slug={slug}>{children}</LiveEventsProvider>
     </CurrentProjectProvider>
   );
 }

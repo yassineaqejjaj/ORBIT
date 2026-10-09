@@ -15,6 +15,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCurrentProject } from "@/hooks/use-current-project";
 import { useChanges, useSubscription } from "@/lib/api/features-feed";
+import { useLivePollInterval } from "@/lib/live/live-events";
 import { cn } from "@/lib/utils";
 import { CHANGE_FAMILIES } from "./change-meta";
 import { ChangesTimeline } from "./changes-timeline";
@@ -30,7 +31,8 @@ export function ChangesView() {
   const families = (get("types") ?? "").split(",").filter(Boolean);
   const page = Math.max(1, Number(get("page") ?? 1) || 1);
   const types = CHANGE_FAMILIES.filter((f) => families.includes(f.value)).flatMap((f) => f.types);
-  const changes = useChanges(slug, { types, page, page_size: PAGE_SIZE });
+  const poll = useLivePollInterval();
+  const changes = useChanges(slug, { types, page, page_size: PAGE_SIZE }, true, poll);
   const subscription = useSubscription(slug);
   const [subscriptionOpen, setSubscriptionOpen] = React.useState(false);
   const digestLabel = subscription.data ? DIGEST_LABELS[subscription.data.digest] : null;

@@ -14,6 +14,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAgents, useContextRequests } from "@/lib/api/hooks";
 import type { ContextRequestSummary } from "@/lib/api/types";
 import { formatMs, formatNumber } from "@/lib/format";
+import { LiveIndicator } from "@/components/layout/live-indicator";
+import { useFreshIds, useLivePollInterval } from "@/lib/live/live-events";
 import { cn } from "@/lib/utils";
 import { StarRating } from "./star-rating";
 
@@ -31,10 +33,12 @@ function HistoryRow({
   request,
   active,
   onSelect,
+  fresh,
 }: {
   request: ContextRequestSummary;
   active: boolean;
   onSelect: () => void;
+  fresh?: boolean;
 }) {
   return (
     <li>
@@ -44,6 +48,7 @@ function HistoryRow({
         aria-current={active ? "true" : undefined}
         className={cn(
           "grid w-full gap-1.5 rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          fresh && "live-flash",
           active ? "border-primary/50 bg-brand-soft/50" : "border-border bg-card hover:border-border-strong hover:bg-muted/40",
         )}
       >
@@ -86,10 +91,15 @@ export function HistoryDrawer({ slug, open, onOpenChange, activeRequestId, onSel
   const [page, setPage] = React.useState(1);
   const [agentFilter, setAgentFilter] = React.useState<string>(ALL_AGENTS);
   const agents = useAgents(slug, { enabled: open });
+  const poll = useLivePollInterval();
   const requests = useContextRequests(
     slug,
     { page, ...(agentFilter !== ALL_AGENTS ? { agent_id: agentFilter } : {}) },
-    { enabled: open },
+    { enabled: open, refetchInterval: poll },
+  );
+  const fresh = useFreshIds(
+    (requests.data?.items ?? []).map((r) => r.id),
+    `${page}:${agentFilter}`,
   );
 
   const agentOptions = React.useMemo(
@@ -107,6 +117,7 @@ export function HistoryDrawer({ slug, open, onOpenChange, activeRequestId, onSel
           <SheetTitle className="flex items-center gap-2">
             <History className="size-4 text-primary" aria-hidden />
             Historique des contextes
+            <LiveIndicator className="ml-1" />
           </SheetTitle>
           <SheetDescription>Rouvrez une requête passée : résultat, exclusions et cascade des temps sont reconstitués.</SheetDescription>
         </SheetHeader>
@@ -141,7 +152,13 @@ export function HistoryDrawer({ slug, open, onOpenChange, activeRequestId, onSel
           ) : (
             <ul className={cn("grid gap-2", requests.isPlaceholderData && "opacity-60")}>
               {requests.data.items.map((r) => (
-                <HistoryRow key={r.id} request={r} active={r.id === activeRequestId} onSelect={() => onSelect(r)} />
+                <HistoryRow
+                key={r.id}
+                request={r}
+                active={r.id === activeRequestId}
+                fresh={page === 1 && fresh.has(r.id)}
+                onSelect={() => onSelect(r)}
+              />
               ))}
             </ul>
           )}

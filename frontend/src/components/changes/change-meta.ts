@@ -3,6 +3,7 @@ import {
   Ban,
   BadgeCheck,
   Camera,
+  Radio,
   Clock3,
   EyeOff,
   FilePlus2,
@@ -32,6 +33,7 @@ export const CHANGE_TYPE_META: Record<ChangeType, { icon: LucideIcon; tone: Tone
   "document.stale": { icon: Clock3, tone: "orange" },
   "snapshot.created": { icon: Camera, tone: "pink" },
   "connector.synced": { icon: Plug, tone: "neutral" },
+  "context.served": { icon: Radio, tone: "teal" },
 };
 
 export function changeMeta(type: string): { icon: LucideIcon; tone: Tone; label: string } {
@@ -54,4 +56,5 @@ export const CHANGE_FAMILIES: { value: string; label: string; types: ChangeType[
   },
   { value: "snapshots", label: "Snapshots", types: ["snapshot.created"] },
   { value: "connectors", label: "Connecteurs", types: ["connector.synced"] },
+  { value: "contexts", label: "Contextes", types: ["context.served"] },
 ];
