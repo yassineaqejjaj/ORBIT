@@ -257,6 +257,9 @@ async def test_webhook_accepts_the_new_type_and_digest_off_by_default(
     assert saved.status_code == 200, saved.text
     asked = await admin_client.get(f"{_base(project)}/changes/digest", params={"period": "day"})
     assert [g["type"] for g in asked.json()["groups"]] == ["context.served"]
+    from tests.test_feature_webhooks import _run_webhook_jobs
+
+    await _run_webhook_jobs()  # leave no queued delivery behind (encrypted with this test's key)
 
 
 # --- SSE ---------------------------------------------------------------------------------------------
