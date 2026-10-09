@@ -9,7 +9,7 @@ import type { AuditEvent, Member } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { ActivityTimeline } from "./activity-timeline";
 
-const MAX_EVENTS = 6;
+const MAX_EVENTS = 4;
 /** Session noise that says nothing about the project (still in the audit log). */
 const HIDDEN_DOMAINS = new Set(["auth"]);
 
