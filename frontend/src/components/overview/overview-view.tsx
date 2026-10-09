@@ -47,8 +47,7 @@ function CardSkeleton({ className, lines = 4 }: { className?: string; lines?: nu
 function OverviewSkeleton() {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-12" aria-busy="true" aria-label="Chargement de la vue d’ensemble">
-      <CardSkeleton className="md:col-span-2 lg:col-span-7" lines={3} />
-      <CardSkeleton className="md:col-span-2 lg:col-span-5" lines={3} />
+      <CardSkeleton className="md:col-span-2 lg:col-span-12" lines={1} />
       <CardSkeleton className="md:col-span-2 lg:col-span-12" lines={2} />
       <CardSkeleton className="lg:col-span-7" lines={6} />
       <CardSkeleton className="lg:col-span-5" lines={4} />
@@ -116,17 +115,23 @@ export function OverviewView() {
 
           {data.stats.documents === 0 ? <ConnectSourcesCta slug={slug} isOwner={isOwner} /> : null}
 
-          {/* DOM order = mobile order: state, to-do, flow, decisions, ingestion, memory, sources, activity. */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-12">
-            <ProjectHealthCard overview={data} className="md:col-span-2 lg:col-span-7 lg:self-start" />
-            <AttentionList slug={slug} alerts={data.alerts} className="md:col-span-2 lg:col-span-5" />
-            <OrbitFlow slug={slug} overview={data} className="md:col-span-2 lg:col-span-12" />
-            <ActiveDecisions slug={slug} decisions={data.latest_decisions} className="md:col-span-2 lg:col-span-7" />
-            <IngestionHealth slug={slug} ingestion={data.ingestion} stats={data.stats} className="md:col-span-2 lg:col-span-5 lg:self-start" />
-            <MemorySummary slug={slug} overview={data} className="lg:col-span-7" />
-            <SourceDistribution slug={slug} byKind={data.sources_by_kind} className="lg:col-span-5 lg:self-start" />
-            <RecentActivity slug={slug} events={data.recent_activity} members={members.data} className="md:col-span-2 lg:col-span-7" />
-            <SinceLastVisit slug={slug} className="md:col-span-2 lg:col-span-5 lg:self-start" />
+          <ProjectHealthCard overview={data} />
+          <OrbitFlow slug={slug} overview={data} />
+
+          {/* Two independent columns (no shared rows → no dead space). Below lg, `contents` flattens them and `order-*` restores
+              the priority order: to-do, decisions, ingestion, memory, sources, activity, last visit. */}
+          <div className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start">
+            <div className="contents lg:col-span-7 lg:flex lg:flex-col lg:gap-4">
+              <ActiveDecisions slug={slug} decisions={data.latest_decisions} className="order-2 lg:order-none" />
+              <MemorySummary slug={slug} overview={data} className="order-4 lg:order-none" />
+              <RecentActivity slug={slug} events={data.recent_activity} members={members.data} className="order-6 lg:order-none" />
+            </div>
+            <div className="contents lg:col-span-5 lg:flex lg:flex-col lg:gap-4">
+              <AttentionList slug={slug} alerts={data.alerts} className="order-1 lg:order-none" />
+              <IngestionHealth slug={slug} ingestion={data.ingestion} stats={data.stats} className="order-3 lg:order-none" />
+              <SourceDistribution slug={slug} byKind={data.sources_by_kind} className="order-5 lg:order-none" />
+              <SinceLastVisit slug={slug} className="order-7 lg:order-none" />
+            </div>
           </div>
         </>
       ) : null}

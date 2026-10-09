@@ -14,7 +14,7 @@ import type { MemoryItem } from "@/lib/api/types";
 import { formatDate, formatPercent, plural, truncate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const MAX_DECISIONS = 5;
+const MAX_DECISIONS = 3;
 
 export function memoryItemHref(slug: string, id: string): string {
   return `${projectHref(slug, "memory")}?item=${encodeURIComponent(id)}`;
