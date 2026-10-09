@@ -20,6 +20,8 @@ import { useAgents, useContextRequests } from "@/lib/api/hooks";
 import type { ContextRequestSummary } from "@/lib/api/types";
 import { AGENT_KIND_META } from "@/lib/enums";
 import { formatDateTime, formatMs, formatNumber, truncate } from "@/lib/format";
+import { LiveIndicator } from "@/components/layout/live-indicator";
+import { useFreshIds, useLivePollInterval } from "@/lib/live/live-events";
 import { cn } from "@/lib/utils";
 
 const ALL = "all";
@@ -29,7 +31,7 @@ function explorerHref(slug: string, id: string): string {
   return `/projects/${encodeURIComponent(slug)}/explorer?request=${encodeURIComponent(id)}`;
 }
 
-function LogRow({ request, slug }: { request: ContextRequestSummary; slug: string }) {
+function LogRow({ request, slug, fresh }: { request: ContextRequestSummary; slug: string; fresh?: boolean }) {
   const router = useRouter();
   const href = explorerHref(slug, request.id);
   return (
@@ -40,7 +42,7 @@ function LogRow({ request, slug }: { request: ContextRequestSummary; slug: strin
         if ((e.target as HTMLElement).closest("a, button")) return;
         router.push(href);
       }}
-      className="group"
+      className={cn("group", fresh && "live-flash")}
     >
       <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">{formatDateTime(request.created_at)}</TableCell>
       <TableCell className="max-w-[22rem]">
@@ -98,7 +100,16 @@ export function RequestLog({ slug }: { slug: string }) {
   const [page, setPage] = React.useState(1);
   const [agent, setAgent] = React.useState<string>(ALL);
   const agents = useAgents(slug);
-  const requests = useContextRequests(slug, { page, ...(agent !== ALL ? { agent_id: agent } : {}) });
+  const poll = useLivePollInterval();
+  const requests = useContextRequests(
+    slug,
+    { page, ...(agent !== ALL ? { agent_id: agent } : {}) },
+    { refetchInterval: poll },
+  );
+  const fresh = useFreshIds(
+    (requests.data?.items ?? []).map((r) => r.id),
+    `${page}:${agent}`,
+  );
 
   const options = React.useMemo(
     () => [{ value: ALL, label: "Tous les demandeurs" }, ...(agents.data ?? []).map((a) => ({ value: a.id, label: a.name }))],
@@ -112,6 +123,7 @@ export function RequestLog({ slug }: { slug: string }) {
           <CardTitle className="flex items-center gap-2">
             <ListTree className="size-4 text-primary" aria-hidden />
             Journal des requêtes
+            <LiveIndicator className="ml-1" />
           </CardTitle>
           <CardDescription className="text-xs">
             Toutes périodes, de la plus récente à la plus ancienne : chaque ligne s&apos;ouvre dans l&apos;explorateur avec ses
@@ -162,7 +174,7 @@ export function RequestLog({ slug }: { slug: string }) {
               ) : requests.data.items.length === 0 ? (
                 <TableEmptyRow colSpan={COLUMNS}>Aucune requête de contexte pour ce filtre.</TableEmptyRow>
               ) : (
-                requests.data.items.map((r) => <LogRow key={r.id} request={r} slug={slug} />)
+                requests.data.items.map((r) => <LogRow key={r.id} request={r} slug={slug} fresh={page === 1 && fresh.has(r.id)} />)
               )}
             </TableBody>
           </Table>

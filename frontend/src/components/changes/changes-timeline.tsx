@@ -44,11 +44,26 @@ export function changeHref(slug: string, event: ChangeEvent): string | null {
   return null;
 }
 
+/** `context.served`: coalesced counter (« 12 contextes servis à Agent Produit ») and counts only, never content. */
+function servedText(event: ChangeEvent): { title: string; summary: string } {
+  const d = event.data;
+  const count = typeof d.count === "number" ? d.count : 1;
+  const agent = typeof d.agent_name === "string" && d.agent_name ? d.agent_name : "l'Explorateur";
+  const n = (key: string) => (typeof d[key] === "number" ? (d[key] as number) : 0);
+  const last = `${n("included_count")} retenus, ${n("excluded_count")} exclus, ${n("tokens_used")} tokens`;
+  return count > 1
+    ? { title: `${count} contextes servis à ${agent}`, summary: `Dernier : ${last}` }
+    : { title: `Contexte servi à ${agent}`, summary: last };
+}
+
 export function ChangeRow({ slug, event, compact }: { slug: string; event: ChangeEvent; compact?: boolean }) {
   const meta = changeMeta(event.type);
   const Icon = meta.icon;
   const tone = toneClasses(meta.tone);
   const href = changeHref(slug, event);
+  const served = event.type === "context.served" ? servedText(event) : null;
+  const title = served?.title ?? event.title;
+  const summary = served?.summary ?? event.summary;
   return (
     <li className="relative flex gap-3 pb-4 last:pb-0">
       <span
@@ -70,13 +85,13 @@ export function ChangeRow({ slug, event, compact }: { slug: string; event: Chang
             href={href}
             className="group inline-flex w-fit max-w-full items-center gap-1 text-[13px] font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className="truncate">{event.title}</span>
+            <span className="truncate">{title}</span>
             <ArrowUpRight className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
           </Link>
         ) : (
-          <p className="truncate text-[13px] font-medium text-foreground">{event.title}</p>
+          <p className="truncate text-[13px] font-medium text-foreground">{title}</p>
         )}
-        {!compact && event.summary ? <p className="text-xs leading-relaxed text-muted-foreground">{event.summary}</p> : null}
+        {!compact && summary ? <p className="text-xs leading-relaxed text-muted-foreground">{summary}</p> : null}
       </div>
     </li>
   );

@@ -541,3 +541,22 @@
     -webkit-text-fill-color: currentColor;
   }
 }
+
+/* Live events: subtle highlight of rows that just arrived (static tint under reduced motion). */
+@keyframes live-flash {
+  from {
+    background-color: color-mix(in srgb, var(--primary) 14%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.live-flash {
+  animation: live-flash 3.5s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-flash {
+    animation: none;
+    background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+  }
+}

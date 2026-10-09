@@ -294,6 +294,9 @@ Variables d'environnement préfixées `ORBIT_` (voir [`.env.example`](.env.examp
 | `ORBIT_TRANSCRIPTION_MAX_MB` / `_TIMEOUT_SECONDS` / `_LOCAL` | `25` / `300` / `false` | Taille maximale de l'audio ; garde-fou : un audio C2/C3 n'est jamais envoyé à un service externe (sauf serveur auto-hébergé déclaré `_LOCAL=true`) |
 | `ORBIT_MAIL_MAX_MESSAGES` | `200` | E-mails de projet (§F3) : messages lus au plus par dossier / libellé et par synchronisation |
 | `ORBIT_SMTP_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_FROM` | vide | Envoi des résumés des changements par e-mail (sinon consultables dans l'application) |
+| `ORBIT_CONTEXT_EVENTS` / `ORBIT_CONTEXT_EVENTS_COALESCE_SECONDS` | `true` / `30` | Événement `context.served` du fil des changements (identifiants et compteurs, jamais de contenu ; opt-in pour les webhooks) ; les événements d'un même agent dans la fenêtre sont fusionnés en un seul avec compteur (`0` = pas de fusion) |
+| `ORBIT_LIVE_STREAM` / `ORBIT_LIVE_STREAM_HEARTBEAT_SECONDS` | `true` / `15` | Flux SSE `GET /api/v1/projects/{slug}/events/stream` (Valkey pub/sub, reprise `Last-Event-ID`, repli par polling côté interface si indisponible) |
+| `ORBIT_LIVE_STREAM_MAX_CONNECTIONS_PER_USER` / `_TOTAL` | `6` / `500` | Limites de connexions SSE (par utilisateur, par processus) |
 | `ORBIT_WEBHOOK_TIMEOUT_SECONDS` / `ORBIT_WEBHOOK_MAX_FAILURES` | `10` / `20` | Livraison des webhooks (désactivation après N échecs) |
 | `ORBIT_OTLP_ENDPOINT` | vide | Export OpenTelemetry (Langfuse, Jaeger, Tempo…) |
 | `ORBIT_COST_PER_1K_TOKENS` | `0.002` | Estimation du coût (EUR) des contextes servis |
