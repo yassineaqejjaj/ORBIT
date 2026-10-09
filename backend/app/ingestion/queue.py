@@ -30,8 +30,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import utcnow
 from app.enums import JobKind, JobStatus, JobStepStatus
-from app.models import IngestionJob
 from app.features.live import hooks as live_hooks
+from app.models import IngestionJob
 from app.observability.metrics import record_ingestion_job
 
 BACKOFF_BASE_SECONDS = 5.0

@@ -71,7 +71,14 @@ async def publish(
         client = get_valkey()
         seq = int(await client.incr(_seq_key(project_id)))
         message = orjson.dumps(
-            {"id": seq, "kind": kind, "data": ids or {}, "classification": classification, "acl": acl, "ts": time.time()}
+            {
+                "id": seq,
+                "kind": kind,
+                "data": ids or {},
+                "classification": classification,
+                "acl": acl,
+                "ts": time.time(),
+            }
         ).decode()
         async with client.pipeline(transaction=False) as pipe:
             pipe.lpush(_log_key(project_id), message)

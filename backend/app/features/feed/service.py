@@ -20,6 +20,7 @@ from app.config import settings
 from app.db import utcnow
 from app.enums import DocumentStatus, MemoryStatus, Role
 from app.features.feed import events
+from app.features.feed.context_events import PRIVATE_DATA_KEYS
 from app.features.feed.schemas import (
     ChangeEventOut,
     Digest,
@@ -28,7 +29,6 @@ from app.features.feed.schemas import (
     SinceSnapshot,
     SnapshotRef,
 )
-from app.features.feed.context_events import PRIVATE_DATA_KEYS
 from app.features.feed.types import OPT_IN_TYPES, ChangeType, type_label
 from app.governance import freshness
 from app.governance.acl import acl_allows, effective_principals, principals_for_member

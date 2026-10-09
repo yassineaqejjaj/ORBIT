@@ -384,7 +384,11 @@ async def enqueue_deliveries(session: AsyncSession, event: ChangeEvent) -> int:
     targets = [
         hook
         for hook in hooks
-        if (event.type in hook.types if event.type in OPT_IN_TYPES else (not hook.types or event.type in hook.types))
+        if (
+            event.type in hook.types
+            if event.type in OPT_IN_TYPES
+            else (not hook.types or event.type in hook.types)
+        )
     ]
     if not targets:
         return 0
