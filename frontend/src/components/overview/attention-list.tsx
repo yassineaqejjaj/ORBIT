@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 
@@ -10,6 +11,8 @@ import { cn } from "@/lib/utils";
 import { alertLink } from "./attention-links";
 import { sortAlerts, splitAlertMessage } from "./project-health";
 
+const VISIBLE_COUNT = 5;
+
 const LEVEL_STYLE: Record<AlertLevel, { icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>; className: string }> = {
   critical: { icon: CircleAlert, className: "text-red-600 dark:text-red-400" },
   warning: { icon: TriangleAlert, className: "text-amber-600 dark:text-amber-400" },
@@ -19,6 +22,9 @@ const LEVEL_STYLE: Record<AlertLevel, { icon: React.ComponentType<{ className?: 
 /** Level 1 — "Y a-t-il quelque chose qui demande mon attention ?" Compact, actionable list (critical → info). */
 export function AttentionList({ slug, alerts, className }: { slug: string; alerts: readonly OverviewAlert[]; className?: string }) {
   const sorted = sortAlerts(alerts);
+  const [expanded, setExpanded] = useState(false);
+  const hidden = Math.max(0, sorted.length - VISIBLE_COUNT);
+  const visible = expanded ? sorted : sorted.slice(0, VISIBLE_COUNT);
   return (
     <Card className={cn("flex flex-col", className)}>
       <CardHeader>
@@ -32,7 +38,7 @@ export function AttentionList({ slug, alerts, className }: { slug: string; alert
           </p>
         ) : (
           <ul className="divide-y divide-border">
-            {sorted.map((alert, index) => {
+            {visible.map((alert, index) => {
               const style = LEVEL_STYLE[alert.level] ?? LEVEL_STYLE.info;
               const LevelIcon = style.icon;
               const levelLabel = ALERT_LEVEL_META[alert.level]?.label ?? "Information";
@@ -62,6 +68,16 @@ export function AttentionList({ slug, alerts, className }: { slug: string; alert
             })}
           </ul>
         )}
+        {hidden > 0 ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            aria-expanded={expanded}
+            className="mt-2 rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+          >
+            {expanded ? "Réduire" : `Voir tout (${sorted.length})`}
+          </button>
+        ) : null}
       </CardContent>
     </Card>
   );
