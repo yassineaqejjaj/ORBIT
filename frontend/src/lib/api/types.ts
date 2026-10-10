@@ -74,6 +74,8 @@ export interface User {
   clearance: Classification;
   avatar_color: string;
   created_at: ISODateString;
+  /** null until the user finishes or skips the first-login onboarding tour. */
+  onboarding_completed_at: ISODateString | null;
 }
 
 export interface Member {

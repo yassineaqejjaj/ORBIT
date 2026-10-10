@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FolderKanban, LogOut, ShieldCheck } from "lucide-react";
+import { Compass, FolderKanban, LogOut, ShieldCheck } from "lucide-react";
 
 import { ClassificationBadge } from "@/components/domain/classification-badge";
 import { UserAvatar } from "@/components/domain/user-avatar";
@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { useLogout, useMe } from "@/lib/api/hooks";
+import { useLogout, useMe, useRestartOnboarding } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 
 export interface UserMenuProps {
@@ -30,6 +30,7 @@ export interface UserMenuProps {
 export function UserMenu({ variant = "header", collapsed = false, roleLabel }: UserMenuProps) {
   const { data: me } = useMe();
   const logout = useLogout();
+  const restartOnboarding = useRestartOnboarding();
   if (!me) return null;
   const role = roleLabel ?? (me.is_admin ? "Administrateur" : undefined);
   const trigger =
@@ -94,6 +95,10 @@ export function UserMenu({ variant = "header", collapsed = false, roleLabel }: U
             <FolderKanban aria-hidden />
             Tous les projets
           </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => restartOnboarding.mutate()} disabled={restartOnboarding.isPending}>
+          <Compass aria-hidden />
+          Revoir la visite de bienvenue
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem destructive onSelect={() => logout.mutate()} disabled={logout.isPending}>

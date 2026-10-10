@@ -159,6 +159,16 @@ export function useLogin(options?: MutationOpts<User, LoginIn>) {
   );
 }
 
+/** Finishes or skips the welcome tour; the returned user replaces the cached `me`, which closes the tour. */
+export function useCompleteOnboarding(options?: MutationOpts<User, void>) {
+  return useApiMutation<User, void>(api.completeOnboarding, (qc, user) => qc.setQueryData(queryKeys.me(), user), options);
+}
+
+/** Shows the welcome tour again (user menu → « Revoir la visite »). */
+export function useRestartOnboarding(options?: MutationOpts<User, void>) {
+  return useApiMutation<User, void>(api.restartOnboarding, (qc, user) => qc.setQueryData(queryKeys.me(), user), options);
+}
+
 /** Logs out and performs a full navigation to /login (drops every cached query). */
 export function useLogout(options?: MutationOpts<void, void>) {
   return useMutation<void, ApiError, void>({

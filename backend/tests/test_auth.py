@@ -130,3 +130,37 @@ async def test_login_without_remember_sets_session_cookie(client: httpx.AsyncCli
         "/api/v1/auth/login", json={"email": "admin@orbit.local", "password": "orbit-admin"}
     )
     assert "max-age" in persistent.headers.get("set-cookie", "").lower()
+
+
+async def test_new_user_starts_not_onboarded_and_can_complete(client_for, make_user) -> None:  # type: ignore[no-untyped-def]
+    user = await make_user()
+    c = await client_for(user)
+
+    me = await c.get("/api/v1/auth/me")
+    assert me.json()["onboarding_completed_at"] is None
+
+    done = await c.post("/api/v1/auth/me/onboarding/complete")
+    assert done.status_code == 200
+    first = done.json()["onboarding_completed_at"]
+    assert first is not None
+
+    # Idempotent: a second completion keeps the first date.
+    again = await c.post("/api/v1/auth/me/onboarding/complete")
+    assert again.json()["onboarding_completed_at"] == first
+    assert (await c.get("/api/v1/auth/me")).json()["onboarding_completed_at"] == first
+
+
+async def test_onboarding_can_be_restarted(client_for, make_user) -> None:  # type: ignore[no-untyped-def]
+    c = await client_for(await make_user())
+    await c.post("/api/v1/auth/me/onboarding/complete")
+
+    restarted = await c.post("/api/v1/auth/me/onboarding/restart")
+    assert restarted.status_code == 200
+    assert restarted.json()["onboarding_completed_at"] is None
+    assert (await c.get("/api/v1/auth/me")).json()["onboarding_completed_at"] is None
+
+
+async def test_onboarding_requires_authentication(client: httpx.AsyncClient) -> None:
+    for action in ("complete", "restart"):
+        response = await client.post(f"/api/v1/auth/me/onboarding/{action}")
+        assert response.status_code == 401

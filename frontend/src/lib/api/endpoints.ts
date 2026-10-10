@@ -111,6 +111,16 @@ export function getMe(opts: Opts & { redirectOnUnauthorized?: boolean } = {}): P
   return http.get<User>("/auth/me", opts);
 }
 
+/** POST /auth/me/onboarding/complete → User (idempotent: finishes or skips the welcome tour) */
+export function completeOnboarding(): Promise<User> {
+  return http.post<User>("/auth/me/onboarding/complete");
+}
+
+/** POST /auth/me/onboarding/restart → User (shows the welcome tour again) */
+export function restartOnboarding(): Promise<User> {
+  return http.post<User>("/auth/me/onboarding/restart");
+}
+
 /** GET /users (admin) → User[] */
 export function listUsers(params: UserListParams = {}, opts: Opts = {}): Promise<User[]> {
   return http.get<User[]>("/users", { query: { q: params.q }, ...opts });

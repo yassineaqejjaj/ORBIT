@@ -112,3 +112,28 @@ async def logout(request: Request, session: SessionDep) -> Response:
 @router.get("/me", response_model=UserOut, summary="Utilisateur connecté")
 async def me(user: CurrentUser) -> UserOut:
     return UserOut.model_validate(user)
+
+
+@router.post(
+    "/me/onboarding/complete",
+    response_model=UserOut,
+    summary="Terminer ou passer la visite de bienvenue",
+)
+async def complete_onboarding(user: CurrentUser, session: SessionDep) -> UserOut:
+    # Idempotent: the first completion date is kept, so a double click or a retry changes nothing.
+    if user.onboarding_completed_at is None:
+        user.onboarding_completed_at = utcnow()
+        await session.commit()
+    return UserOut.model_validate(user)
+
+
+@router.post(
+    "/me/onboarding/restart",
+    response_model=UserOut,
+    summary="Revoir la visite de bienvenue",
+)
+async def restart_onboarding(user: CurrentUser, session: SessionDep) -> UserOut:
+    if user.onboarding_completed_at is not None:
+        user.onboarding_completed_at = None
+        await session.commit()
+    return UserOut.model_validate(user)

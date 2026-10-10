@@ -18,6 +18,8 @@ class User(ApiModel):
     clearance: int
     avatar_color: str
     created_at: datetime
+    #: NULL until the user finishes or skips the first-login onboarding tour.
+    onboarding_completed_at: datetime | None = None
 
 
 class UserRef(ApiModel):

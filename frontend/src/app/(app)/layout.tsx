@@ -12,6 +12,7 @@ import { MobileNav } from "@/components/layout/mobile-nav";
 import { MobileTabBar } from "@/components/layout/mobile-tab-bar";
 import { ShellProvider, useShell } from "@/components/layout/shell-context";
 import { SplashScreen } from "@/components/layout/splash-screen";
+import { OnboardingDialog } from "@/components/onboarding/onboarding-dialog";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/api/client";
@@ -82,6 +83,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <MobileTabBar slug={slug} />
       <CommandPalette />
       <GlobalCreateProjectDialog />
+      <OnboardingDialog />
     </ShellProvider>
   );
 }

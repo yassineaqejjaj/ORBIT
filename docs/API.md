@@ -16,7 +16,7 @@ Les endpoints marqués **(agent)** acceptent aussi une clé API d'agent du proje
 ## Types partagés
 
 ```ts
-User        = { id, email, full_name, is_admin: bool, clearance: 0|1|2|3, avatar_color: string, created_at }
+User        = { id, email, full_name, is_admin: bool, clearance: 0|1|2|3, avatar_color: string, created_at, onboarding_completed_at: datetime|null }
 Member      = { user: User, role: Role, created_at }
 Project     = { id, slug, name, description, settings: ProjectSettings, role: Role /* rôle de l'appelant */, created_at, updated_at }
 ProjectSettings = { freshness_days: Record<SourceKind, number>, default_token_budget: number, min_relevance: number, short_term_ttl_hours: number }
@@ -61,6 +61,8 @@ AuditEvent  = { id, actor_type, actor_id, actor_label, action, target_type, targ
 | POST | `/auth/login` | `{email, password}` | `User` + cookie `orbit_session` |
 | POST | `/auth/logout` | — | `204` |
 | GET | `/auth/me` | — | `User` |
+| POST | `/auth/me/onboarding/complete` | — | `User` (idempotent : termine ou passe la visite de bienvenue) |
+| POST | `/auth/me/onboarding/restart` | — | `User` (`onboarding_completed_at` repasse à `null`) |
 | GET | `/users` (admin) | `q?` | `User[]` |
 | POST | `/users` (admin) | `{email, full_name, password, clearance, is_admin}` | `User` |
 | PATCH | `/users/{id}` (admin) | `{full_name?, clearance?, is_admin?, password?}` | `User` |
