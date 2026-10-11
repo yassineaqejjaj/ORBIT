@@ -81,7 +81,7 @@ def section_for(c: Candidate) -> str:
         return "constraints"
     if kind == MemoryKind.preference:
         return "preferences"
-    if kind == MemoryKind.procedure:
+    if kind in (MemoryKind.procedure, MemoryKind.learning):
         return "procedures"
     return "facts"
 

@@ -413,6 +413,7 @@ async def create_item(
     detect: bool = True,
     audit_entry: bool = True,
     refresh_index: bool = True,
+    learning_meta: dict[str, Any] | None = None,
 ) -> MemoryItem:
     """Create version 1 of a memory item (+ provenance rows, ``created`` event, indexing, relation
     detection). ``force_status="proposed"`` is used for agent callers (agents are always forced)."""
@@ -429,6 +430,8 @@ async def create_item(
 
     if project_id is None and scope != MemoryScope.long_term:
         raise validation_error("Seule la mémoire long terme peut être rattachée à l'organisation")
+    if (kind == MemoryKind.learning) != (learning_meta is not None):
+        raise validation_error("Un apprentissage se crée avec ses preuves : utilisez POST /learnings")
 
     # Provenance: resolve chunks/documents of the project.
     provenance_rows: list[MemoryProvenance] = []
@@ -528,6 +531,7 @@ async def create_item(
         skill_meta=skills.normalize_meta(data.skill_meta, data.title, data.content)
         if kind == MemoryKind.procedure
         else None,
+        learning_meta=learning_meta,
     )
     session.add(item)
     await session.flush()

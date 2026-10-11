@@ -201,6 +201,8 @@ class Settings(BaseSettings):
     memory_skills: bool = True
     #: Max procedures anchored in a context when their task types / agent kinds match the request.
     skills_context_max: int = Field(default=3, ge=0, le=20)
+    #: ORION: runs a learning's evidence must cover before ORBIT accepts it (as a proposal to validate).
+    learning_min_runs: int = Field(default=3, ge=1, le=1000)
     #: §D2 entity aliases used to expand retrieval queries.
     memory_entity_aliases: bool = True
     #: §D3 contradiction detection: ``auto`` (NLI hook if configured, else LLM judge if the guardrail

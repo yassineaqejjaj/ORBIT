@@ -98,6 +98,8 @@ class MemoryItem(UUIDPkMixin, TimestampMixin, Base):
     skill_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     #: §F1 meeting action item — ``{"owner", "due_date", "due_text", "speaker", "timestamp"}`` (h006).
     action_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    #: ORION learning — ``{"applies_to": {...}, "evidence": {...}}``: scope and proof (h008).
+    learning_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
 
 class MemoryProvenance(UUIDPkMixin, CreatedAtMixin, Base):

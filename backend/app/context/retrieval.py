@@ -964,6 +964,7 @@ def memory_candidate(row: MemoryRow) -> Candidate:
         trust=row.trust,
         tokens=estimate_tokens(item.content or ""),
         skill_meta=item.skill_meta,
+        learning_meta=item.learning_meta,
     )
 
 

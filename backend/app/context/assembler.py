@@ -64,7 +64,7 @@ from app.errors import ApiError, forbidden, not_found, validation_error
 from app.governance.acl import effective_clearance, effective_principals
 from app.governance.policy import Candidate, GovernanceContext, Verdict, evaluate, format_date_fr
 from app.llm import client as llm_client
-from app.memory import entities, skills
+from app.memory import entities, learnings, skills
 from app.models import Agent, ContextRequest, ContextSnapshot, User
 from app.observability import genai
 from app.observability.metrics import observe_cache_prefix, observe_context_request
@@ -327,14 +327,16 @@ def _aware(value: datetime | None) -> datetime | None:
 def _apply_procedure_scope(
     intent: str, agent_kind: str | None, eligible: list[Candidate], excluded: list[Decision]
 ) -> list[Candidate]:
-    """§D1: a procedure restricted to other task types / agent kinds is not served (explained)."""
+    """§D1: a procedure or learning restricted to other task types / agent kinds is not served (explained)."""
     kept: list[Candidate] = []
     for candidate in eligible:
-        ok, detail = (
-            skills.applies_to(candidate.skill_meta, intent, agent_kind)
-            if candidate.memory_kind == MemoryKind.procedure and not candidate.pinned
-            else (True, "")
-        )
+        ok, detail = True, ""
+        if candidate.pinned:
+            pass
+        elif candidate.memory_kind == MemoryKind.procedure:
+            ok, detail = skills.applies_to(candidate.skill_meta, intent, agent_kind)
+        elif candidate.memory_kind == MemoryKind.learning:
+            ok, detail = learnings.applies_to(candidate.learning_meta, intent, agent_kind)
         if ok:
             kept.append(candidate)
         else:

@@ -177,6 +177,8 @@ class Candidate:
     tokens: int = 0
     #: §D1 procedure (skill) metadata: ``task_types`` (intents) / ``agent_kinds`` it applies to.
     skill_meta: dict[str, Any] | None = None
+    #: ORION learning: ``applies_to`` (task types / agent kinds / skills / tools) and ``evidence``.
+    learning_meta: dict[str, Any] | None = None
     scores: ScoreBreakdown = field(default_factory=ScoreBreakdown)
     retrieved_by: set[str] = field(default_factory=set)
 

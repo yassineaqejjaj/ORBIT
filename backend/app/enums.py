@@ -89,6 +89,8 @@ class MemoryKind(StrEnum):
     procedure = "procedure"
     #: Action item of a meeting (§F1): ``action_meta`` holds the owner and the due date.
     action = "action"
+    #: ORION: an improvement verified by an evaluation (FORGE); ``learning_meta`` holds scope and evidence.
+    learning = "learning"
 
 
 class MemoryStatus(StrEnum):
@@ -341,6 +343,7 @@ MEMORY_KIND_LABELS: dict[MemoryKind, str] = {
     MemoryKind.risk: "Risque",
     MemoryKind.procedure: "Procédure",
     MemoryKind.action: "Action",
+    MemoryKind.learning: "Apprentissage",
 }
 
 PII_LABELS: dict[PiiType, str] = {
