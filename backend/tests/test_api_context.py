@@ -559,3 +559,43 @@ async def test_pinned_snapshot_flow_and_diff(
         f"/api/v1/projects/{slug}/context", json={"task": TASK, "base_snapshot": {"name": "inconnu"}}
     )
     assert base_missing.status_code == 404
+
+
+async def test_complete_a_served_context_around_reported_gaps(
+    world: dict[str, Any], db_session: AsyncSession
+) -> None:
+    seed: Seed = world["seed"]
+    client: httpx.AsyncClient = world["viewer_client"]
+    slug = seed.slug
+    v1 = await _post(client, slug, min_relevance=0.0, save_snapshot={"name": "spec-atlas"})
+    assert v1["snapshot"]["version"] == 1
+
+    url = f"/api/v1/projects/{slug}/context/requests/{v1['request_id']}/complete"
+    done = await client.post(url, json={"missing": ["Incident d'authentification sur le portail client"]})
+    assert done.status_code == 200, done.text
+    completion = done.json()
+    assert completion["completes"] == v1["request_id"] and completion["request_id"] != v1["request_id"]
+    assert completion["snapshot"]["name"] == "spec-atlas" and completion["snapshot"]["version"] == 2
+    assert completion["tokens_used"] > 0
+    first_ids = {i["id"] for i in v1["items"]}
+    assert all(item["id"] not in first_ids for item in completion["added"])
+
+    # The new request links back; the served snapshot v1 is untouched and v2 is its child.
+    row = await db_session.get(ContextRequest, uuid.UUID(completion["request_id"]))
+    assert row is not None
+    assert row.params["completes_request_id"] == v1["request_id"] and row.params["missing"]
+    versions = (await client.get(f"/api/v1/projects/{slug}/snapshots/spec-atlas")).json()
+    assert sorted(v["version"] for v in versions) == [1, 2]
+
+    # An explicit snapshot name, input validation, and unknown requests.
+    named = await client.post(
+        url, json={"missing": ["Politique de session"], "snapshot": {"name": "atlas-gap"}}
+    )
+    assert named.status_code == 200 and named.json()["snapshot"]["name"] == "atlas-gap"
+    assert (await client.post(url, json={"missing": []})).status_code == 422
+    assert (await client.post(url, json={"missing": ["ab"]})).status_code == 422
+    unknown = await client.post(
+        f"/api/v1/projects/{slug}/context/requests/{uuid.uuid4()}/complete",
+        json={"missing": ["Politique de session"]},
+    )
+    assert unknown.status_code == 404

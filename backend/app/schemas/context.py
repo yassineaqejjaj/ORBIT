@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import Field
+from pydantic import Field, StringConstraints
 
 from app.enums import (
     CandidateType,
@@ -314,3 +314,39 @@ class ProfileSuggestion(ApiModel):
 class ContextProfileView(AppliedProfile):
     default: AppliedProfile
     suggestion: ProfileSuggestion
+
+
+class ContextCompleteIn(InputModel):
+    """Ask ORBIT to fill what a served context was missing (e.g. after an agent failed for lack of it)."""
+
+    missing: list[Annotated[str, StringConstraints(min_length=3, max_length=300, strip_whitespace=True)]] = (
+        Field(min_length=1, max_length=10, description="Informations manquantes, en une phrase chacune")
+    )
+    snapshot: SaveSnapshotRef | None = Field(
+        default=None,
+        description="Snapshot cible. Défaut : une nouvelle version du snapshot de la requête d'origine",
+    )
+    token_budget: int | None = Field(default=None, ge=500, le=32000)
+
+
+class CompletedItem(ApiModel):
+    citation: str
+    id: str
+    title: str
+    source_kind: SourceKind | None = None
+    memory_kind: MemoryKind | None = None
+    classification: int
+
+
+class ContextCompletion(ApiModel):
+    request_id: uuid.UUID = Field(description="La nouvelle requête de contexte")
+    completes: uuid.UUID = Field(description="La requête d'origine")
+    snapshot: ContextSnapshotInfo | None = None
+    added: list[CompletedItem] = Field(
+        default_factory=list, description="Éléments que la requête d'origine n'avait pas"
+    )
+    still_missing: list[str] = Field(
+        default_factory=list, description="Ce que même le nouveau contexte ne couvre pas"
+    )
+    sufficiency: ContextSufficiency | None = None
+    tokens_used: int

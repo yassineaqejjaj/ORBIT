@@ -51,6 +51,8 @@ class MemoryItem(ApiModel):
     skill_meta: dict[str, Any] | None = None
     #: §F1 action item: ``{"owner", "due_date", "due_text", "speaker", "timestamp"}``.
     action_meta: dict[str, Any] | None = None
+    #: ORION learning: ``{"applies_to": {...}, "evidence": {...}}``.
+    learning_meta: dict[str, Any] | None = None
     created_by_label: str = ""
     provenance_count: int = 0
     created_at: datetime
@@ -235,3 +237,55 @@ class EntitySuggestion(ApiModel):
     b: EntityOut
     score: float
     reason: str
+
+
+class LearningAppliesIn(InputModel):
+    """Where a learning applies; an empty list means « all »."""
+
+    task_types: list[Intent] = Field(default_factory=list, max_length=10)
+    agent_kinds: list[AgentKind] = Field(default_factory=list, max_length=10)
+    skills: list[str] = Field(
+        default_factory=list, max_length=20, description="Skills du consommateur (NOVA)"
+    )
+    tools: list[str] = Field(default_factory=list, max_length=20)
+    agent_versions: list[str] = Field(default_factory=list, max_length=20)
+
+
+class LearningEvidenceIn(InputModel):
+    """What verified the learning: the same cases, run with and without it."""
+
+    source: str = Field(default="forge", min_length=1, max_length=40)
+    experiment_id: str | None = Field(default=None, max_length=120)
+    eval_suite_id: str | None = Field(default=None, max_length=120)
+    release_id: str | None = Field(default=None, max_length=120)
+    run_ids: list[str] = Field(default_factory=list, max_length=50)
+    runs: int = Field(ge=1, le=100000, description="Nombre de runs comparés")
+    metric: str = Field(min_length=1, max_length=80, description="ex. pass_rate, composite")
+    baseline: float
+    candidate: float
+    verified_at: datetime | None = None
+
+
+class LearningIn(InputModel):
+    title: str = Field(min_length=1, max_length=300)
+    content: str = Field(min_length=1, max_length=20000)
+    applies_to: LearningAppliesIn = Field(default_factory=LearningAppliesIn)
+    evidence: LearningEvidenceIn
+    scope: MemoryScope = MemoryScope.project
+    classification: ClassificationLevel | None = None
+    tags: Tags | None = None
+
+
+class LearningShareIn(InputModel):
+    """Partager un apprentissage validé avec d'autres projets (une proposition par projet cible)."""
+
+    targets: list[str] = Field(min_length=1, max_length=10, description="Slugs des projets cibles")
+    note: str | None = Field(
+        default=None, max_length=4000, description="Pourquoi il vaut aussi pour ces projets"
+    )
+
+
+class LearningShareResult(ApiModel):
+    project: str
+    status: str = Field(description="created | already_shared")
+    item_id: uuid.UUID

@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from app.context import persistence, profiles
+from app.context import gaps, persistence, profiles
 from app.context.assembler import assemble_context
 from app.context.visibility import Viewer
 from app.deps import AgentViewerAccess, OwnerAccess, ProjectAccess, SessionDep, ViewerAccess
@@ -24,7 +24,14 @@ from app.schemas import (
     PageParams,
     page_params,
 )
-from app.schemas.context import AppliedProfile, ContextProfileIn, ContextProfileView, ProfileSuggestion
+from app.schemas.context import (
+    AppliedProfile,
+    ContextCompleteIn,
+    ContextCompletion,
+    ContextProfileIn,
+    ContextProfileView,
+    ProfileSuggestion,
+)
 from app.services import audit
 
 router = APIRouter(prefix="/projects/{slug}/context", tags=["context"])
@@ -116,6 +123,18 @@ async def get_context_request(
 ) -> ContextRequestDetail:
     request = await persistence.get_request(session, access.project_id, request_id)
     return await persistence.reconstitute(session, request, Viewer.from_access(access))
+
+
+@router.post(
+    "/requests/{request_id}/complete",
+    response_model=ContextCompletion,
+    summary="Compléter un contexte à partir de ce qui manquait",
+)
+async def complete_context_request(
+    request_id: uuid.UUID, body: ContextCompleteIn, access: AgentViewerAccess, session: SessionDep
+) -> ContextCompletion:
+    """Re-assemble the request's context around the reported gaps; the result is the next snapshot version."""
+    return await gaps.complete_request(session, access, request_id, body)
 
 
 @router.post("/requests/{request_id}/feedback", response_model=IdOut, summary="Évaluer un contexte servi")
