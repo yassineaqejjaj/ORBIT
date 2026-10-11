@@ -274,3 +274,18 @@ class LearningIn(InputModel):
     scope: MemoryScope = MemoryScope.project
     classification: ClassificationLevel | None = None
     tags: Tags | None = None
+
+
+class LearningShareIn(InputModel):
+    """Partager un apprentissage validé avec d'autres projets (une proposition par projet cible)."""
+
+    targets: list[str] = Field(min_length=1, max_length=10, description="Slugs des projets cibles")
+    note: str | None = Field(
+        default=None, max_length=4000, description="Pourquoi il vaut aussi pour ces projets"
+    )
+
+
+class LearningShareResult(ApiModel):
+    project: str
+    status: str = Field(description="created | already_shared")
+    item_id: uuid.UUID

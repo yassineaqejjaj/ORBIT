@@ -7,22 +7,23 @@ knowledge. ORBIT checks the evidence is a real, sufficient improvement; it does 
 
 from __future__ import annotations
 
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 
 from app.config import get_settings
-from app.deps import AgentEditorAccess, AgentViewerAccess, SessionDep
+from app.deps import AgentEditorAccess, AgentViewerAccess, EditorAccess, SessionDep
 from app.enums import MemoryKind, MemoryScope, MemoryStatus
 from app.errors import validation_error
-from app.memory import learnings, lifecycle
+from app.memory import learnings, lifecycle, sharing
 from app.memory.serializers import serialize_items
 from app.memory.visibility import MemoryViewer, visibility_clause
 from app.models import MemoryItem as MemoryItemRow
 from app.schemas import MemoryIn, MemoryItem, Page, PageParams, page_params
 from app.schemas.common import make_page
-from app.schemas.memory import LearningIn, ProvenanceIn
+from app.schemas.memory import LearningIn, LearningShareIn, LearningShareResult, ProvenanceIn
 
 router = APIRouter(prefix="/projects/{slug}/learnings", tags=["learnings"])
 
@@ -96,3 +97,21 @@ async def list_learnings(
     )
     total = len(list(await session.scalars(query.with_only_columns(MemoryItemRow.id).order_by(None))))
     return make_page(await serialize_items(session, rows), total, params)
+
+
+@router.post(
+    "/{memory_id}/share",
+    response_model=list[LearningShareResult],
+    summary="Partager un apprentissage validé avec d'autres projets",
+    description=(
+        "Crée, dans chaque projet cible, une **proposition** indépendante (validée par ses propres membres) "
+        "liée à l'origine. Réservé à un éditeur humain des projets source et cibles ; refusé au-delà de C1 "
+        "ou si l'accès est restreint ; tout ou rien."
+    ),
+)
+async def share_learning(
+    memory_id: uuid.UUID, body: LearningShareIn, access: EditorAccess, session: SessionDep
+) -> list[LearningShareResult]:
+    results = await sharing.share_learning(session, access, memory_id, body.targets, body.note)
+    await session.commit()
+    return [LearningShareResult.model_validate(r) for r in results]
