@@ -69,6 +69,9 @@ export const queryKeys = {
       entitySuggestions: (slug: string) => [...projectRoot(slug), "memory", "entity-suggestions"] as const,
     },
 
+    knowledgeGapsAll: (slug: string) => [...projectRoot(slug), "knowledge-gaps"] as const,
+    knowledgeGaps: (slug: string, days?: number) => [...projectRoot(slug), "knowledge-gaps", { days: days ?? null }] as const,
+
     sessions: {
       all: (slug: string) => [...projectRoot(slug), "sessions"] as const,
       list: (slug: string) => [...projectRoot(slug), "sessions", "list"] as const,

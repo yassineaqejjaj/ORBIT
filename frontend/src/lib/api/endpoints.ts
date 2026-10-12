@@ -43,6 +43,7 @@ import type {
   MemoryDetail,
   MemoryGraph,
   ContradictionMap,
+  KnowledgeGaps,
   DecisionTrail,
   MemoryIn,
   MemoryItem,
@@ -476,6 +477,16 @@ export function unmergeEntity(slug: string, entityId: UUID, body: { reason?: str
 /** GET /projects/{slug}/memory/graph → {nodes, edges} */
 export function getMemoryGraph(slug: string, params: { limit?: number } = {}, opts: Opts = {}): Promise<MemoryGraph> {
   return http.get<MemoryGraph>(`${p(slug)}/memory/graph`, { query: { limit: params.limit }, ...opts });
+}
+
+/** GET /projects/{slug}/knowledge-gaps → recurring missing topics (editors) */
+export function getKnowledgeGaps(slug: string, params: { days?: number } = {}, opts: Opts = {}): Promise<KnowledgeGaps> {
+  return http.get<KnowledgeGaps>(`${p(slug)}/knowledge-gaps`, { query: { days: params.days }, ...opts });
+}
+
+/** POST /projects/{slug}/knowledge-gaps/request → opens a proposed « Documenter » action in the memory review */
+export function requestGapDocumentation(slug: string, topic: string): Promise<MemoryItem> {
+  return http.post<MemoryItem>(`${p(slug)}/knowledge-gaps/request`, { topic });
 }
 
 /** GET /projects/{slug}/memory/{id}/trail → chronological story behind an item (what it replaced, its sources, reviews) */
