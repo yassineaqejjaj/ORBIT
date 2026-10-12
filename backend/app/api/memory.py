@@ -39,6 +39,7 @@ from app.ingestion.queue import enqueue_job
 from app.memory import entities as entity_service
 from app.memory import lifecycle
 from app.memory.contradiction_map import LIVE_STATUSES, MapEdge, MapItem, build_clusters
+from app.memory.decision_trail import TrailEntry, build_timeline, excerpt
 from app.memory.serializers import serialize_events, serialize_item, serialize_items
 from app.memory.visibility import MemoryViewer, can_view, visibility_clause
 from app.models import Chunk, Document, IngestionJob, MemoryEvent, MemoryProvenance, Relation, Source
@@ -63,9 +64,13 @@ from app.schemas.memory import (
     ContradictionEdge,
     ContradictionItem,
     ContradictionMap,
+    DecisionTrail,
     GraphEdge,
     GraphNode,
     Provenance,
+    TrailChainItem,
+    TrailEntryOut,
+    TrailWhy,
 )
 from app.schemas.memory import Relation as RelationOut
 from app.services import projects as project_service
@@ -662,6 +667,141 @@ async def get_memory(memory_id: uuid.UUID, access: ViewerAccess, session: Sessio
 
 
 # --- Mutations ----------------------------------------------------------------------------------------
+
+
+CHAIN_LIMIT = 20
+EVENT_LABELS = {
+    "created": "Créé",
+    "edited": "Modifié",
+    "validated": "Validé",
+    "superseded": "Remplacé",
+    "obsoleted": "Marqué obsolète",
+    "forgotten": "Oublié",
+    "restored": "Restauré",
+    "conflict_detected": "Contradiction détectée",
+}
+
+
+async def _walk(
+    session: AsyncSession, start: MemoryItemRow, viewer: MemoryViewer, attr: str
+) -> list[MemoryItemRow]:
+    """Items reached by following ``supersedes_id`` / ``superseded_by_id``, up to the first hidden one."""
+    found: list[MemoryItemRow] = []
+    seen = {start.id}
+    current = start
+    while len(found) < CHAIN_LIMIT:
+        next_id = getattr(current, attr)
+        if next_id is None or next_id in seen:
+            break
+        nxt = await lifecycle.get_item(session, next_id)
+        if nxt is None or not can_view(nxt, viewer):
+            break
+        seen.add(nxt.id)
+        found.append(nxt)
+        current = nxt
+    return found
+
+
+@router.get(
+    "/{memory_id}/trail",
+    response_model=DecisionTrail,
+    summary="Pourquoi cette décision ? Chronologie et sources",
+)
+async def decision_trail(memory_id: uuid.UUID, access: ViewerAccess, session: SessionDep) -> DecisionTrail:
+    """Everything recorded about how an item came to be: what it replaced, what replaced it, its sources.
+
+    Only items and sources the caller can see take part; a source they may not read is shown as restricted
+    (as in the item detail), never with its content.
+    """
+    viewer = MemoryViewer.from_access(access)
+    item = await lifecycle.ensure_current(session, await _visible_item(session, access, memory_id))
+    before = list(reversed(await _walk(session, item, viewer, "supersedes_id")))
+    after = await _walk(session, item, viewer, "superseded_by_id")
+    chain = [(i, "replaced") for i in before] + [(item, "current")] + [(i, "replaced_by") for i in after]
+
+    entries: list[TrailEntry] = []
+    for member, _ in chain:
+        events = list(
+            await session.scalars(
+                select(MemoryEvent)
+                .where(MemoryEvent.lineage_id == member.lineage_id)
+                .order_by(MemoryEvent.created_at)
+                .limit(HISTORY_LIMIT)
+            )
+        )
+        for event in await serialize_events(session, events):
+            kind = event.event.value if hasattr(event.event, "value") else str(event.event)
+            entries.append(
+                TrailEntry(
+                    event.created_at,
+                    kind,
+                    f"{EVENT_LABELS.get(kind, kind)} — {member.title}",
+                    excerpt(event.reason or ""),
+                    str(member.id),
+                    actor=event.actor_label,
+                )
+            )
+        for source in await _provenance(session, member, viewer):
+            entries.append(
+                TrailEntry(
+                    source.created_at,
+                    "source",
+                    source.document_title or source.source_label or "Source",
+                    excerpt(source.excerpt),
+                    str(member.id),
+                    str(source.document_id) if source.document_id else None,
+                )
+            )
+    for older, newer in zip([m for m, _ in chain], [m for m, _ in chain][1:], strict=False):
+        entries.append(
+            TrailEntry(
+                newer.valid_from,
+                "replaced_by",
+                f"« {older.title} » remplacé par « {newer.title} »",
+                "",
+                str(newer.id),
+            )
+        )
+
+    return DecisionTrail(
+        item_id=str(item.id),
+        title=item.title,
+        why=TrailWhy(
+            kind=MemoryKind(item.kind).value,
+            status=MemoryStatus(item.status).value,
+            rationale=item.rationale,
+            decided_by=item.decided_by,
+            confidence=float(item.confidence),
+            confidence_reason=item.confidence_reason,
+            valid_from=item.valid_from,
+        ),
+        chain=[
+            TrailChainItem(
+                id=str(m.id),
+                title=m.title,
+                status=MemoryStatus(m.status).value,
+                version=m.version,
+                valid_from=m.valid_from,
+                classification=m.classification,
+                role=role,  # type: ignore[arg-type]
+            )
+            for m, role in chain
+        ],
+        timeline=[TrailEntryOut(**vars_of(e)) for e in build_timeline(entries)],
+        max_classification=max(m.classification for m, _ in chain),
+    )
+
+
+def vars_of(entry: TrailEntry) -> dict[str, Any]:
+    return {
+        "at": entry.at,
+        "kind": entry.kind,
+        "label": entry.label,
+        "detail": entry.detail,
+        "item_id": entry.item_id,
+        "document_id": entry.document_id,
+        "actor": entry.actor,
+    }
 
 
 @router.patch("/{memory_id}", response_model=MemoryItem, summary="Modifier (crée une nouvelle version)")

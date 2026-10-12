@@ -58,6 +58,7 @@ import type {
   MemoryDetail,
   MemoryGraph,
   ContradictionMap,
+  DecisionTrail,
   MemoryIn,
   MemoryItem,
   MemoryListParams,
@@ -581,6 +582,15 @@ export function useMemoryGraph(slug: string, limit = 150, options?: QueryOpts<Me
     queryKey: queryKeys.project.memory.graph(slug, limit),
     queryFn: ({ signal }) => api.getMemoryGraph(slug, { limit }, { signal }),
     enabled: Boolean(slug),
+    ...options,
+  });
+}
+
+export function useDecisionTrail(slug: string, memoryId: string | null, options?: QueryOpts<DecisionTrail>) {
+  return useQuery<DecisionTrail, ApiError>({
+    queryKey: queryKeys.project.memory.trail(slug, memoryId ?? ""),
+    queryFn: ({ signal }) => api.getDecisionTrail(slug, memoryId as string, { signal }),
+    enabled: Boolean(slug && memoryId),
     ...options,
   });
 }
