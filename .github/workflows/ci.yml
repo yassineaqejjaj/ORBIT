@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: orbit
+          POSTGRES_PASSWORD: orbit
+          POSTGRES_DB: orbit
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U orbit -d orbit" --health-interval 5s --health-timeout 5s --health-retries 20
+      opensearch:
+        image: opensearchproject/opensearch:2.19.6
+        env:
+          discovery.type: single-node
+          bootstrap.memory_lock: "false"
+          DISABLE_SECURITY_PLUGIN: "true"
+          DISABLE_INSTALL_DEMO_CONFIG: "true"
+          OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+          cluster.routing.allocation.disk.threshold_enabled: "false"
+        ports: ["9201:9200"]
+        options: >-
+          --health-cmd "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s'"
+          --health-interval 10s --health-timeout 10s --health-retries 30 --health-start-period 30s
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports: ["6380:6379"]
+        options: >-
+          --health-cmd "valkey-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run ruff check app tests && uv run ruff format --check app tests
+      - run: uv run pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck && npm run lint
+      - run: npm run build
