@@ -43,6 +43,7 @@ import type {
   MemoryDetail,
   MemoryGraph,
   ContradictionMap,
+  DecisionTrail,
   MemoryIn,
   MemoryItem,
   MemoryListParams,
@@ -475,6 +476,11 @@ export function unmergeEntity(slug: string, entityId: UUID, body: { reason?: str
 /** GET /projects/{slug}/memory/graph → {nodes, edges} */
 export function getMemoryGraph(slug: string, params: { limit?: number } = {}, opts: Opts = {}): Promise<MemoryGraph> {
   return http.get<MemoryGraph>(`${p(slug)}/memory/graph`, { query: { limit: params.limit }, ...opts });
+}
+
+/** GET /projects/{slug}/memory/{id}/trail → chronological story behind an item (what it replaced, its sources, reviews) */
+export function getDecisionTrail(slug: string, memoryId: UUID, opts: Opts = {}): Promise<DecisionTrail> {
+  return http.get<DecisionTrail>(`${p(slug)}/memory/${e(memoryId)}/trail`, opts);
 }
 
 /** GET /projects/{slug}/memory/contradictions → clusters of contradicting memory, most severe first */

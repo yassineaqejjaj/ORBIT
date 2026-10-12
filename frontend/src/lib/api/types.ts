@@ -761,6 +761,44 @@ export interface MemoryGraphEdge {
   method?: string | null;
 }
 
+export interface TrailEntry {
+  at: ISODateString;
+  kind: string;
+  label: string;
+  detail: string;
+  item_id: string | null;
+  document_id: string | null;
+  actor: string;
+}
+
+export interface TrailChainItem {
+  id: string;
+  title: string;
+  status: string;
+  version: number;
+  valid_from: ISODateString;
+  classification: number;
+  role: "replaced" | "current" | "replaced_by";
+}
+
+/** GET /projects/{slug}/memory/{id}/trail: the recorded story behind a decision. */
+export interface DecisionTrail {
+  item_id: string;
+  title: string;
+  why: {
+    kind: string;
+    status: string;
+    rationale: string | null;
+    decided_by: string | null;
+    confidence: number;
+    confidence_reason: string | null;
+    valid_from: ISODateString;
+  };
+  chain: TrailChainItem[];
+  timeline: TrailEntry[];
+  max_classification: number;
+}
+
 export type ContradictionSeverity = "critical" | "review" | "minor";
 
 export interface ContradictionItem {

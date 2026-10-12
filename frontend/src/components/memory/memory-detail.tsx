@@ -7,6 +7,7 @@ import {
   CornerLeftUp,
   EyeOff,
   GitBranch,
+  HelpCircle,
   History,
   Link2,
   Network,
@@ -48,8 +49,9 @@ import {
   validityLabel,
   type MemoryPermissions,
 } from "./memory-utils";
+import { DecisionTrailView } from "./decision-trail";
 
-type DetailTab = "provenance" | "history" | "versions" | "relations";
+type DetailTab = "provenance" | "why" | "history" | "versions" | "relations";
 
 export interface MemoryDetailProps {
   slug: string;
@@ -339,6 +341,10 @@ export function MemoryDetail({ slug, itemId, permissions, members, labels, onOpe
             <Link2 aria-hidden />
             Provenance
           </TabsTrigger>
+          <TabsTrigger value="why">
+            <HelpCircle aria-hidden />
+            Pourquoi ?
+          </TabsTrigger>
           <TabsTrigger value="history" count={data.history.length}>
             <History aria-hidden />
             Historique
@@ -354,6 +360,9 @@ export function MemoryDetail({ slug, itemId, permissions, members, labels, onOpe
         </TabsList>
         <TabsContent value="provenance">
           <ProvenanceList slug={slug} provenance={data.provenance} />
+        </TabsContent>
+        <TabsContent value="why">
+          {tab === "why" ? <DecisionTrailView slug={slug} memoryId={item.id} onOpenItem={onOpenItem} /> : null}
         </TabsContent>
         <TabsContent value="history">
           <HistoryTimeline history={data.history} versions={data.versions} members={members} onOpenItem={onOpenItem} />

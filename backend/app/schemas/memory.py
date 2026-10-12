@@ -217,6 +217,45 @@ class ContradictionMap(ApiModel):
     counts: dict[str, int]
 
 
+class TrailEntryOut(ApiModel):
+    at: datetime
+    kind: str
+    label: str
+    detail: str = ""
+    item_id: str | None = None
+    document_id: str | None = None
+    actor: str = ""
+
+
+class TrailChainItem(ApiModel):
+    id: str
+    title: str
+    status: str
+    version: int
+    valid_from: datetime
+    classification: int
+    role: Literal["replaced", "current", "replaced_by"]
+
+
+class TrailWhy(ApiModel):
+    kind: str
+    status: str
+    rationale: str | None = None
+    decided_by: str | None = None
+    confidence: float
+    confidence_reason: str | None = None
+    valid_from: datetime
+
+
+class DecisionTrail(ApiModel):
+    item_id: str
+    title: str
+    why: TrailWhy
+    chain: list[TrailChainItem]
+    timeline: list[TrailEntryOut]
+    max_classification: int
+
+
 class Skill(ApiModel):
     """§D1 procedure served as an Agent Skill."""
 
