@@ -6,6 +6,7 @@ import {
   FlaskConical,
   GitCompareArrows,
   History,
+  Hourglass,
   Inbox,
   MessageCircleQuestion,
   Plug,
@@ -31,6 +32,7 @@ export interface ProjectNavItem {
     | "sources"
     | "memory"
     | "explorer"
+    | "evolution"
     | "snapshots"
     | "observability"
     | "evaluation"
@@ -112,6 +114,13 @@ export const PROJECT_NAV: ProjectNavItem[] = [
     keywords: ["décisions", "memory", "graphe"],
   },
   {
+    segment: "evolution",
+    label: "Évolution",
+    icon: Hourglass,
+    description: "Ce que le projet savait à une date, comparé à aujourd’hui",
+    keywords: ["historique", "avant", "voyage dans le temps", "as of", "comparer", "dates", "diff"],
+  },
+  {
     segment: "explorer",
     label: "Contexte",
     icon: Telescope,
@@ -161,7 +170,7 @@ export interface ProjectNavSection {
 export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
   { label: null, segments: [""] },
   { label: "Données", segments: ["sources", "connectors"] },
-  { label: "Contexte", segments: ["memory", "explorer", "snapshots"] },
+  { label: "Contexte", segments: ["memory", "evolution", "explorer", "snapshots"] },
   { label: "Qualité", segments: ["inbox", "contradictions", "knowledge-gaps", "changes"] },
   { label: "Suivi", segments: ["observability", "evaluation"] },
   { label: "Administration", segments: ["settings"] },

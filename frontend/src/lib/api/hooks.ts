@@ -58,6 +58,7 @@ import type {
   MemoryDetail,
   MemoryGraph,
   ContradictionMap,
+  AsOfDiff,
   KnowledgeGaps,
   DecisionTrail,
   MemoryIn,
@@ -592,6 +593,15 @@ export function useDecisionTrail(slug: string, memoryId: string | null, options?
     queryKey: queryKeys.project.memory.trail(slug, memoryId ?? ""),
     queryFn: ({ signal }) => api.getDecisionTrail(slug, memoryId as string, { signal }),
     enabled: Boolean(slug && memoryId),
+    ...options,
+  });
+}
+
+export function useAsOfDiff(slug: string, from: string, to: string, options?: QueryOpts<AsOfDiff>) {
+  return useQuery<AsOfDiff, ApiError>({
+    queryKey: queryKeys.project.memory.asOfDiff(slug, from, to),
+    queryFn: ({ signal }) => api.getAsOfDiff(slug, { from, to }, { signal }),
+    enabled: Boolean(slug && from && to),
     ...options,
   });
 }
