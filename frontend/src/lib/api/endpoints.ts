@@ -42,6 +42,7 @@ import type {
   MemberUpdateIn,
   MemoryDetail,
   MemoryGraph,
+  ContradictionMap,
   MemoryIn,
   MemoryItem,
   MemoryListParams,
@@ -474,6 +475,11 @@ export function unmergeEntity(slug: string, entityId: UUID, body: { reason?: str
 /** GET /projects/{slug}/memory/graph → {nodes, edges} */
 export function getMemoryGraph(slug: string, params: { limit?: number } = {}, opts: Opts = {}): Promise<MemoryGraph> {
   return http.get<MemoryGraph>(`${p(slug)}/memory/graph`, { query: { limit: params.limit }, ...opts });
+}
+
+/** GET /projects/{slug}/memory/contradictions → clusters of contradicting memory, most severe first */
+export function getContradictionMap(slug: string, opts: Opts = {}): Promise<ContradictionMap> {
+  return http.get<ContradictionMap>(`${p(slug)}/memory/contradictions`, opts);
 }
 
 /* -------------------------------------------------------------------------- */

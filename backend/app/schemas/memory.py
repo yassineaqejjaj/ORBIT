@@ -185,6 +185,38 @@ class MemoryGraph(ApiModel):
     edges: list[GraphEdge]
 
 
+class ContradictionItem(ApiModel):
+    id: str
+    title: str
+    kind: str
+    status: str
+    classification: int
+    confidence: float
+    valid_from: datetime
+    excerpt: str
+
+
+class ContradictionEdge(ApiModel):
+    a: str
+    b: str
+    score: float | None = None
+    method: str | None = None
+    explanation: str | None = None
+
+
+class ContradictionCluster(ApiModel):
+    severity: Literal["critical", "review", "minor"]
+    suggested_keep: str
+    max_classification: int
+    items: list[ContradictionItem]
+    edges: list[ContradictionEdge]
+
+
+class ContradictionMap(ApiModel):
+    clusters: list[ContradictionCluster]
+    counts: dict[str, int]
+
+
 class Skill(ApiModel):
     """§D1 procedure served as an Agent Skill."""
 

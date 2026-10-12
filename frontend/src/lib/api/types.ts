@@ -761,6 +761,41 @@ export interface MemoryGraphEdge {
   method?: string | null;
 }
 
+export type ContradictionSeverity = "critical" | "review" | "minor";
+
+export interface ContradictionItem {
+  id: string;
+  title: string;
+  kind: string;
+  status: string;
+  classification: number;
+  confidence: number;
+  valid_from: ISODateString;
+  excerpt: string;
+}
+
+export interface ContradictionEdge {
+  a: string;
+  b: string;
+  score: number | null;
+  method: string | null;
+  explanation: string | null;
+}
+
+export interface ContradictionCluster {
+  severity: ContradictionSeverity;
+  suggested_keep: string;
+  max_classification: number;
+  items: ContradictionItem[];
+  edges: ContradictionEdge[];
+}
+
+/** GET /projects/{slug}/memory/contradictions */
+export interface ContradictionMap {
+  clusters: ContradictionCluster[];
+  counts: Record<ContradictionSeverity, number>;
+}
+
 export interface MemoryGraph {
   nodes: MemoryGraphNode[];
   edges: MemoryGraphEdge[];
