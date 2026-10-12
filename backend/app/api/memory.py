@@ -6,7 +6,7 @@ Visibility (``app.memory.visibility``): project items + organisation long-term i
 Items the caller cannot see answer ``404`` (their existence is not revealed).
 
 Route order matters: ``/memory/graph`` and ``/memory/consolidate`` are declared before
-``/memory/{memory_id}``.
+``/memory/{memory_id}``; so is ``/memory/contradictions``.
 """
 
 from __future__ import annotations
@@ -38,6 +38,7 @@ from app.ingestion.pipeline import actor_payload
 from app.ingestion.queue import enqueue_job
 from app.memory import entities as entity_service
 from app.memory import lifecycle
+from app.memory.contradiction_map import LIVE_STATUSES, MapEdge, MapItem, build_clusters
 from app.memory.serializers import serialize_events, serialize_item, serialize_items
 from app.memory.visibility import MemoryViewer, can_view, visibility_clause
 from app.models import Chunk, Document, IngestionJob, MemoryEvent, MemoryProvenance, Relation, Source
@@ -57,7 +58,15 @@ from app.schemas import (
     page_params,
 )
 from app.schemas.common import make_page
-from app.schemas.memory import GraphEdge, GraphNode, Provenance
+from app.schemas.memory import (
+    ContradictionCluster,
+    ContradictionEdge,
+    ContradictionItem,
+    ContradictionMap,
+    GraphEdge,
+    GraphNode,
+    Provenance,
+)
 from app.schemas.memory import Relation as RelationOut
 from app.services import projects as project_service
 
@@ -397,6 +406,94 @@ async def memory_graph(
         )
     await _entity_layer(session, access.project_id, items, nodes, edges, max(0, limit - len(nodes)))
     return MemoryGraph(nodes=nodes, edges=edges)
+
+
+EXCERPT = 280
+
+
+@router.get("/contradictions", response_model=ContradictionMap, summary="Carte des contradictions")
+async def contradiction_map(
+    access: ViewerAccess, session: SessionDep, limit: int = Query(default=500, ge=1, le=2000)
+) -> ContradictionMap:
+    """Clusters of live memory items that contradict each other, most severe first.
+
+    Only items the caller can see take part: a contradiction with a restricted item is neither shown
+    nor counted.
+    """
+    viewer = MemoryViewer.from_access(access)
+    rows = list(
+        await session.scalars(
+            select(MemoryItemRow)
+            .where(
+                visibility_clause(viewer),
+                MemoryItemRow.is_current.is_(True),
+                MemoryItemRow.status.in_(LIVE_STATUSES),
+            )
+            .order_by(MemoryItemRow.updated_at.desc())
+            .limit(limit)
+        )
+    )
+    ids = {r.id for r in rows}
+    relations = (
+        list(
+            await session.scalars(
+                select(Relation).where(
+                    Relation.rel_type == RelationType.contradicts,
+                    Relation.src_type == RelationNodeType.memory,
+                    Relation.dst_type == RelationNodeType.memory,
+                    Relation.src_id.in_(ids),
+                    Relation.dst_id.in_(ids),
+                )
+            )
+        )
+        if ids
+        else []
+    )
+    by_id = {str(r.id): r for r in rows}
+    clusters = build_clusters(
+        [
+            MapItem(
+                str(r.id),
+                r.title,
+                MemoryKind(r.kind).value,
+                MemoryStatus(r.status),
+                r.classification,
+                float(r.confidence),
+                r.valid_from,
+            )
+            for r in rows
+        ],
+        [
+            MapEdge(str(r.src_id), str(r.dst_id), r.score, r.method, r.explanation or r.detail)
+            for r in relations
+        ],
+    )
+    out = [
+        ContradictionCluster(
+            severity=c["severity"],
+            suggested_keep=c["suggested_keep"],
+            max_classification=c["max_classification"],
+            items=[
+                ContradictionItem(
+                    id=i,
+                    title=by_id[i].title,
+                    kind=MemoryKind(by_id[i].kind).value,
+                    status=MemoryStatus(by_id[i].status).value,
+                    classification=by_id[i].classification,
+                    confidence=float(by_id[i].confidence),
+                    valid_from=by_id[i].valid_from,
+                    excerpt=by_id[i].content[:EXCERPT],
+                )
+                for i in c["item_ids"]
+            ],
+            edges=[ContradictionEdge(**e) for e in c["edges"]],
+        )
+        for c in clusters
+    ]
+    return ContradictionMap(
+        clusters=out,
+        counts={sev: sum(1 for c in out if c.severity == sev) for sev in ("critical", "review", "minor")},
+    )
 
 
 async def _entity_layer(

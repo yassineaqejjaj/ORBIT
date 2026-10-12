@@ -146,6 +146,7 @@ Import JSON/CSV — colonnes reconnues : `id|external_id`, `title|summary|subjec
 | POST | `/projects/{slug}/memory/{id}/forget` | owner (ou sujet pour scope `user`) | `{reason}` | `MemoryItem` |
 | POST | `/projects/{slug}/memory/consolidate` | editor | — | `Job` |
 | GET | `/projects/{slug}/memory/graph` | viewer | `limit=150` | `{nodes: {id,type,label,kind,status}[], edges: {source,target,rel_type,confidence?,detail?,method?}[]}` (nœuds `entity` §D2) |
+| GET | `/projects/{slug}/memory/contradictions` | viewer | `limit=500` | `{clusters: {severity: critical\|review\|minor, suggested_keep, max_classification, items: {id,title,kind,status,classification,confidence,valid_from,excerpt}[], edges: {a,b,score?,method?,explanation?}[]}[], counts: {critical,review,minor}}` — contradictions entre éléments vivants (proposés ou validés) visibles par l'appelant ; une contradiction avec un élément qu'il ne peut pas voir n'est ni affichée ni comptée |
 | POST | `/projects/{slug}/memory/reflect` | editor | `month?=AAAA-MM` (défaut : mois précédent) | `Job` (§D4 synthèse « ce qui a changé » proposée) |
 | GET | `/projects/{slug}/skills` | viewer | — | `Skill[]` (§D1 procédures servies comme Agent Skills) |
 | GET | `/projects/{slug}/skills/{name}` | viewer | — | `Skill & {skill_md}` (SKILL.md avec métadonnées) |

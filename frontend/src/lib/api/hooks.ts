@@ -57,6 +57,7 @@ import type {
   MemberCreateIn,
   MemoryDetail,
   MemoryGraph,
+  ContradictionMap,
   MemoryIn,
   MemoryItem,
   MemoryListParams,
@@ -579,6 +580,15 @@ export function useMemoryGraph(slug: string, limit = 150, options?: QueryOpts<Me
   return useQuery<MemoryGraph, ApiError>({
     queryKey: queryKeys.project.memory.graph(slug, limit),
     queryFn: ({ signal }) => api.getMemoryGraph(slug, { limit }, { signal }),
+    enabled: Boolean(slug),
+    ...options,
+  });
+}
+
+export function useContradictionMap(slug: string, options?: QueryOpts<ContradictionMap>) {
+  return useQuery<ContradictionMap, ApiError>({
+    queryKey: queryKeys.project.memory.contradictions(slug),
+    queryFn: ({ signal }) => api.getContradictionMap(slug, { signal }),
     enabled: Boolean(slug),
     ...options,
   });

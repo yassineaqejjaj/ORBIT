@@ -4,6 +4,7 @@ import {
   Camera,
   Database,
   FlaskConical,
+  GitCompareArrows,
   History,
   Inbox,
   MessageCircleQuestion,
@@ -23,6 +24,7 @@ export interface ProjectNavItem {
     | "ask"
     | "inbox"
     | "changes"
+    | "contradictions"
     | "connectors"
     | "sources"
     | "memory"
@@ -62,6 +64,13 @@ export const PROJECT_NAV: ProjectNavItem[] = [
     description: "Propositions à valider et contradictions à arbitrer",
     minRole: "editor",
     keywords: ["propositions", "validation", "conflits", "arbitrage", "triage", "tri de la mémoire"],
+  },
+  {
+    segment: "contradictions",
+    label: "Contradictions",
+    icon: GitCompareArrows,
+    description: "Ce que la mémoire affirme sans pouvoir tout garder vrai",
+    keywords: ["conflits", "incohérences", "désaccord", "arbitrage", "carte"],
   },
   {
     segment: "changes",
@@ -143,7 +152,7 @@ export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
   { label: null, segments: [""] },
   { label: "Données", segments: ["sources", "connectors"] },
   { label: "Contexte", segments: ["memory", "explorer", "snapshots"] },
-  { label: "Qualité", segments: ["inbox", "changes"] },
+  { label: "Qualité", segments: ["inbox", "contradictions", "changes"] },
   { label: "Suivi", segments: ["observability", "evaluation"] },
   { label: "Administration", segments: ["settings"] },
 ];
