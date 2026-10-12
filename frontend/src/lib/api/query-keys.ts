@@ -62,6 +62,7 @@ export const queryKeys = {
       detail: (slug: string, id: string) => [...projectRoot(slug), "memory", "detail", id] as const,
       graph: (slug: string, limit?: number) =>
         [...projectRoot(slug), "memory", "graph", { limit: limit ?? null }] as const,
+      asOfDiff: (slug: string, from: string, to: string) => [...projectRoot(slug), "memory", "as-of-diff", { from, to }] as const,
       trail: (slug: string, id: string) => [...projectRoot(slug), "memory", "trail", id] as const,
       contradictions: (slug: string) => [...projectRoot(slug), "memory", "contradictions"] as const,
       skills: (slug: string) => [...projectRoot(slug), "memory", "skills"] as const,

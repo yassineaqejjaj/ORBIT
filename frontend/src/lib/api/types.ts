@@ -761,6 +761,28 @@ export interface MemoryGraphEdge {
   method?: string | null;
 }
 
+export interface KnownItem {
+  id: string;
+  lineage_id: string;
+  version: number;
+  title: string;
+  kind: string;
+  status: string;
+  classification: number;
+  excerpt: string;
+}
+
+/** GET /projects/{slug}/memory/as-of-diff: what the project knew at one date versus another. */
+export interface AsOfDiff {
+  date_from: ISODateString;
+  date_to: ISODateString;
+  added: KnownItem[];
+  removed: { item: KnownItem; why: "replaced" | "obsolete" | "expired" | "forgotten" | "unknown"; replaced_by: KnownItem | null }[];
+  changed: { before: KnownItem; after: KnownItem }[];
+  counts: { added: number; removed: number; changed: number };
+  max_classification: number;
+}
+
 export interface KnowledgeGapContributor {
   user_id: string;
   label: string;

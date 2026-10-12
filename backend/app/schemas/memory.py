@@ -256,6 +256,38 @@ class DecisionTrail(ApiModel):
     max_classification: int
 
 
+class KnownItem(ApiModel):
+    id: str
+    lineage_id: str
+    version: int
+    title: str
+    kind: str
+    status: str
+    classification: int
+    excerpt: str
+
+
+class RemovedItem(ApiModel):
+    item: KnownItem
+    why: Literal["replaced", "obsolete", "expired", "forgotten", "unknown"]
+    replaced_by: KnownItem | None = None
+
+
+class ChangedItem(ApiModel):
+    before: KnownItem
+    after: KnownItem
+
+
+class AsOfDiff(ApiModel):
+    date_from: datetime
+    date_to: datetime
+    added: list[KnownItem]
+    removed: list[RemovedItem]
+    changed: list[ChangedItem]
+    counts: dict[str, int]
+    max_classification: int
+
+
 class Skill(ApiModel):
     """§D1 procedure served as an Agent Skill."""
 

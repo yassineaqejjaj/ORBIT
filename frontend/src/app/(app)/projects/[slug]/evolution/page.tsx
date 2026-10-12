@@ -1,0 +1,30 @@
+import type { Metadata } from "next";
+import { Suspense } from "react";
+
+import { EvolutionView } from "@/components/evolution/evolution-view";
+import { Skeleton } from "@/components/ui/skeleton";
+
+export const metadata: Metadata = { title: "Évolution" };
+
+function EvolutionFallback() {
+  return (
+    <div className="grid gap-5" aria-busy="true" aria-label="Chargement de l’évolution de la mémoire">
+      <div className="flex items-start gap-3">
+        <Skeleton className="size-9 rounded-lg" />
+        <div className="grid flex-1 gap-2">
+          <Skeleton className="h-6 w-56" />
+          <Skeleton className="h-4 w-full max-w-xl" />
+        </div>
+      </div>
+      <Skeleton className="h-64 rounded-xl" />
+    </div>
+  );
+}
+
+export default function EvolutionPage() {
+  return (
+    <Suspense fallback={<EvolutionFallback />}>
+      <EvolutionView />
+    </Suspense>
+  );
+}

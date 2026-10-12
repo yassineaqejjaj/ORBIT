@@ -6,7 +6,7 @@ Visibility (``app.memory.visibility``): project items + organisation long-term i
 Items the caller cannot see answer ``404`` (their existence is not revealed).
 
 Route order matters: ``/memory/graph`` and ``/memory/consolidate`` are declared before
-``/memory/{memory_id}``; so is ``/memory/contradictions``.
+``/memory/{memory_id}``; so are ``/memory/contradictions`` and ``/memory/as-of-diff``.
 """
 
 from __future__ import annotations
@@ -38,6 +38,7 @@ from app.ingestion.pipeline import actor_payload
 from app.ingestion.queue import enqueue_job
 from app.memory import entities as entity_service
 from app.memory import lifecycle
+from app.memory.as_of_diff import Known, Latest, diff_known
 from app.memory.contradiction_map import LIVE_STATUSES, MapEdge, MapItem, build_clusters
 from app.memory.decision_trail import TrailEntry, build_timeline, excerpt
 from app.memory.serializers import serialize_events, serialize_item, serialize_items
@@ -60,6 +61,8 @@ from app.schemas import (
 )
 from app.schemas.common import make_page
 from app.schemas.memory import (
+    AsOfDiff,
+    ChangedItem,
     ContradictionCluster,
     ContradictionEdge,
     ContradictionItem,
@@ -67,7 +70,9 @@ from app.schemas.memory import (
     DecisionTrail,
     GraphEdge,
     GraphNode,
+    KnownItem,
     Provenance,
+    RemovedItem,
     TrailChainItem,
     TrailEntryOut,
     TrailWhy,
@@ -411,6 +416,103 @@ async def memory_graph(
         )
     await _entity_layer(session, access.project_id, items, nodes, edges, max(0, limit - len(nodes)))
     return MemoryGraph(nodes=nodes, edges=edges)
+
+
+def _known_item(row: MemoryItemRow) -> KnownItem:
+    return KnownItem(
+        id=str(row.id),
+        lineage_id=str(row.lineage_id),
+        version=row.version,
+        title=row.title,
+        kind=MemoryKind(row.kind).value,
+        status=MemoryStatus(row.status).value,
+        classification=row.classification,
+        excerpt=excerpt(row.content, 240),
+    )
+
+
+@router.get("/as-of-diff", response_model=AsOfDiff, summary="Ce qui a changé entre deux dates")
+async def as_of_diff(
+    access: ViewerAccess,
+    session: SessionDep,
+    date_from: Annotated[datetime, Query(alias="from", description="Mémoire telle que connue à cette date")],
+    date_to: Annotated[
+        datetime | None, Query(alias="to", description="… comparée à celle-ci (défaut : maintenant)")
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=3000)] = 1000,
+) -> AsOfDiff:
+    """What the project knew at ``from`` versus ``to``: what appeared, what went away and why, what changed.
+
+    Both sides are read with the caller's visibility, so nothing they cannot see shows up as added or removed.
+    """
+    viewer = MemoryViewer.from_access(access)
+    start = date_from if date_from.tzinfo else date_from.replace(tzinfo=UTC)
+    end = (date_to if date_to is None or date_to.tzinfo else date_to.replace(tzinfo=UTC)) or datetime.now(UTC)
+    if start >= end:
+        raise validation_error("« from » doit précéder « to »")
+
+    async def known_at(when: datetime) -> list[MemoryItemRow]:
+        return list(
+            await session.scalars(
+                select(MemoryItemRow)
+                .where(visibility_clause(viewer), *_as_of_conditions(when, viewer.project_id))
+                .order_by(MemoryItemRow.title)
+                .limit(limit)
+            )
+        )
+
+    before_rows, after_rows = await known_at(start), await known_at(end)
+    gone = {r.lineage_id for r in before_rows} - {r.lineage_id for r in after_rows}
+    latest_rows = (
+        list(
+            await session.scalars(
+                select(MemoryItemRow).where(
+                    visibility_clause(viewer),
+                    MemoryItemRow.is_current.is_(True),
+                    MemoryItemRow.lineage_id.in_(gone),
+                )
+            )
+        )
+        if gone
+        else []
+    )
+    latest = {
+        r.lineage_id: Latest(MemoryStatus(r.status).value, r.valid_to, r.superseded_by_id)
+        for r in latest_rows
+    }
+
+    def known(row: MemoryItemRow) -> Known:
+        return Known(row.id, row.lineage_id, row.version, row.title, row.content)
+
+    by_id = {r.id: r for r in [*before_rows, *after_rows]}
+    after_by_id = {r.id: r for r in after_rows}
+    diff = diff_known([known(r) for r in before_rows], [known(r) for r in after_rows], latest, end)
+    removed = []
+    for removal in diff.removed:
+        replacement = after_by_id.get(removal.replaced_by) if removal.replaced_by else None
+        removed.append(
+            RemovedItem(
+                item=_known_item(by_id[removal.before.id]),
+                why=removal.why,
+                replaced_by=_known_item(replacement) if replacement else None,
+            )
+        )
+    added = [_known_item(by_id[k.id]) for k in diff.added]
+    changed = [
+        ChangedItem(before=_known_item(by_id[c.before.id]), after=_known_item(by_id[c.after.id]))
+        for c in diff.changed
+    ]
+    levels = [i.classification for i in added] + [r.item.classification for r in removed]
+    levels += [c.after.classification for c in changed]
+    return AsOfDiff(
+        date_from=start,
+        date_to=end,
+        added=added,
+        removed=removed,
+        changed=changed,
+        counts={"added": len(added), "removed": len(removed), "changed": len(changed)},
+        max_classification=max(levels, default=0),
+    )
 
 
 EXCERPT = 280

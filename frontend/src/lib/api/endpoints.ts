@@ -43,6 +43,7 @@ import type {
   MemoryDetail,
   MemoryGraph,
   ContradictionMap,
+  AsOfDiff,
   KnowledgeGaps,
   DecisionTrail,
   MemoryIn,
@@ -477,6 +478,11 @@ export function unmergeEntity(slug: string, entityId: UUID, body: { reason?: str
 /** GET /projects/{slug}/memory/graph → {nodes, edges} */
 export function getMemoryGraph(slug: string, params: { limit?: number } = {}, opts: Opts = {}): Promise<MemoryGraph> {
   return http.get<MemoryGraph>(`${p(slug)}/memory/graph`, { query: { limit: params.limit }, ...opts });
+}
+
+/** GET /projects/{slug}/memory/as-of-diff?from=&to= → what appeared, went away (and why) or changed between two dates */
+export function getAsOfDiff(slug: string, params: { from: string; to?: string }, opts: Opts = {}): Promise<AsOfDiff> {
+  return http.get<AsOfDiff>(`${p(slug)}/memory/as-of-diff`, { query: { from: params.from, to: params.to }, ...opts });
 }
 
 /** GET /projects/{slug}/knowledge-gaps → recurring missing topics (editors) */
