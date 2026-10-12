@@ -761,6 +761,33 @@ export interface MemoryGraphEdge {
   method?: string | null;
 }
 
+export interface KnowledgeGapContributor {
+  user_id: string;
+  label: string;
+  items: number;
+}
+
+export interface KnowledgeGap {
+  key: string;
+  topic: string;
+  requests: number;
+  askers: number;
+  first_seen: ISODateString;
+  last_seen: ISODateString;
+  avg_score: number;
+  trend: "rising" | "steady" | "fading";
+  severity: "critical" | "recurring" | "isolated";
+  contributors: KnowledgeGapContributor[];
+  requested: boolean;
+}
+
+/** GET /projects/{slug}/knowledge-gaps: topics the served context keeps failing to cover (editors). */
+export interface KnowledgeGaps {
+  window_days: number;
+  analysed_requests: number;
+  gaps: KnowledgeGap[];
+}
+
 export interface TrailEntry {
   at: ISODateString;
   kind: string;

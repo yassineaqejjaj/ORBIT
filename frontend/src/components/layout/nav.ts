@@ -9,6 +9,7 @@ import {
   Inbox,
   MessageCircleQuestion,
   Plug,
+  SearchX,
   LayoutDashboard,
   Settings,
   Telescope,
@@ -25,6 +26,7 @@ export interface ProjectNavItem {
     | "inbox"
     | "changes"
     | "contradictions"
+    | "knowledge-gaps"
     | "connectors"
     | "sources"
     | "memory"
@@ -71,6 +73,14 @@ export const PROJECT_NAV: ProjectNavItem[] = [
     icon: GitCompareArrows,
     description: "Ce que la mémoire affirme sans pouvoir tout garder vrai",
     keywords: ["conflits", "incohérences", "désaccord", "arbitrage", "carte"],
+  },
+  {
+    segment: "knowledge-gaps",
+    label: "Lacunes",
+    icon: SearchX,
+    description: "Ce que les agents cherchent sans le trouver dans la mémoire",
+    minRole: "editor",
+    keywords: ["manque", "lacunes", "connaissance manquante", "documenter", "trous", "insuffisant"],
   },
   {
     segment: "changes",
@@ -152,7 +162,7 @@ export const PROJECT_NAV_SECTIONS: ProjectNavSection[] = [
   { label: null, segments: [""] },
   { label: "Données", segments: ["sources", "connectors"] },
   { label: "Contexte", segments: ["memory", "explorer", "snapshots"] },
-  { label: "Qualité", segments: ["inbox", "contradictions", "changes"] },
+  { label: "Qualité", segments: ["inbox", "contradictions", "knowledge-gaps", "changes"] },
   { label: "Suivi", segments: ["observability", "evaluation"] },
   { label: "Administration", segments: ["settings"] },
 ];

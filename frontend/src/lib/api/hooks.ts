@@ -58,6 +58,7 @@ import type {
   MemoryDetail,
   MemoryGraph,
   ContradictionMap,
+  KnowledgeGaps,
   DecisionTrail,
   MemoryIn,
   MemoryItem,
@@ -593,6 +594,23 @@ export function useDecisionTrail(slug: string, memoryId: string | null, options?
     enabled: Boolean(slug && memoryId),
     ...options,
   });
+}
+
+export function useKnowledgeGaps(slug: string, days = 30, options?: QueryOpts<KnowledgeGaps>) {
+  return useQuery<KnowledgeGaps, ApiError>({
+    queryKey: queryKeys.project.knowledgeGaps(slug, days),
+    queryFn: ({ signal }) => api.getKnowledgeGaps(slug, { days }, { signal }),
+    enabled: Boolean(slug),
+    ...options,
+  });
+}
+
+export function useRequestGapDocumentation(slug: string, options?: MutationOpts<MemoryItem, string>) {
+  return useApiMutation<MemoryItem, string>(
+    (topic) => api.requestGapDocumentation(slug, topic),
+    (qc) => Promise.all([qc.invalidateQueries({ queryKey: queryKeys.project.knowledgeGapsAll(slug) }), invalidateMemory(qc, slug)]),
+    options,
+  );
 }
 
 export function useContradictionMap(slug: string, options?: QueryOpts<ContradictionMap>) {
