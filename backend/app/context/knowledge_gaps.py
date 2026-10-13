@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 
 from app.context.textutils import key_terms
 
@@ -83,7 +83,7 @@ def aggregate(items: list[MissingTopic], now: datetime, window_days: int) -> lis
                 break
         else:
             clusters.append((terms, [item]))
-    gaps = []
+    gaps: list[dict[str, Any]] = []
     for terms, members in clusters:
         askers = {m.asker for m in members if m.asker}
         wording = Counter(m.topic.strip() for m in members).most_common(1)[0][0]

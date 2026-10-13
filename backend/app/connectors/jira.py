@@ -10,7 +10,7 @@ to ORBIT but absent from the JQL listing are checked one by one (404 or key move
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
@@ -156,7 +156,7 @@ class JiraConnector(BaseConnector):
 
     async def _search(
         self, jql: str, *, fields: str, limit: int, max_pages: int = MAX_PAGES
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any]]:
         if self.cloud:
             token: str | None = None
             for _ in range(max_pages):

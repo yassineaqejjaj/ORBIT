@@ -467,7 +467,7 @@ async def _iterative_retrieve(
     searches of the sub-topics no retrieved item covers yet (§B4); stops early when everything is
     covered or a round finds nothing new. Every round is traced in ``timings.rounds``."""
     body = resolved.body
-    scope = {
+    scope: dict[str, Any] = {
         "project_id": resolved.project_id,
         "include_chunks": body.include_sources,
         "include_memory": bool(resolved.scopes),

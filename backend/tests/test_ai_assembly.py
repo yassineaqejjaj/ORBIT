@@ -194,6 +194,24 @@ async def test_progressive_mode_and_mcp_expansion_tools(
     assert {"EXCLUDED_CLASSIFICATION", "EXCLUDED_SCOPE"} <= reasons
 
 
+async def test_expand_source_accepts_a_document_id(
+    app: Any,
+    admin_client: httpx.AsyncClient,
+    agent_setup: AgentSetup,  # noqa: F811
+) -> None:
+    slug = agent_setup.slug
+    document = await _text(
+        admin_client,
+        slug,
+        title="Guide badge Atlas",
+        content="Le badge Atlas est imprimé à l'accueil après le scan du QR code du visiteur.",
+    )
+    await drain()
+    async with mcp_client(app, {"X-Orbit-Key": agent_setup.api_key}) as mcp:
+        expanded = payload(await mcp.call_tool("expand_source", {"source_id": document["id"]}))
+    assert expanded["chunks"] >= 1 and "badge Atlas" in expanded["text"]
+
+
 # --- C3 context profiles per agent kind ---------------------------------------------------------------
 
 

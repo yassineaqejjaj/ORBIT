@@ -464,12 +464,12 @@ async def ask(
     return AskOut(
         answer=answer.text,
         citations=answer.cited,
-        confidence=confidence,  # type: ignore[arg-type]
+        confidence=confidence,
         follow_ups=follow_ups,
         request_id=package.request_id,
         conversation_id=conversation.id,
         message_id=message.id,
-        mode=answer.mode,  # type: ignore[arg-type]
+        mode=answer.mode,
         warnings=answer.warnings,
         untrusted_content_notice=spotlight.MCP_NOTICE if spotlight.enabled() else None,
         sufficiency=sufficiency,
@@ -502,11 +502,11 @@ async def list_conversations(
 def message_out(message: AskMessage) -> AskMessageOut:
     return AskMessageOut(
         id=message.id,
-        role=message.role,  # type: ignore[arg-type]
+        role=message.role,
         content=message.content,
         citations=[ContextItem.model_validate(c) for c in message.citations or []],
-        confidence=message.confidence,  # type: ignore[arg-type]
-        mode=message.mode,  # type: ignore[arg-type]
+        confidence=message.confidence,
+        mode=message.mode,
         follow_ups=list(message.follow_ups or []),
         warnings=list(message.warnings or []),
         request_id=message.request_id,

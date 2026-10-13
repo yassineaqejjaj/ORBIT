@@ -25,7 +25,6 @@ not commit the final state (the worker does); intermediate commits record progre
 from __future__ import annotations
 
 import asyncio
-import inspect
 import logging
 import uuid
 from collections import Counter
@@ -350,7 +349,7 @@ async def _extract_meeting(
 ) -> ExtractedDocument:
     """Meeting transcript (§F1): parse VTT/SRT/DOCX/text, or transcribe audio behind the guardrail."""
     info = meeting if isinstance(meeting, dict) else {}
-    options = {
+    options: dict[str, Any] = {
         "title": document.title,
         "date": str(info.get("date") or "") or None,
         "participants": [str(p) for p in info.get("participants") or []],
@@ -1026,21 +1025,6 @@ async def schedule_contextual_reindex(session: AsyncSession) -> int:
 # --- forget -----------------------------------------------------------------------------------------
 
 
-async def _call_propagate_document_forget(session: AsyncSession, document: Document, actor: Actor) -> int:
-    """Call the memory teammate's ``propagate_document_forget`` whatever its exact signature."""
-    from app.memory import lifecycle
-
-    function = lifecycle.propagate_document_forget
-    parameters = inspect.signature(function).parameters
-    if "document" in parameters:
-        result = await function(session, document, actor)  # type: ignore[call-arg]
-    elif "document_id" in parameters:
-        result = await function(session, document.project_id, document.id, actor=actor)  # type: ignore[call-arg]
-    else:
-        result = await function(session, document, actor)  # type: ignore[call-arg]
-    return int(result or 0)
-
-
 async def handle_forget(session: AsyncSession, job: IngestionJob) -> None:
     document = await _load_document(session, job)
     payload = job.payload or {}
@@ -1088,10 +1072,12 @@ async def handle_forget(session: AsyncSession, job: IngestionJob) -> None:
             f"{len(versions)} version(s) purgée(s), {purged_files} fichier(s) supprimé(s)"
         )
 
+    from app.memory import lifecycle
+
     memory_propagated = False
     async with track_step(session, job, "memory", commit=True) as step:
         try:
-            affected = await _call_propagate_document_forget(session, document, actor)
+            affected = await lifecycle.propagate_document_forget(session, document, actor)
             memory_propagated = True
             step.detail = f"{affected} item(s) mémoire dérivé(s) oublié(s) ou dévalué(s)"
         except NotImplementedError:

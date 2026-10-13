@@ -128,7 +128,7 @@ def infer_intent(task: str, agent_kind: AgentKind | str | None = None) -> Intent
         except ValueError:
             preferred = None
         if preferred in leaders:
-            return preferred  # type: ignore[return-value]
+            return preferred
     return leaders[0]
 
 

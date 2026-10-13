@@ -38,7 +38,7 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-async def _evaluator(session, project: Project, email: str | None) -> User | None:  # type: ignore[no-untyped-def]
+async def _evaluator(session, project: Project, email: str | None) -> User | None:
     if email:
         return await session.scalar(select(User).where(User.email == email.lower().strip()))
     owner = await session.scalar(

@@ -99,7 +99,7 @@ def _subscription_out(subscription: Subscription | None) -> SubscriptionOut:
     if subscription is None:
         return SubscriptionOut(digest="off", types=[], email_enabled=service.smtp_configured())
     return SubscriptionOut(
-        digest=subscription.digest,  # type: ignore[arg-type]
+        digest=subscription.digest,
         types=list(subscription.types or []),
         last_digest_at=subscription.last_digest_at,
         email_enabled=service.smtp_configured(),

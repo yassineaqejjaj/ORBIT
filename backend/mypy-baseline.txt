@@ -1,0 +1,13 @@
+# mypy baseline: <count> <file> <code>. Regenerate with scripts/mypy_baseline.py --update.
+1 app/context/retrieval.py arg-type
+6 app/context/retrieval.py has-type
+2 app/features/feed/service.py arg-type
+1 app/features/feed/service.py var-annotated
+5 app/features/inbox/service.py arg-type
+2 app/features/inbox/service.py assignment
+2 app/ingestion/extractors/html.py call-overload
+3 app/mcp_resources.py assignment
+2 app/memory/contradiction_map.py arg-type
+2 app/memory/contradiction_map.py index
+3 app/services/metrics.py arg-type
+2 app/services/metrics.py var-annotated

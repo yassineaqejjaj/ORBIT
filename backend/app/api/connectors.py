@@ -63,7 +63,7 @@ async def _serialize(session: AsyncSession, connectors: Sequence[Connector]) -> 
         out.append(
             ConnectorOut(
                 id=connector.id,
-                type=connector.type,  # type: ignore[arg-type]
+                type=connector.type,
                 type_label=service.type_label(connector.type, dict(connector.config or {})),
                 preset=(connector.config or {}).get("preset") if connector.type == "mcp" else None,
                 via_mcp=connector.type == "mcp",
@@ -118,7 +118,7 @@ async def _run_test(impl: BaseConnector) -> ConnectorTestOut:
 @router.get("/types", response_model=list[ConnectorTypeOut], summary="Types de connecteurs disponibles")
 async def list_types(access: ViewerAccess) -> list[ConnectorTypeOut]:
     out = [
-        ConnectorTypeOut(type=cls.type, label=cls.label, source_kind=cls.source_kind.value)  # type: ignore[arg-type]
+        ConnectorTypeOut(type=cls.type, label=cls.label, source_kind=cls.source_kind.value)
         for cls in REGISTRY.values()
         if cls.type != "mcp"
     ]

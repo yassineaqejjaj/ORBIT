@@ -106,20 +106,22 @@ async def build_report(
     requests = list(
         await session.scalars(stmt.order_by(ContextRequest.created_at.desc()).limit(REPORT_LIMIT))
     )
-    ids = [r.id for r in requests]
+    request_ids = [r.id for r in requests]
 
     decisions: dict[uuid.UUID, list[ContextDecision]] = defaultdict(list)
     answers: dict[uuid.UUID, AskMessage] = {}
-    if ids:
+    if request_ids:
         for d in await session.scalars(
             select(ContextDecision)
-            .where(ContextDecision.request_id.in_(ids))
+            .where(ContextDecision.request_id.in_(request_ids))
             .order_by(
                 ContextDecision.included.desc(), ContextDecision.rank.asc().nulls_last(), ContextDecision.id
             )
         ):
             decisions[d.request_id].append(d)
-        for message in await session.scalars(select(AskMessage).where(AskMessage.request_id.in_(ids))):
+        for message in await session.scalars(
+            select(AskMessage).where(AskMessage.request_id.in_(request_ids))
+        ):
             if message.request_id is not None:
                 answers[message.request_id] = message
     labels = await actor_labels(session, [(str(r.requested_by_type), r.requested_by_id) for r in requests])

@@ -205,7 +205,7 @@ async def redistribute(plan: Sequence[TimestampPlan]) -> int:
                 .where(ContextRequest.id == entry.request_id)
                 .values(created_at=entry.created_at)
             )
-            if not result.rowcount:
+            if not result.rowcount:  # type: ignore[attr-defined]
                 continue
             moved += 1
             snapshot_ids = list(

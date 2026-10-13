@@ -437,9 +437,9 @@ async def list_conflicts(
                 detail=r.detail,
                 suggested_winner_id=r.winner_id or conflict_winner(a, b).id,
                 rationale=r.reason or ("Arbitrée" if r.status == "resolved" else "Pas une contradiction"),
-                status=r.status,  # type: ignore[arg-type]
+                status=r.status,
                 resolution=ConflictResolutionOut(
-                    status=r.status,  # type: ignore[arg-type]
+                    status=r.status,
                     winner_id=r.winner_id,
                     reason=r.reason,
                     resolved_by=r.resolved_by_label,

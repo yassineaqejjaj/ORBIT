@@ -885,7 +885,7 @@ async def decision_trail(memory_id: uuid.UUID, access: ViewerAccess, session: Se
                 version=m.version,
                 valid_from=m.valid_from,
                 classification=m.classification,
-                role=role,  # type: ignore[arg-type]
+                role=role,
             )
             for m, role in chain
         ],
