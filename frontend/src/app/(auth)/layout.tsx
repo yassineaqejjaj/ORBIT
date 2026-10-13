@@ -1,14 +1,5 @@
-import { Montserrat } from "next/font/google";
-
+import { montserrat } from "@/lib/fonts";
 import { cn } from "@/lib/utils";
-
-/** Brand typeface for the sign-in pages only (NOVA: Montserrat 400–700). */
-const montserrat = Montserrat({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-  variable: "--font-montserrat",
-});
 
 /** Unauthenticated routes (login): no app shell. */
 export default function AuthLayout({ children }: { children: React.ReactNode }) {

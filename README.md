@@ -383,6 +383,7 @@ orbit/
     Dockerfile        image standard ; Dockerfile.railway pour Railway (API + worker, Node.js et serveurs MCP inclus)
   frontend/           Next.js 15 (App Router), TypeScript strict, Tailwind CSS v4, Radix UI, TanStack Query, Recharts
     public/landing.html  landing page servie à la racine du site
+    src/assets/fonts/    Montserrat (latin, police variable, licence SIL OFL 1.1) embarquée : le build ne contacte pas Google Fonts
 ```
 
 ---
