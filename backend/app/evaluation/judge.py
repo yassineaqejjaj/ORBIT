@@ -103,7 +103,7 @@ async def judge_request(session: AsyncSession, request: ContextRequest) -> Conte
             max_tokens=200,
         )
         score = data.get("score") if isinstance(data, dict) else None
-        if isinstance(score, int | float) and 0 <= float(score) <= 1:
+        if isinstance(data, dict) and isinstance(score, int | float) and 0 <= float(score) <= 1:
             judgement.method = "llm"
             judgement.model = llm_client.model_label()
             judgement.score = round(float(score), 3)

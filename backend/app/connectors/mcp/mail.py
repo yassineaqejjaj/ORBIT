@@ -187,8 +187,10 @@ def graph_message(item: dict[str, Any]) -> MailMessage:
     content = str(body.get("content") or item.get("bodyPreview") or "")
     if str(body.get("contentType", "")).lower() == "html":
         content = html_to_text(content)
-    sender = item.get("from") if isinstance(item.get("from"), dict) else {}
-    address = sender.get("emailAddress") if isinstance(sender.get("emailAddress"), dict) else {}
+    sender = item.get("from")
+    sender = sender if isinstance(sender, dict) else {}
+    address = sender.get("emailAddress")
+    address = address if isinstance(address, dict) else {}
     attachments = [
         f"{a.get('name')}" + (f" ({round(int(a['size']) / 1024)} Ko)" if a.get("size") else "")
         for a in item.get("attachments") or []

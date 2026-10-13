@@ -222,7 +222,7 @@ def _load_ocr() -> Any:
         return _ocr_engine
     _ocr_checked = True
     try:
-        from rapidocr_onnxruntime import RapidOCR  # type: ignore[import-not-found]
+        from rapidocr_onnxruntime import RapidOCR
 
         engine = RapidOCR()
 
@@ -235,7 +235,7 @@ def _load_ocr() -> Any:
     except Exception:
         pass
     try:
-        import pytesseract  # type: ignore[import-not-found]
+        import pytesseract
 
         if shutil.which("tesseract"):
             from PIL import Image

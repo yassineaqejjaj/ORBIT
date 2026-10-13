@@ -286,24 +286,24 @@ async def inspect_items(
                 acls=[list(c_acl or DEFAULT_ACL), list(d_acl or DEFAULT_ACL)],
             )
     if lineage_ids:
-        rows = await session.scalars(
+        memory_rows = await session.scalars(
             select(MemoryItem)
             .where(MemoryItem.lineage_id.in_(lineage_ids))
             .order_by(MemoryItem.lineage_id, MemoryItem.is_current.desc(), MemoryItem.version.desc())
         )
-        for item in rows:
-            key = f"memory:{item.lineage_id}"
+        for memory in memory_rows:
+            key = f"memory:{memory.lineage_id}"
             if key in states:
                 continue
-            if item.project_id not in (project_id, None):
+            if memory.project_id not in (project_id, None):
                 continue
             states[key] = ItemState(
                 exists=True,
-                forgotten=item.status == MemoryStatus.forgotten,
-                classification=int(item.classification),
-                acls=[list(item.acl_principals or DEFAULT_ACL)],
-                memory_scope=str(getattr(item.scope, "value", item.scope)),
-                subject_user_id=item.subject_user_id,
+                forgotten=memory.status == MemoryStatus.forgotten,
+                classification=int(memory.classification),
+                acls=[list(memory.acl_principals or DEFAULT_ACL)],
+                memory_scope=str(getattr(memory.scope, "value", memory.scope)),
+                subject_user_id=memory.subject_user_id,
             )
     return states
 

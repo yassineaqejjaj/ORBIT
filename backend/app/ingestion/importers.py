@@ -260,6 +260,7 @@ def parse_datetime(value: Any) -> datetime | None:
     """ISO 8601, ``JJ/MM/AAAA[ HH:MM]``, epoch seconds or milliseconds. Naive values are UTC."""
     if _is_empty(value):
         return None
+    parsed: datetime | None
     if isinstance(value, datetime):
         parsed = value
     elif isinstance(value, int | float) and not isinstance(value, bool):
@@ -276,7 +277,7 @@ def parse_datetime(value: Any) -> datetime | None:
         try:
             parsed = datetime.fromisoformat(candidate)
         except ValueError:
-            parsed = None  # type: ignore[assignment]
+            parsed = None
             for fmt in _DATE_FORMATS:
                 try:
                     parsed = datetime.strptime(text, fmt)

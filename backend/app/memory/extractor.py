@@ -303,14 +303,13 @@ def _logical_lines(text: str) -> Iterator[str]:
         stripped = raw_line.strip()
         if stripped.startswith("|"):
             stripped = ""  # Markdown table row: cells are not statements
-        continuation = (
+        if (
             pending is not None
             and stripped
             and (stripped[0].islower() or stripped[0].isdigit())
             and not _BULLET.match(stripped)
             and not pending.rstrip().endswith((".", "!", "?", ":", ";"))
-        )
-        if continuation:
+        ):
             pending = f"{pending.rstrip()} {stripped}"
             continue
         if pending is not None:

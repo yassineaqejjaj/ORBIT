@@ -206,6 +206,7 @@ def text_of(value: Any) -> str:
 
 def find_list(value: Any, *keys: str) -> list[dict[str, Any]]:
     """The list of objects of a listing payload (top-level list or under a usual key)."""
+    items: list[Any] | None
     if isinstance(value, list):
         items = value
     elif isinstance(value, dict):

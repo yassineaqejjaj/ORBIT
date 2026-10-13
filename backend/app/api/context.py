@@ -89,7 +89,7 @@ async def _audit_profile(
     access: ProjectAccess,
     kind: AgentKind,
     before: dict,
-    after: dict,  # type: ignore[type-arg]
+    after: dict,
 ) -> None:
     await audit.record(
         session,
