@@ -13,6 +13,11 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from app.governance.acl import validate_acl_principals
 
+#: Version of the context / snapshot wire contract. 1 = implicit (before the field existed); 2 adds
+#: ``schema_version``, ``max_classification``, ``items[].access_scope`` and ``SnapshotItem.classification``.
+#: Changes are additive: consumers ignore unknown keys and treat a missing ``schema_version`` as 1.
+CONTEXT_SCHEMA_VERSION = 2
+
 
 class ApiModel(BaseModel):
     """Base for API payloads: reads ORM objects, accepts field names or aliases."""

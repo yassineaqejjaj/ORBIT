@@ -35,6 +35,7 @@ from app.models import (
     Chunk,
     ContextDecision,
     ContextRequest,
+    ContextSnapshot,
     Document,
     MemoryEvent,
     MemoryItem,
@@ -599,3 +600,92 @@ async def test_complete_a_served_context_around_reported_gaps(
         json={"missing": ["Politique de session"]},
     )
     assert unknown.status_code == 404
+
+
+# --- NOV-73: classification, access provenance and schema version ----------------------------------------
+
+
+def _no_raw_acl(payload: Any) -> None:
+    """No ACL entry (``role:…``, ``user:…``, ``project:*``) and no ``acl`` key in a served payload."""
+    text = str(payload)
+    assert "role:" not in text and "user:" not in text and "project:*" not in text
+    assert "acl_principals" not in text and "'acls'" not in text
+
+
+async def test_package_exposes_max_classification_and_access_scope(
+    world: dict[str, Any], admin_client: httpx.AsyncClient
+) -> None:
+    seed: Seed = world["seed"]
+    package = await _post(admin_client, seed.slug, min_relevance=0.0)
+    assert package["schema_version"] == 2
+    by_id = {i["id"]: i for i in package["items"]}
+    board = by_id[str(seed.ids["chunk_board"])]  # ACL: owners only
+    secret = by_id[str(seed.ids["chunk_secret"])]  # C3, open to every member
+    spec = by_id[str(seed.ids["chunk_spec"])]
+    assert board["access_scope"] == "restricted"
+    assert secret["access_scope"] == "project" and secret["classification"] == 3
+    assert spec["access_scope"] == "project"
+    assert package["max_classification"] == 3 == max(i["classification"] for i in package["items"])
+    _no_raw_acl(package["items"])
+
+    # Without the C3 item the aggregate follows the served items, not the project.
+    low = await _post(world["viewer_client"], seed.slug, min_relevance=0.0)
+    assert str(seed.ids["chunk_secret"]) not in {i["id"] for i in low["items"]}
+    assert low["max_classification"] == max((i["classification"] for i in low["items"]), default=0) <= 1
+
+
+async def test_reconstituted_package_never_reveals_scope_or_level_of_hidden_items(
+    world: dict[str, Any], admin_client: httpx.AsyncClient
+) -> None:
+    seed: Seed = world["seed"]
+    viewer_client: httpx.AsyncClient = world["viewer_client"]
+    served = await _post(admin_client, seed.slug, min_relevance=0.0)
+    url = f"/api/v1/projects/{seed.slug}/context/requests/{served['request_id']}"
+
+    as_owner = (await admin_client.get(url)).json()
+    assert as_owner["max_classification"] == 3 and as_owner["schema_version"] == 2
+    owner_items = {i["id"]: i for i in as_owner["items"]}
+    assert owner_items[str(seed.ids["chunk_board"])]["access_scope"] == "restricted"
+
+    as_viewer = (await viewer_client.get(url)).json()  # C1 viewer, not an owner of the board note
+    hidden = [i for i in as_viewer["items"] if i["title"] == "Contenu restreint"]
+    assert hidden, "the restricted items are redacted for this viewer"
+    assert all(i["access_scope"] is None for i in hidden)
+    assert all(i["access_scope"] is not None for i in as_viewer["items"] if i not in hidden)
+    # What the viewer actually received is at most C1: the redacted C3 item does not count.
+    assert as_viewer["max_classification"] <= 1
+    _no_raw_acl(as_viewer["items"])
+
+
+async def test_snapshot_carries_classification_per_item_and_max_classification(
+    world: dict[str, Any], admin_client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    seed: Seed = world["seed"]
+    viewer_client: httpx.AsyncClient = world["viewer_client"]
+    slug = seed.slug
+    package = await _post(admin_client, slug, min_relevance=0.0, save_snapshot={"name": "classified"})
+    assert package["snapshot"]["version"] == 1
+
+    snapshot = (await admin_client.get(f"/api/v1/projects/{slug}/snapshots/classified/1")).json()
+    assert snapshot["schema_version"] == 2
+    levels = {i["id"]: i["classification"] for i in snapshot["items"]}
+    assert levels[str(seed.ids["chunk_secret"])] == 3 and levels[str(seed.ids["chunk_spec"])] <= 1
+    assert snapshot["max_classification"] == 3
+    # The stored rows (what a backup holds) carry the level too.
+    stored = (
+        await db_session.scalars(select(ContextSnapshot).where(ContextSnapshot.name == "classified"))
+    ).one()
+    assert all("classification" in item for item in stored.items)
+
+    # A reader without the right to read the C3 / owner-only items gets neither their text nor their level.
+    as_viewer = (await viewer_client.get(f"/api/v1/projects/{slug}/snapshots/classified/1")).json()
+    hidden = [i for i in as_viewer["items"] if i["title"] == "Contenu restreint"]
+    assert hidden and all(i["classification"] is None for i in hidden)
+    assert as_viewer["max_classification"] <= 1
+
+    # Snapshots saved before NOV-73 have no stored level: it is read from the item's current state.
+    stored.items = [{k: v for k, v in item.items() if k != "classification"} for item in stored.items]
+    await db_session.commit()
+    legacy = (await admin_client.get(f"/api/v1/projects/{slug}/snapshots/classified/1")).json()
+    assert {i["id"]: i["classification"] for i in legacy["items"]} == levels
+    assert legacy["max_classification"] == 3

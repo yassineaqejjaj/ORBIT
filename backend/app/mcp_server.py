@@ -804,6 +804,8 @@ async def snapshot_view(
     ``restricted_items``; forgotten items keep their title but their excerpt is redacted. When
     anything was removed or redacted, ``content`` is rebuilt from the visible items only.
     """
+    from app.context.snapshots import delivered_level, max_delivered
+
     items: list[SnapshotItem] = []
     for raw in snapshot.items or []:
         try:
@@ -847,8 +849,12 @@ async def snapshot_view(
             restricted += 1
             continue
         if meta[2] or item.forgotten:
-            item = item.model_copy(update={"excerpt": FORGOTTEN_EXCERPT, "forgotten": True})
+            item = item.model_copy(
+                update={"excerpt": FORGOTTEN_EXCERPT, "forgotten": True, "classification": None}
+            )
             redacted = True
+        else:
+            item = item.model_copy(update={"classification": delivered_level(item, meta[1])})
         visible.append(item)
 
     content = snapshot.content
@@ -887,6 +893,7 @@ async def snapshot_view(
         content=content,
         items=visible,
         request_id=snapshot.request_id,
+        max_classification=max_delivered(visible),
     )
     data = view.model_dump(mode="json")
     if spotlight.enabled() and data.get("content") and not spotlight.is_wrapped(data["content"]):

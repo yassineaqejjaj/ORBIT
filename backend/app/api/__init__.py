@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.api import (
     a2a,
+    agent_self,
     agents,
     ask,
     audit,
@@ -44,6 +45,7 @@ for module in (
     projects,
     members,
     agents,
+    agent_self,
     sources,
     documents,
     jobs,

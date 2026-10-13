@@ -9,6 +9,7 @@ import pytest
 from app.deps import Principal, ProjectAccess
 from app.enums import Role
 from app.governance.acl import (
+    access_scope,
     acl_allows,
     acl_terms_filter,
     effective_clearance,
@@ -141,3 +142,17 @@ def test_acl_terms_filter() -> None:
     assert acl_terms_filter({"role:viewer", "project:*"}) == {
         "terms": {"acl_principals": ["project:*", "role:viewer"]}
     }
+
+
+def test_access_scope_summarises_acls_without_exposing_them() -> None:
+    everyone = ["project:*"]
+    assert access_scope([everyone], 1) == "project"
+    assert access_scope([everyone, everyone], 3) == "project"
+    assert access_scope([everyone], 0) == "public"  # C0 and open to every member
+    assert access_scope([everyone, ["role:owner"]], 0) == "restricted"  # one narrower source is enough
+    assert access_scope([[f"user:{uuid.uuid4()}"]], 0) == "restricted"
+    assert access_scope([["role:editor", "role:owner"]], 2) == "restricted"
+    # Unknown or empty ACLs fail closed.
+    assert access_scope([], 0) == "restricted"
+    assert access_scope([None], 0) == "restricted"
+    assert access_scope([[]], 0) == "restricted"

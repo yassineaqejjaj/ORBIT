@@ -9,6 +9,7 @@ from typing import Annotated, Any, Literal
 from pydantic import Field, StringConstraints
 
 from app.enums import (
+    AccessScope,
     CandidateType,
     FeedbackFlag,
     Intent,
@@ -19,7 +20,7 @@ from app.enums import (
     SourceKind,
 )
 from app.schemas.agents import AgentRef
-from app.schemas.common import ApiModel, ClassificationLevel, InputModel
+from app.schemas.common import CONTEXT_SCHEMA_VERSION, ApiModel, ClassificationLevel, InputModel
 from app.schemas.users import UserRef
 
 
@@ -89,6 +90,8 @@ class ContextItem(ApiModel):
     tokens: int
     scores: Scores
     classification: int
+    #: Who may read the source (NOV-73), without the ACL entries; ``None`` when the reader may not know it.
+    access_scope: AccessScope | None = None
     date: datetime | None = None
     pii_redacted: bool = False
     reason_code: ReasonCode
@@ -207,6 +210,8 @@ class AppliedProfile(ApiModel):
 
 
 class ContextPackage(ApiModel):
+    #: Contract version (``CONTEXT_SCHEMA_VERSION``); additive changes only.
+    schema_version: int = CONTEXT_SCHEMA_VERSION
     request_id: uuid.UUID
     trace_id: str
     task: str
@@ -233,6 +238,9 @@ class ContextPackage(ApiModel):
     index: list[ContextIndexEntry] = Field(default_factory=list)
     profile: AppliedProfile | None = None
     sufficiency: ContextSufficiency | None = None
+    #: Highest classification (0-3) of the content delivered in ``items`` (items hidden from the reader
+    #: do not count); 0 when there is none. A derived artifact is at least this classified.
+    max_classification: int = 0
 
 
 class ItemFlag(InputModel):
