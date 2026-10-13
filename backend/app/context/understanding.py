@@ -132,13 +132,21 @@ def infer_intent(task: str, agent_kind: AgentKind | str | None = None) -> Intent
     return leaders[0]
 
 
-async def embed_query(text: str) -> tuple[list[float] | None, str | None]:
-    """Query vector and model name; ``(None, None)`` when no embedder is available."""
+async def embed_query(text: str, classification: int | None) -> tuple[list[float] | None, str | None]:
+    """Query vector and model name; ``(None, None)`` when no embedder is available.
+
+    ``classification``: the requester's clearance (highest level the query may relate to). A remote embedder
+    only gets the query within the LLM guardrail ceiling (``None`` = C3), else retrieval is lexical only.
+    """
     try:
-        from app.search.embeddings import get_embedder
+        from app.search.embeddings import embed_query_guarded, get_embedder
 
         embedder = await asyncio.to_thread(get_embedder)
-        vector = await asyncio.wait_for(embedder.embed_query(text), timeout=EMBED_TIMEOUT_SECONDS)
+        vector = await asyncio.wait_for(
+            embed_query_guarded(embedder, text, classification), timeout=EMBED_TIMEOUT_SECONDS
+        )
+        if vector is None:
+            return None, None
         return [float(x) for x in vector], str(getattr(embedder, "model_name", "") or "") or None
     except NotImplementedError:
         logger.debug("Embedder not available yet: dense retrieval disabled")
@@ -147,10 +155,12 @@ async def embed_query(text: str) -> tuple[list[float] | None, str | None]:
     return None, None
 
 
-async def understand(task: str, intent: Intent | None, agent_kind: AgentKind | str | None) -> Understanding:
+async def understand(
+    task: str, intent: Intent | None, agent_kind: AgentKind | str | None, *, classification: int | None
+) -> Understanding:
     normalized = normalize_task(task)
     resolved = intent or infer_intent(normalized, agent_kind)
-    vector, model = await embed_query(normalized)
+    vector, model = await embed_query(normalized, classification)
     return Understanding(
         task=normalized,
         intent=resolved,

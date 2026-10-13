@@ -12,6 +12,18 @@ LLM **optionnel**. Deux fournisseurs : `ORBIT_LLM_PROVIDER=openai` (compatible O
 pour un LLM auto-hébergé), `ORBIT_LLM_REDACT_PII` (défaut `true`). Tout contenu au-dessus du plafond est traité en mode
 déterministe ; compteur Prometheus `orbit_llm_guardrail_skips_total{reason}`. Sans LLM, tout fonctionne (repli déterministe).
 
+Le niveau de classification est **obligatoire** pour tout appel (`llm.generate` / `complete` / `complete_json`) ; un niveau
+inconnu (`None`) est traité comme C3 (fail-closed) : rien n'est envoyé à un LLM externe.
+
+**Embeddings distants.** Le même plafond s'applique à un fournisseur d'embeddings externe (`ORBIT_EMBEDDING_PROVIDER=openai`) :
+à l'ingestion un fragment au-dessus du plafond n'est pas envoyé (il est indexé sans vecteur, donc retrouvable par BM25
+seulement ; mémoire : similarité lexicale) ; à la requête, le niveau pris en compte est l'habilitation du demandeur, et
+au-dessus du plafond la recherche reste lexicale. Chaque refus incrémente `orbit_llm_guardrail_skips_total{reason="embedding"}`.
+Le fournisseur local (`fastembed`, défaut) n'est jamais restreint. Pas de repli vers un autre modèle (vecteurs incompatibles
+dans un même index). Démarrage : un fournisseur externe avec un plafond > C1 sans `ORBIT_LLM_LOCAL=true` est **refusé en
+production** (`ORBIT_ENV=production`) et signalé par un avertissement ailleurs ; `ORBIT_LLM_LOCAL=true` déclare aussi le
+service d'embeddings auto-hébergé. Réindexer (`reindex`) après un relèvement du plafond vectorise les fragments restés sans vecteur.
+
 ## F1 — Tri de la mémoire & arbitrage des contradictions (`/projects/{slug}/inbox`)
 
 - `GET /projects/{slug}/inbox?kind=&min_confidence=&sort=impact|confidence|recent&page=` (editor) → `Page<InboxItem>` :

@@ -159,6 +159,25 @@ async def test_guardrail_blocks_above_ceiling_and_redacts_pii(fake_llm: Callable
     assert "jeanne.martin@example.com" not in sent
 
 
+async def test_generate_without_classification_is_refused(fake_llm: Callable[..., FakeLLM]) -> None:
+    fake = fake_llm(lambda _prompt: "ok", llm_max_classification=1, llm_local=False)
+    before = guardrail.skip_count()
+    assert await llm.generate("s", "Contenu de niveau inconnu", classification=None) is None
+    assert await llm.complete("s", "Contenu de niveau inconnu", classification=None) is None
+    assert fake.requests == []  # unknown level is treated as C3
+    assert guardrail.skip_count() == before + 2
+    with pytest.raises(TypeError):
+        await llm.generate("s", "u")  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        await llm.complete_json("s", "u")  # type: ignore[call-arg]
+
+
+async def test_unknown_level_is_allowed_to_a_self_hosted_llm(fake_llm: Callable[..., FakeLLM]) -> None:
+    fake = fake_llm(lambda _prompt: "ok", llm_local=True)
+    assert await llm.complete("s", "u", classification=None) == "ok"
+    assert len(fake.requests) == 1
+
+
 # --- Card validation --------------------------------------------------------------------------------------
 
 

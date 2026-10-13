@@ -70,7 +70,12 @@ from app.ingestion.pii import PiiEntity, analyze, entities_in_span, redact
 from app.ingestion.queue import PermanentJobError, enqueue_job, track_step
 from app.models import Chunk, Document, DocumentVersion, IngestionJob, Relation, Source, Tombstone
 from app.search import opensearch
-from app.search.embeddings import EmbeddingDimensionError, EmbeddingError, aget_embedder
+from app.search.embeddings import (
+    EmbeddingDimensionError,
+    EmbeddingError,
+    aget_embedder,
+    embed_documents_guarded,
+)
 from app.search.opensearch import IndexingError
 from app.services import audit
 from app.services.audit import Actor, AuditAction
@@ -205,7 +210,7 @@ def document_context(document: Document, source: Source | None, text: str) -> co
 
 
 def chunk_index_doc(
-    chunk: Chunk, document: Document, source: Source | None, embedding: Sequence[float]
+    chunk: Chunk, document: Document, source: Source | None, embedding: Sequence[float] | None
 ) -> dict[str, Any]:
     """OpenSearch document of a chunk (ARCHITECTURE §6)."""
     return {
@@ -220,7 +225,8 @@ def chunk_index_doc(
         "text_redacted": chunk.text_redacted,
         "section": chunk.section,
         "context": chunk.context_preamble,
-        "embedding": list(embedding),
+        # No vector for a chunk the LLM guardrail kept away from a remote embedder: BM25 only.
+        "embedding": list(embedding) if embedding is not None else None,
         "classification": int(chunk.classification),
         "acl_principals": list(chunk.acl_principals),
         "status": ChunkStatus(chunk.status).value,
@@ -250,11 +256,19 @@ def document_index_fields(document: Document, source: Source | None) -> dict[str
     }
 
 
-async def embed_texts(texts: Sequence[str]) -> list[list[float]]:
+async def embed_texts(
+    texts: Sequence[str], classifications: Sequence[int | None] | None = None
+) -> list[list[float] | None]:
+    """Vectors of ``texts``; ``None`` for a text a remote embedder must not see (LLM guardrail, NOV-78)."""
     embedder = await aget_embedder()
-    vectors: list[list[float]] = []
+    levels = list(classifications) if classifications is not None else [None] * len(texts)
+    vectors: list[list[float] | None] = []
     for start in range(0, len(texts), EMBED_BATCH):
-        vectors.extend(await embedder.embed_documents(list(texts[start : start + EMBED_BATCH])))
+        vectors.extend(
+            await embed_documents_guarded(
+                embedder, list(texts[start : start + EMBED_BATCH]), levels[start : start + EMBED_BATCH]
+            )
+        )
     if len(vectors) != len(texts):
         raise RuntimeError(f"Embeddings incomplets ({len(vectors)} vecteurs pour {len(texts)} fragments)")
     return vectors
@@ -588,12 +602,16 @@ async def _ingest(
     async with track_step(session, job, "embed", commit=True) as step:
         try:
             vectors = await embed_texts(
-                [embedding_input(document.title, c.section, c.text, c.context_preamble) for c in prepared]
+                [embedding_input(document.title, c.section, c.text, c.context_preamble) for c in prepared],
+                [max(int(document.classification), level)] * len(prepared),
             )
         except EmbeddingDimensionError as exc:
             raise PermanentJobError(str(exc)) from exc
         embedder = await aget_embedder()
-        step.detail = f"{len(vectors)} vecteurs · {embedder.model_name} ({embedder.dim} dim.)"
+        withheld = sum(1 for v in vectors if v is None)
+        step.detail = f"{len(vectors) - withheld} vecteurs · {embedder.model_name} ({embedder.dim} dim.)"
+        if withheld:
+            step.detail += f" · {withheld} fragment(s) non vectorisé(s) (garde-fou de classification)"
 
     # 6. index ------------------------------------------------------------------------------------------
     async with track_step(session, job, "index") as step:
@@ -861,7 +879,7 @@ async def handle_reindex(session: AsyncSession, job: IngestionJob) -> None:
         return
 
     async with track_step(session, job, "embed", commit=True) as step:
-        batches: list[tuple[Document, Source | None, list[Chunk], list[list[float]]]] = []
+        batches: list[tuple[Document, Source | None, list[Chunk], list[list[float] | None]]] = []
         for document in documents:
             source = await session.get(Source, document.source_id)
             chunk_rows = list(
@@ -878,7 +896,8 @@ async def handle_reindex(session: AsyncSession, job: IngestionJob) -> None:
                     [
                         embedding_input(document.title, c.section, c.text, c.context_preamble)
                         for c in chunk_rows
-                    ]
+                    ],
+                    [max(int(c.classification), int(document.classification)) for c in chunk_rows],
                 )
             except EmbeddingDimensionError as exc:
                 raise PermanentJobError(str(exc)) from exc
@@ -967,7 +986,8 @@ async def _reindex_contextual(session: AsyncSession, job: IngestionJob) -> None:
         for document, source, chunks in batches:
             try:
                 vectors = await embed_texts(
-                    [embedding_input(document.title, c.section, c.text, c.context_preamble) for c in chunks]
+                    [embedding_input(document.title, c.section, c.text, c.context_preamble) for c in chunks],
+                    [max(int(c.classification), int(document.classification)) for c in chunks],
                 )
             except EmbeddingDimensionError as exc:
                 raise PermanentJobError(str(exc)) from exc

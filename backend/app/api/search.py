@@ -55,6 +55,7 @@ async def search(
             size_each=max(MIN_CANDIDATES, limit * 3),
             filters=viewer.search_filters(),
             include_embedding=False,
+            classification=viewer.clearance,
         )
     except Exception as exc:
         logger.warning("Hybrid search failed for project %s: %s", access.project_id, exc)

@@ -120,7 +120,7 @@ async def _sentence_similarities(
     """Sentence/query cosine similarities for items that need compression (best effort, time-boxed)."""
     if not query_vector:
         return {}
-    batches: list[tuple[int, list[str]]] = []
+    batches: list[tuple[int, list[str], int]] = []
     total = 0
     for d in decisions:
         if d.candidate.tokens <= d.allowance:
@@ -130,29 +130,32 @@ async def _sentence_similarities(
             continue
         if total + len(sentences) > MAX_SENTENCES_TO_EMBED:
             continue
-        batches.append((id(d), sentences))
+        batches.append((id(d), sentences, int(d.candidate.classification)))
         total += len(sentences)
     if not batches:
         return {}
     try:
-        from app.search.embeddings import get_embedder
+        from app.search.embeddings import embed_documents_guarded, get_embedder
 
         embedder = get_embedder()
-        flat = [s for _, sentences in batches for s in sentences]
+        flat = [s for _, sentences, _level in batches for s in sentences]
+        levels = [level for _, sentences, level in batches for _ in sentences]
         vectors = await asyncio.wait_for(
-            embedder.embed_documents(flat), timeout=SENTENCE_EMBED_TIMEOUT_SECONDS
+            embed_documents_guarded(embedder, flat, levels), timeout=SENTENCE_EMBED_TIMEOUT_SECONDS
         )
     except Exception as exc:  # NotImplementedError, timeout, model errors: extractive scoring only
         logger.debug("Sentence embeddings skipped: %s", exc)
         return {}
     result: dict[int, list[float]] = {}
     offset = 0
-    for key, sentences in batches:
-        sims = [cosine(vectors[offset + i], query_vector) or 0.0 for i in range(len(sentences))]
-        result[key] = sims
-        if vectors_out is not None:
-            vectors_out[key] = [list(vectors[offset + i]) for i in range(len(sentences))]
+    for key, sentences, _level in batches:
+        batch = vectors[offset : offset + len(sentences)]
         offset += len(sentences)
+        if any(v is None for v in batch):  # withheld from a remote embedder (guardrail): extractive scoring
+            continue
+        result[key] = [cosine(v, query_vector) or 0.0 for v in batch if v is not None]
+        if vectors_out is not None:
+            vectors_out[key] = [list(v) for v in batch if v is not None]
     return result
 
 

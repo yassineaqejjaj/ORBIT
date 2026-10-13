@@ -156,6 +156,7 @@ async def search_index(
                 project_id=str(project_id),
                 size_each=size_each,
                 include_org_memory=include_org_memory,
+                embed_missing=False,  # the vector comes from understanding (or was withheld: BM25 only)
             ),
             timeout=INDEX_TIMEOUT_SECONDS,
         )

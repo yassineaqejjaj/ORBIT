@@ -737,6 +737,7 @@ async def hybrid_chunk_search(scope: AgentScope, query: str, limit: int) -> list
             size_each=min(max(limit * 4, 20), 100),
             filters=filters,
             include_org_memory=False,
+            classification=visibility.clearance,
         )
     except NotImplementedError as exc:
         raise ToolError("Recherche indisponible : l'index des sources n'est pas encore opérationnel") from exc

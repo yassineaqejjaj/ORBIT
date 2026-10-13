@@ -161,17 +161,17 @@ async def generate(
     temperature: float = 0.1,
     max_tokens: int = 800,
     timeout_seconds: float | None = None,
-    classification: int | None = None,
+    classification: int | None,
     images: Sequence[tuple[bytes, str]] = (),
 ) -> LLMResult | None:
     """Single-turn completion with token usage. ``None`` if disabled, blocked by the guardrail or failed.
 
-    ``classification``: highest level of the content in ``user``. Above the guardrail ceiling nothing
-    is sent. Callers that omit it are responsible for checking :func:`guardrail.allows` themselves.
+    ``classification`` (required): highest level of the content in ``user``. Above the guardrail ceiling
+    nothing is sent; ``None`` (level unknown) is treated as C3.
     """
     if not is_enabled():
         return None
-    if classification is not None and not guardrail.allows(classification):
+    if not guardrail.allows(classification):
         guardrail.record_skip(guardrail.REASON_CLASSIFICATION)
         return None
     user = guardrail.prepare(user)
@@ -271,9 +271,11 @@ async def complete(
     temperature: float = 0.1,
     max_tokens: int = 800,
     timeout_seconds: float | None = None,
-    classification: int | None = None,
+    classification: int | None,
 ) -> str | None:
-    """Single-turn chat completion. Returns the assistant text, or ``None`` if disabled/blocked/failed."""
+    """Single-turn chat completion. Returns the assistant text, or ``None`` if disabled/blocked/failed.
+
+    ``classification`` is required, see :func:`generate`."""
     result = await generate(
         system,
         user,
@@ -305,6 +307,6 @@ def parse_json(text: str | None) -> Any | None:
     return None
 
 
-async def complete_json(system: str, user: str, **kwargs: Any) -> Any | None:
+async def complete_json(system: str, user: str, *, classification: int | None, **kwargs: Any) -> Any | None:
     """:func:`complete` in JSON mode, parsed. ``None`` if disabled, failed or not valid JSON."""
-    return parse_json(await complete(system, user, json_mode=True, **kwargs))
+    return parse_json(await complete(system, user, json_mode=True, classification=classification, **kwargs))
