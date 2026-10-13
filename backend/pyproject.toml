@@ -36,6 +36,7 @@ dependencies = [
     "prometheus-client>=0.21",
     "orjson>=3.10",
     "cryptography>=50.0.1",
+    "boto3>=1.43.112",
 ]
 
 [dependency-groups]
@@ -44,6 +45,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
     "mypy>=1.13",
+    "moto[s3]>=5.2.4",
 ]
 
 [tool.uv]

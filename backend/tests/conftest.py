@@ -42,6 +42,7 @@ os.environ.update(
         "ORBIT_INDEX_PREFIX": os.environ.get("ORBIT_TEST_INDEX_PREFIX", "orbit-test"),
         "ORBIT_EMBEDDING_PROVIDER": "hash",
         "ORBIT_RERANKER": "heuristic",
+        "ORBIT_OBJECT_STORE_BACKEND": "local",
         "ORBIT_OBJECT_STORE_PATH": OBJECTS_DIR,
         "ORBIT_JWT_SECRET": "orbit-test-secret-0123456789abcdef0123456789",
         "ORBIT_OTLP_ENDPOINT": "",

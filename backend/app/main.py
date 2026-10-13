@@ -81,12 +81,16 @@ async def _ensure_indices() -> None:
 
 
 def _prepare_object_store() -> None:
-    from app.storage.object_store import get_object_store
+    from app.storage.object_store import ObjectStoreError, get_object_store
 
     try:
-        get_object_store().ensure_root()
-    except OSError as exc:
-        logger.warning("Object store directory %s unavailable: %s", settings.object_store_path, exc)
+        get_object_store().prepare()
+    except (OSError, ObjectStoreError) as exc:
+        logger.error(
+            "Object store (%s) unavailable: %s (uploads fail until it is reachable)",
+            settings.object_store_backend,
+            exc,
+        )
 
 
 async def _close_clients() -> None:
