@@ -8,7 +8,7 @@ from datetime import datetime
 from pydantic import ConfigDict, Field
 
 from app.enums import CandidateType, Intent, MemoryKind, SourceKind
-from app.schemas.common import ApiModel
+from app.schemas.common import CONTEXT_SCHEMA_VERSION, ApiModel
 
 
 class SnapshotGroup(ApiModel):
@@ -32,6 +32,9 @@ class SnapshotItem(ApiModel):
     memory_kind: MemoryKind | None = None
     version: int | None = None
     forgotten: bool = False
+    #: Classification (0-3) of the item; ``None`` for a reader who may not know it. Never below the
+    #: item's current level. Snapshots stored before NOV-73 get it from the item's current state.
+    classification: int | None = None
 
 
 class SnapshotSummary(ApiModel):
@@ -49,9 +52,13 @@ class SnapshotSummary(ApiModel):
 
 
 class Snapshot(SnapshotSummary):
+    #: Contract version (``CONTEXT_SCHEMA_VERSION``); additive changes only.
+    schema_version: int = CONTEXT_SCHEMA_VERSION
     content: str
     items: list[SnapshotItem]
     request_id: uuid.UUID | None
+    #: Highest classification (0-3) of the items delivered to this reader (hidden / forgotten ones excluded).
+    max_classification: int = 0
 
 
 class SnapshotDiff(ApiModel):

@@ -84,6 +84,17 @@ AuditEvent  = { id, actor_type, actor_id, actor_label, action, target_type, targ
 | POST | `/projects/{slug}/agents` | owner | `{name, kind, description?, clearance}` | `AgentCreated` |
 | POST | `/projects/{slug}/agents/{id}/rotate` | owner | — | `AgentCreated` |
 | DELETE | `/projects/{slug}/agents/{id}` | owner | — | `204` (révocation : `active=false`) |
+| GET | `/agents/self` | **clé d'agent** | — | `AgentSelf` (identité de la clé appelante, hors projet) |
+
+```ts
+AgentSelf = { id, name, kind: AgentKind, description, clearance: 0|1|2|3,
+              project: { id, slug, name },
+              key: { prefix, status: "active", created_at, last_used_at: string|null } }
+```
+
+`GET /agents/self` répond avec une clé d'agent seulement (`Authorization: Bearer orb_…` ou `X-Orbit-Key`) : `403` avec une
+session utilisateur, `401` sans identifiants. Une clé révoquée, renouvelée ou inconnue reçoit `401` (« Clé d'agent révoquée » /
+« invalide ») : `key.status` vaut donc toujours `active` quand la réponse est `200`. La clé complète et son empreinte ne sont jamais renvoyées.
 
 ```ts
 Overview = {
@@ -209,12 +220,15 @@ ContextPackage = {
   timings: { understand, retrieve, fuse, rerank, govern, select, compress, package, total },   // ms
   snapshot: { id, name, version } | null,
   config: { retrieval: "hybrid-bm25-knn-rrf-v1", reranker: string, embedding_model: string, llm: string | null },
-  warnings: string[]                     // ex. "Le contexte contient des informations classifiées C2 (Confidentiel)."
+  warnings: string[],                    // ex. "Le contexte contient des informations classifiées C2 (Confidentiel)."
+  max_classification: 0|1|2|3,           // plus haut niveau du contenu livré dans items[] (0 s'il n'y en a pas)
+  schema_version: 2                      // version du contrat ; absent = 1 (cf. « Versions du contrat »)
 }
 
 ContextItem = { citation: "S1", candidate_type: CandidateType, id, document_id?, memory_item_id?, title, source_kind?,
                 memory_kind?, memory_scope?, uri?, version?, excerpt /* texte compressé servi */, tokens,
                 scores: Scores, classification, date /* source_updated_at ou valid_from */, pii_redacted: bool,
+                access_scope: "public"|"project"|"restricted"|null,
                 reason_code: "INCLUDED_RELEVANT"|"INCLUDED_PINNED", reason_detail }
 ExcludedItem = { candidate_type, id?: uuid, title?: string, excerpt?: string, source_kind?, memory_kind?,
                  classification?, scores: Scores, reason_code: ReasonCode, reason_detail: string, redacted: bool,
@@ -227,6 +241,13 @@ Scores = { bm25?: number, dense?: number, rrf?: number, rerank?: number, freshne
 | GET | `/projects/{slug}/context/requests` | viewer | `agent_id?, page` | `Page<ContextRequestSummary>` |
 | GET | `/projects/{slug}/context/requests/{id}` | viewer | — | `ContextPackage` reconstitué (+ `feedback[]`) |
 | POST | `/projects/{slug}/context/requests/{id}/feedback` | viewer **(agent)** | `{rating, comment?, item_flags?: {citation, flag}[]}` | `{id}` |
+
+**Provenance d'accès et classification (v2).** `items[].access_scope` résume qui peut lire la source, **sans jamais exposer les
+entrées d'ACL** : `restricted` dès qu'une ACL de la source (fragment ou document) est plus étroite que « tout le projet »
+(rôle, utilisateur nommé), vide ou inconnue (fail-closed) ; sinon `public` (C0) ou `project` (C1 et plus). Il vaut `null` pour un
+lecteur qui n'a pas le droit de lire l'item (restreint ou partiellement masqué dans une requête reconstituée, jamais pour
+l'agent ou l'utilisateur qui a reçu le contexte). `max_classification` est le plus haut niveau du contenu **effectivement livré** au
+lecteur : un item masqué pour lui n'y compte pas. Un artefact dérivé d'un contexte est au moins de ce niveau.
 
 ```ts
 ContextRequestSummary = { id, trace_id, task, intent, agent: {id,name,kind}|null, user: {id, full_name}|null,
@@ -245,9 +266,22 @@ ContextRequestSummary = { id, trace_id, task, intent, agent: {id,name,kind}|null
 
 ```ts
 SnapshotSummary = { id, name, version, parent_version, task, intent, token_count, items_count, content_hash, created_by_label, created_at }
-Snapshot = SnapshotSummary & { content: string, items: SnapshotItem[], request_id }
-SnapshotItem = { key /* "chunk:<id>" | "memory:<lineage_id>" */, citation, candidate_type, id, title, excerpt, source_kind?, memory_kind?, version?, forgotten: bool }
+Snapshot = SnapshotSummary & { content: string, items: SnapshotItem[], request_id,
+                               max_classification: 0|1|2|3, schema_version: 2 }
+SnapshotItem = { key /* "chunk:<id>" | "memory:<lineage_id>" */, citation, candidate_type, id, title, excerpt, source_kind?, memory_kind?, version?, forgotten: bool,
+                 classification: 0|1|2|3|null /* null : item masqué, oublié ou niveau inconnu pour ce lecteur */ }
 ```
+
+`SnapshotItem.classification` est enregistré avec le snapshot et n'est jamais inférieur au niveau actuel de l'item (relu à chaque
+lecture ; pour les snapshots créés avant la v2, qui ne l'ont pas stocké, le niveau actuel est utilisé). `max_classification` ne compte
+que les items dont le contenu est livré au lecteur (ni masqués, ni oubliés). Même règle pour l'outil MCP `get_snapshot`.
+
+## Versions du contrat
+
+`ContextPackage` et `Snapshot` portent `schema_version`. **v1** : implicite (champ absent). **v2** : ajoute `schema_version`,
+`max_classification`, `ContextItem.access_scope` et `SnapshotItem.classification`, ainsi que `GET /agents/self`. Les évolutions sont
+**additives** : aucun champ n'est renommé ni supprimé ; un consommateur v1 ignore les clés qu'il ne connaît pas, un consommateur v2
+traite l'absence de `schema_version` comme la v1 et celle des nouveaux champs comme « inconnu » (donc restreint).
 
 ## Observabilité & audit
 

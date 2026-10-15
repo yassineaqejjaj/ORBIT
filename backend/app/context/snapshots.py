@@ -105,6 +105,7 @@ def _snapshot_items(package: ContextPackage, lineages: Mapping[str, str]) -> lis
                 memory_kind=item.memory_kind,
                 version=item.version,
                 forgotten=False,
+                classification=int(item.classification),
             ).model_dump(mode="json")
         )
     return items
@@ -308,6 +309,17 @@ async def inspect_items(
     return states
 
 
+def delivered_level(item: SnapshotItem, current: int) -> int:
+    """Classification of an item whose content is delivered: the stored level (none before NOV-73),
+    never below the item's current level."""
+    return max(int(item.classification or 0), int(current))
+
+
+def max_delivered(shown: Sequence[SnapshotItem]) -> int:
+    """``max_classification`` of presented items: only items whose content is delivered carry a level."""
+    return max((i.classification for i in shown if i.classification is not None), default=0)
+
+
 def present_items(
     items: Sequence[Mapping[str, Any]], states: Mapping[str, ItemState], viewer: Viewer | None
 ) -> tuple[list[SnapshotItem], dict[str, str]]:
@@ -322,7 +334,12 @@ def present_items(
             state is None or state.forgotten
         ):
             item = item.model_copy(
-                update={"forgotten": True, "title": FORGOTTEN_TEXT, "excerpt": FORGOTTEN_TEXT}
+                update={
+                    "forgotten": True,
+                    "title": FORGOTTEN_TEXT,
+                    "excerpt": FORGOTTEN_TEXT,
+                    "classification": None,
+                }
             )
             replacements[item.citation] = FORGOTTEN_TEXT
         elif state is not None and viewer is not None:
@@ -333,11 +350,17 @@ def present_items(
                 subject_user_id=state.subject_user_id,
             )
             if visibility == Visibility.partial:
-                item = item.model_copy(update={"excerpt": ""})
+                item = item.model_copy(update={"excerpt": "", "classification": None})
                 replacements[item.citation] = f"{item.title} — {RESTRICTED_TITLE.lower()}"
             elif visibility == Visibility.redacted:
-                item = item.model_copy(update={"id": "", "title": RESTRICTED_TITLE, "excerpt": ""})
+                item = item.model_copy(
+                    update={"id": "", "title": RESTRICTED_TITLE, "excerpt": "", "classification": None}
+                )
                 replacements[item.citation] = RESTRICTED_TITLE
+            else:
+                item = item.model_copy(update={"classification": delivered_level(item, state.classification)})
+        elif state is not None:
+            item = item.model_copy(update={"classification": delivered_level(item, state.classification)})
         shown.append(item)
     return shown, replacements
 
@@ -416,6 +439,7 @@ async def present(session: AsyncSession, snapshot: ContextSnapshot, viewer: View
         content=redact_markdown(snapshot.content, replacements),
         items=shown,
         request_id=snapshot.request_id,
+        max_classification=max_delivered(shown),
     )
 
 

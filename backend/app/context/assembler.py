@@ -698,6 +698,7 @@ async def _run(
             snapshot=None,
             config=config,
             warnings=warnings,
+            max_classification=max((int(d.candidate.classification) for d in included), default=0),
         )
         if settings.context_sufficiency:
             package.sufficiency = sufficiency.assess(
