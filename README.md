@@ -337,7 +337,7 @@ de vie de la mémoire court terme se règlent **par projet** (écran Paramètres
   Teams vérifié par HMAC avec protection contre le rejeu.
 
 > Le durcissement complet pour la production (SSO OIDC, MFA, sessions révocables, CSRF renforcé, limitation des
-> tentatives, audit chaîné, sauvegardes, chart Helm, CI/CD) est en cours sur la branche `production-readiness`.
+> tentatives, audit chaîné, sauvegardes, chart Helm) est en cours sur la branche `production-readiness`.
 
 ---
 
@@ -356,6 +356,24 @@ Les tests d'intégration créent une base et des index dédiés (`ORBIT_TEST_DAT
 `ORBIT_TEST_VALKEY_URL`) et n'affectent jamais les données de la plateforme. Le jeu de démonstration est lui-même
 testé : cohérence manifeste ↔ fichiers, dates relatives, couverture de chaque mécanisme de `docs/DEMO.md`, et
 exécution complète du seed contre une API simulée (`tests/test_seed_data*.py`).
+
+### Intégration continue
+
+`.github/workflows/ci.yml` (GitHub Actions) tourne sur chaque pull request (quelle que soit la branche de base) et sur les
+pushs vers `main` et `preprod`. Droits `contents: read`, délais maximaux, actions épinglées par SHA, annulation des runs
+obsolètes. Quatre jobs :
+
+| Job | Contrôles |
+|---|---|
+| `backend` | PostgreSQL 17 / OpenSearch 2.19 / Valkey 8 (mêmes ports que `docker-compose.yml`) ; `ruff check` et `ruff format --check` ; **mypy sans régression** contre `backend/mypy-baseline.txt` ; **`alembic upgrade head` puis `alembic check`** (une migration manquante fait échouer le job) ; `pytest` |
+| `web` | `npm ci`, `typecheck`, `lint --max-warnings=0`, `build` |
+| `docker` | build (sans push) de `backend/Dockerfile`, `backend/Dockerfile.railway` et `frontend/Dockerfile` |
+| `audit` | **informatif** (n'échoue jamais) : `pip-audit` sur `uv.lock`, `npm audit --audit-level=high` |
+
+La baseline mypy compte les erreurs par fichier et code (`backend/scripts/mypy_baseline.py`) : un nouveau fichier doit être
+propre, un fichier existant ne peut pas gagner d'erreurs. Après un nettoyage :
+`cd backend && uv run mypy app --no-error-summary | uv run python scripts/mypy_baseline.py --update`. La CI ne déploie
+rien : le backend ORBIT se déploie à la main (`railway up`), le frontend par Vercel.
 
 ---
 
@@ -403,7 +421,7 @@ heuristiques).
 | Sujet | Description |
 |---|---|
 | Graphe de connaissances | Spike : relations mémoire ↔ documents exploitées au classement (parcours multi-sauts) |
-| Durcissement production | Branche `production-readiness` : configuration refusant les réglages non sûrs, sessions révocables, CSRF, limitation des tentatives et file de jobs robuste déjà faits ; à venir : SSO OIDC et MFA, audit chaîné, effacement RGPD complet et durées de conservation, sauvegardes, chart Helm, CI/CD |
+| Durcissement production | Branche `production-readiness` : configuration refusant les réglages non sûrs, sessions révocables, CSRF, limitation des tentatives et file de jobs robuste déjà faits ; à venir : SSO OIDC et MFA, audit chaîné, effacement RGPD complet et durées de conservation, sauvegardes, chart Helm, déploiement continu (la CI existe, voir « Intégration continue ») |
 | Connecteurs | CRM (Salesforce, HubSpot), OAuth interactif pour Microsoft 365 / Google / Linear via MCP ([docs/integrations/mcp-servers.md](docs/integrations/mcp-servers.md)) |
 | Stockage objets | Backend S3 / compatible S3 derrière l'abstraction `ObjectStore` (aujourd'hui : volume local) |
 | Autorisation externalisée | OpenFGA (ReBAC) pour les ACL, OPA pour les politiques de classification et de fraîcheur |
