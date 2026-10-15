@@ -561,6 +561,7 @@ async def test_search_sources_filters_rights_and_redacts(
     class FakeEmbedder:
         model_name = "hash"
         dim = 4
+        remote = False
 
         async def embed_query(self, text: str) -> list[float]:
             return [0.5, 0.5, 0.5, 0.5]

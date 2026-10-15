@@ -640,9 +640,13 @@ async def _find_existing(
     vectors: dict[Any, list[float]] = {}
     if needed and any(c.vector for c in candidates):
         items = list(needed.values())
-        computed = await lifecycle.embed_texts([lifecycle.embedding_text(item) for item in items])
+        computed = await lifecycle.embed_texts(
+            [lifecycle.embedding_text(item) for item in items], [item.classification for item in items]
+        )
         if computed:
-            vectors = {item.id: vector for item, vector in zip(items, computed, strict=True)}
+            vectors = {
+                item.id: vector for item, vector in zip(items, computed, strict=True) if vector is not None
+            }
     for index, items in shortlist.items():
         candidate = candidates[index]
         best: tuple[float, MemoryItem] | None = None
@@ -788,7 +792,17 @@ async def extract_from_document(session: AsyncSession, job: IngestionJob) -> dic
         actor = Actor.system()
 
         candidates = await _collect_candidates(document, source, chunks, result)
-        vectors = await lifecycle.embed_texts([c.text for c in candidates]) if candidates else []
+        vectors = (
+            await lifecycle.embed_texts(
+                [c.text for c in candidates],
+                [
+                    max([int(ch.classification) for ch in c.chunks] + [int(document.classification)])
+                    for c in candidates
+                ],
+            )
+            if candidates
+            else []
+        )
         if vectors:
             for candidate, vector in zip(candidates, vectors, strict=True):
                 candidate.vector = vector

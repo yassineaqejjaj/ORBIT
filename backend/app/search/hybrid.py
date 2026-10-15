@@ -90,10 +90,14 @@ async def hybrid_search(
     include_org_memory: bool = True,
     k: int = RRF_K,
     include_embedding: bool = True,
+    classification: int | None = None,
+    embed_missing: bool = True,
 ) -> list[FusedHit]:
     """Run BM25 and k-NN concurrently on ``kind`` and fuse them with RRF.
 
-    ``query_vector`` may be ``None``: the query is then embedded with the configured embedder.
+    ``query_vector`` may be ``None``: the query is then embedded with the configured embedder, unless
+    ``embed_missing`` is false (the caller already tried: BM25 only). ``classification`` is the caller's
+    clearance: a remote embedder never sees the query above the LLM guardrail ceiling (``None`` = C3).
     Results are ordered by fused score (best first).
     """
     pid = str(project_id)
@@ -112,12 +116,14 @@ async def hybrid_search(
     async def _dense() -> list[OSHit]:
         vector = query_vector
         if vector is None:
-            if not (query_text or "").strip():
+            if not embed_missing or not (query_text or "").strip():
                 return []
-            from app.search.embeddings import aget_embedder
+            from app.search.embeddings import aget_embedder, embed_query_guarded
 
             embedder = await aget_embedder()
-            vector = await embedder.embed_query(query_text)
+            vector = await embed_query_guarded(embedder, query_text, classification)
+            if vector is None:
+                return []  # withheld from a remote embedder: lexical results only
         return await opensearch.knn_search(
             kind,
             vector,

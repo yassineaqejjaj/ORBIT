@@ -3,6 +3,10 @@
 * Content classified above ``ORBIT_LLM_MAX_CLASSIFICATION`` (default C1) is **never** sent to an external
   LLM; ``ORBIT_LLM_LOCAL=true`` (self-hosted model) lifts the ceiling. Callers fall back to the
   deterministic path and every skip is counted in ``orbit_llm_guardrail_skips_total{reason}``.
+* The same ceiling applies to **remote embedding providers** (``ORBIT_EMBEDDING_PROVIDER=openai``): a text
+  above it is never sent (``reason="embedding"``), see :func:`app.search.embeddings.embed_documents_guarded`.
+  ``ORBIT_LLM_LOCAL=true`` also declares the embedding service self-hosted.
+* An unknown level (``None``) is always treated as C3.
 * With ``ORBIT_LLM_REDACT_PII=true`` (default) personal data is masked before leaving ORBIT.
 """
 
@@ -13,7 +17,8 @@ from prometheus_client import Counter
 from app.config import settings
 from app.ingestion import pii
 
-#: ``classification``: content above the ceiling; ``disabled``: no LLM configured (not counted as a leak,
+#: ``classification``: content above the ceiling; ``embedding``: text withheld from a remote embedding
+#: provider (same ceiling); ``disabled``: no LLM configured (not counted as a leak,
 #: only for completeness of dashboards); ``error``: provider failure handled by the deterministic fallback.
 LLM_GUARDRAIL_SKIPS = Counter(
     "orbit_llm_guardrail_skips_total",
@@ -23,6 +28,7 @@ LLM_GUARDRAIL_SKIPS = Counter(
 
 REASON_CLASSIFICATION = "classification"
 REASON_ERROR = "error"
+REASON_EMBEDDING = "embedding"
 MAX_LEVEL = 3
 
 
@@ -57,6 +63,7 @@ def prepare(text: str) -> str:
 __all__ = [
     "LLM_GUARDRAIL_SKIPS",
     "REASON_CLASSIFICATION",
+    "REASON_EMBEDDING",
     "REASON_ERROR",
     "allows",
     "ceiling",

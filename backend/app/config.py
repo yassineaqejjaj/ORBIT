@@ -7,6 +7,7 @@ they are all documented in ``.env.example``.
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -281,6 +282,22 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_trailing_slash(cls, value: str) -> str:
         return value.strip().rstrip("/")
+
+    @model_validator(mode="after")
+    def _check_external_embeddings(self) -> Settings:
+        """An external embedding provider only sees what the LLM guardrail lets through (C0-C1 by default)."""
+        if self.embedding_provider != "openai" or self.llm_local or self.llm_max_classification <= 1:
+            return self
+        message = (
+            "ORBIT_EMBEDDING_PROVIDER=openai envoie les textes à un service externe alors que "
+            f"ORBIT_LLM_MAX_CLASSIFICATION={self.llm_max_classification} (> C1) : "
+            "définissez ORBIT_LLM_LOCAL=true si le service d'embeddings est auto-hébergé, "
+            "ou ramenez le plafond à 1."
+        )
+        if self.env == "production":
+            raise ValueError(message)
+        logging.getLogger("orbit.config").warning(message)
+        return self
 
     @model_validator(mode="after")
     def _check_production_secrets(self) -> Settings:

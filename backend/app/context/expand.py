@@ -268,7 +268,7 @@ async def search_more(
     teaser_tokens: int = 60,
 ) -> list[dict[str, Any]]:
     """Additional governed retrieval (chunks + memory) for a follow-up question."""
-    vector, _model = await embed_query(query)
+    vector, _model = await embed_query(query, int(gov.ctx.clearance))
     raw = await retrieval.retrieve(
         session,
         task=query,
