@@ -80,6 +80,7 @@ class AuditAction(StrEnum):
     acl_change = "governance.acl_change"
     classification_change = "governance.classification_change"
     traces_export = "traces.export"
+    forget_purge = "governance.forget_purge"
     chunk_quarantine = "security.quarantine"
     quarantine_release = "security.quarantine_release"
     poisoning_alert = "security.poisoning_alert"
