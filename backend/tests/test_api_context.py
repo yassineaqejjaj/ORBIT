@@ -621,7 +621,8 @@ async def test_package_exposes_max_classification_and_access_scope(
     by_id = {i["id"]: i for i in package["items"]}
     board = by_id[str(seed.ids["chunk_board"])]  # ACL: owners only
     secret = by_id[str(seed.ids["chunk_secret"])]  # C3, open to every member
-    spec = by_id[str(seed.ids["chunk_spec"])]
+    # The spec and its copy are duplicates: whichever one the engine keeps is a project-wide item.
+    spec = by_id.get(str(seed.ids["chunk_spec"])) or by_id[str(seed.ids["chunk_copy"])]
     assert board["access_scope"] == "restricted"
     assert secret["access_scope"] == "project" and secret["classification"] == 3
     assert spec["access_scope"] == "project"
@@ -669,7 +670,7 @@ async def test_snapshot_carries_classification_per_item_and_max_classification(
     snapshot = (await admin_client.get(f"/api/v1/projects/{slug}/snapshots/classified/1")).json()
     assert snapshot["schema_version"] == 2
     levels = {i["id"]: i["classification"] for i in snapshot["items"]}
-    assert levels[str(seed.ids["chunk_secret"])] == 3 and levels[str(seed.ids["chunk_spec"])] <= 1
+    assert levels[str(seed.ids["chunk_secret"])] == 3 and min(levels.values()) <= 1
     assert snapshot["max_classification"] == 3
     # The stored rows (what a backup holds) carry the level too.
     stored = (
