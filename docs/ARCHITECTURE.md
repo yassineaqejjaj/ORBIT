@@ -39,7 +39,11 @@ Flux : `Sources métier → ingestion & normalisation → indexation → gouvern
 | `ORBIT_JWT_SECRET` | (requis en prod, valeur dev dans `.env.example`) | HS256 |
 | `ORBIT_JWT_TTL_MINUTES` | `720` | |
 | `ORBIT_COOKIE_SECURE` | `false` | |
-| `ORBIT_OBJECT_STORE_PATH` | `/data/objects` | |
+| `ORBIT_OBJECT_STORE_BACKEND` | `local` | `local` (volume) \| `s3` (S3 ou compatible) ; voir [OBJECT_STORAGE.md](OBJECT_STORAGE.md) |
+| `ORBIT_OBJECT_STORE_PATH` | `/data/objects` | backend `local` |
+| `ORBIT_OBJECT_STORE_S3_BUCKET` / `_ENDPOINT` / `_REGION` | (vide) | backend `s3` ; le bucket est requis, endpoint vide = AWS |
+| `ORBIT_OBJECT_STORE_S3_ACCESS_KEY` / `_SECRET_KEY` | (vide) | ensemble, ou aucun (chaîne d'identifiants AWS) |
+| `ORBIT_OBJECT_STORE_S3_PREFIX` / `_PATH_STYLE` | (vide) / `true` | préfixe des clés ; adressage path-style (MinIO) |
 | `ORBIT_EMBEDDING_PROVIDER` | `fastembed` | `fastembed` \| `openai` (TEI/vLLM/LiteLLM compatible OpenAI) \| `hash` (tests) |
 | `ORBIT_EMBEDDING_MODEL` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | |
 | `ORBIT_EMBEDDING_DIM` | `384` | doit correspondre au modèle |
