@@ -23,8 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.types import Text
 
 from app.db import utcnow
-from app.enums import MEMORY_KIND_LABELS, JobKind, JobStatus, MemoryKind, MemoryScope
-from app.features.feed.types import OPT_IN_TYPES, ChangeType
+from app.enums import MEMORY_KIND_LABELS, DocumentStatus, JobKind, JobStatus, MemoryKind, MemoryScope
+from app.features.feed.types import REVOCATION_TYPES, WEBHOOK_OPT_IN_TYPES, ChangeType
 from app.governance.acl import PROJECT_ALL
 from app.models import ContextSnapshot, Document, IngestionJob, MemoryItem, Project
 from app.models.features_feed import ChangeEvent, Webhook, WebhookDelivery
@@ -116,6 +116,70 @@ def _document_draft(document: Document, type_: ChangeType, title: str, summary: 
     )
 
 
+def _levels(draft_data: dict[str, Any], old: Any, new: Any) -> None:
+    draft_data["old_classification"] = None if old is None else int(old)
+    draft_data["new_classification"] = None if new is None else int(new)
+
+
+def _memory_access_draft(item: MemoryItem, details: Mapping[str, Any]) -> Draft | None:
+    """A new version that changed who may read the item (classification or scope): ``memory.acl_changed``."""
+    fields = set(details.get("fields") or [])
+    if not fields & {"classification", "scope"}:
+        return None
+    change = details.get("classification") or {}
+    draft = _memory_draft(
+        item,
+        ChangeType.memory_acl_changed,
+        f"Accès modifié : {item.title}",
+        f"Accès à {_quote(item.title)} modifié ({', '.join(sorted(fields & {'classification', 'scope'}))})",
+    )
+    if draft is not None:
+        _levels(draft.data, change.get("from", item.classification), change.get("to", item.classification))
+    return draft
+
+
+async def _access_change_draft(
+    session: AsyncSession, action: str, actor_label: str, target_id: Any, details: Mapping[str, Any]
+) -> Draft | None:
+    """Audited ACL / classification change of a document (``governance.*``)."""
+    document = await _find(session, Document, target_id)
+    if document is None or document.status == DocumentStatus.forgotten:
+        return None
+    if action == "governance.acl_change":
+        draft = _document_draft(
+            document,
+            ChangeType.document_acl_changed,
+            f"Accès modifié : {document.title}",
+            f"Accès à {_quote(document.title)} modifié par {actor_label}",
+        )
+        _levels(draft.data, document.classification, document.classification)
+        return draft
+    draft = _document_draft(
+        document,
+        ChangeType.document_classification_changed,
+        f"Classification modifiée : {document.title}",
+        f"Classification de {_quote(document.title)} modifiée par {actor_label}",
+    )
+    _levels(draft.data, details.get("from"), details.get("to", document.classification))
+    return draft
+
+
+def _owner_draft(type_: ChangeType, title: str, summary: str, target_type: str, target_id: Any) -> Draft:
+    """Revocation of a person or a key: nothing about the target besides its id, owners only."""
+    data: dict[str, Any] = {}
+    _levels(data, None, None)
+    return Draft(
+        type=type_,
+        title=title,
+        summary=summary,
+        target_type=target_type,
+        target_id=str(target_id) if target_id is not None else None,
+        classification=0,
+        acl_principals=["role:owner"],
+        data=data,
+    )
+
+
 async def _draft_for(
     session: AsyncSession,
     action: str,
@@ -164,6 +228,8 @@ async def _draft_for(
                 f"{_quote(item.title)} marqué obsolète par {actor_label}"
                 + (f" — {reason}" if reason else ""),
             )
+        if action == "memory.edit":
+            return _memory_access_draft(item, details)
         if action == "memory.forget":
             return _memory_draft(
                 item,
@@ -240,6 +306,24 @@ async def _draft_for(
             summary or f"{_quote(document.title)} dépasse la durée de fraîcheur du projet",
             age_days=details.get("age_days"),
             limit_days=details.get("limit_days"),
+        )
+    if action in ("governance.acl_change", "governance.classification_change"):
+        return await _access_change_draft(session, action, actor_label, target_id, details)
+    if action == "member.remove":
+        return _owner_draft(
+            ChangeType.member_removed,
+            "Membre retiré du projet",
+            f"Un membre a été retiré du projet par {actor_label}",
+            "user",
+            target_id,
+        )
+    if action == "agent.revoke":
+        return _owner_draft(
+            ChangeType.agent_revoked,
+            "Clé d'agent révoquée",
+            f"Une clé d'agent a été révoquée par {actor_label}",
+            "agent",
+            target_id,
         )
     if action == "snapshot.create":
         snapshot = await _find(session, ContextSnapshot, details.get("snapshot_id"))
@@ -347,10 +431,34 @@ def is_public(event: ChangeEvent) -> bool:
     )
 
 
+def _revocation_payload(
+    event: ChangeEvent, project: Project | None, public: bool, created: datetime
+) -> dict[str, Any]:
+    """Minimal payload of a revocation event (NOV-80): what a consumer needs to invalidate, never ACL
+    entries, names or content. ``title`` / ``summary`` follow the usual redaction."""
+    data = event.data or {}
+    return {
+        "id": str(event.id),
+        "type": event.type,
+        "project": {"id": str(event.project_id), "slug": project.slug if project else None},
+        "target_type": event.target_type,
+        "target_id": event.target_id,
+        "created_at": created.isoformat(),
+        "restricted": not public,
+        "title": event.title if public else RESTRICTED_TITLE,
+        "summary": event.summary if public else "",
+        "effective_at": created.isoformat(),
+        "old_classification": data.get("old_classification"),
+        "new_classification": data.get("new_classification"),
+    }
+
+
 def webhook_payload(event: ChangeEvent, project: Project | None) -> dict[str, Any]:
     """Payload redacted at the ``project:*`` level: no C2+ nor ACL-restricted wording."""
     public = is_public(event)
     created: datetime = event.created_at or utcnow()
+    if event.type in REVOCATION_TYPES:
+        return _revocation_payload(event, project, public, created)
     payload: dict[str, Any] = {
         "id": str(event.id),
         "type": event.type,
@@ -386,7 +494,7 @@ async def enqueue_deliveries(session: AsyncSession, event: ChangeEvent) -> int:
         for hook in hooks
         if (
             event.type in hook.types
-            if event.type in OPT_IN_TYPES
+            if event.type in WEBHOOK_OPT_IN_TYPES
             else (not hook.types or event.type in hook.types)
         )
     ]
