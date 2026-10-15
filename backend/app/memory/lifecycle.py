@@ -1076,13 +1076,22 @@ async def forget(session: AsyncSession, item: MemoryItem, actor: ActorLike, reas
             except Exception as exc:
                 logger.warning("Valkey purge failed while forgetting memory %s: %s", item.id, exc)
 
+    from app.context.purge import purge_persisted_context
+
+    # The text also lives in persisted contexts (decisions, request Markdown, snapshots): rewrite it too.
+    persisted = await purge_persisted_context(session, item.project_id, lineage_ids=[item.lineage_id])
     await record_event(
         session,
         item,
         MemoryEventType.forgotten,
         resolved,
         reason=reason,
-        data={"previous_status": previous, "versions": len(versions), "purged_turns": purged},
+        data={
+            "previous_status": previous,
+            "versions": len(versions),
+            "purged_turns": purged,
+            "purged_context": persisted.as_dict(),
+        },
     )
     await _audit(
         session,
@@ -1090,7 +1099,12 @@ async def forget(session: AsyncSession, item: MemoryItem, actor: ActorLike, reas
         resolved,
         AuditAction.memory_forget,
         f"Oubli sélectif de {_quote(original_title)}",
-        {"reason": reason, "versions": len(versions), "purged_turns": purged},
+        {
+            "reason": reason,
+            "versions": len(versions),
+            "purged_turns": purged,
+            "purged_context": persisted.as_dict(),
+        },
     )
     await session.flush()
     await _index_delete(version_ids)

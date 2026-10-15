@@ -6,6 +6,10 @@ runs the project's golden sets synchronously (docs/AI_CONTEXT_ENGINEERING.md §E
 * ``0`` — every run passed (mean recall ≥ threshold);
 * ``1`` — at least one run is below the threshold (blocking in CI);
 * ``2`` — usage error (unknown project / set / user, no golden set).
+
+``python -m app.admin purge-forgotten [--project <slug>] [--dry-run] [--json]`` rewrites, at rest, the
+persisted contexts and snapshots that still quote forgotten chunks or memory (NOV-97). Idempotent; to run
+after restoring a backup (docs/FEATURES.md, « Oubli sélectif »).
 """
 
 from __future__ import annotations
@@ -14,13 +18,14 @@ import argparse
 import asyncio
 import json
 import sys
+import uuid
 from collections.abc import Sequence
 
 from sqlalchemy import select
 
 from app.db import dispose_engine, get_sessionmaker
 from app.evaluation import bench
-from app.models import EvalSet, Project, ProjectMember, User
+from app.models import EvalSet, MemoryItem, Project, ProjectMember, User
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -35,7 +40,85 @@ def _parser() -> argparse.ArgumentParser:
     )
     ev.add_argument("--as", dest="as_email", default=None, help="Utilisateur évaluateur (défaut : un owner)")
     ev.add_argument("--json", action="store_true", help="Sortie JSON")
+    pf = sub.add_parser(
+        "purge-forgotten",
+        help="Réécrire les contextes et snapshots persistés citant du contenu oublié (idempotent)",
+    )
+    pf.add_argument(
+        "--project", default=None, help="Slug du projet (défaut : tous, mémoire d'organisation incluse)"
+    )
+    pf.add_argument("--dry-run", action="store_true", help="Compter sans rien écrire")
+    pf.add_argument("--json", action="store_true", help="Sortie JSON")
     return parser
+
+
+async def run_purge_forgotten(args: argparse.Namespace) -> int:
+    """Replay of forgetting on persisted context: also the step to run after restoring a backup."""
+    from app.context.purge import PurgeResult, purge_persisted_context
+    from app.enums import ChunkStatus, MemoryStatus
+    from app.models import Chunk
+    from app.services import audit
+
+    report: list[dict[str, object]] = []
+    async with get_sessionmaker()() as session:
+        query = select(Project).order_by(Project.created_at)
+        if args.project:
+            query = query.where(Project.slug == args.project)
+        projects = list(await session.scalars(query))
+        if args.project and not projects:
+            print(f"Projet « {args.project} » introuvable", file=sys.stderr)
+            return 2
+        scopes: list[tuple[Project | None, uuid.UUID | None]] = [(p, p.id) for p in projects]
+        if not args.project:
+            scopes.append((None, None))  # organisation-wide memory, served in any project
+        for project, project_id in scopes:
+            memory_filter = MemoryItem.status == MemoryStatus.forgotten
+            memory_scope = (
+                MemoryItem.project_id == project_id if project_id else MemoryItem.project_id.is_(None)
+            )
+            lineages = list(
+                await session.scalars(
+                    select(MemoryItem.lineage_id).where(memory_filter, memory_scope).distinct()
+                )
+            )
+            chunks = (
+                list(
+                    await session.scalars(
+                        select(Chunk.id).where(
+                            Chunk.project_id == project_id, Chunk.status == ChunkStatus.forgotten
+                        )
+                    )
+                )
+                if project_id
+                else []
+            )
+            result: PurgeResult = await purge_persisted_context(
+                session, project_id, chunk_ids=chunks, lineage_ids=lineages, dry_run=args.dry_run
+            )
+            label = project.slug if project else "(organisation)"
+            report.append({"project": label, "dry_run": args.dry_run, **result.as_dict()})
+            if result and not args.dry_run and project is not None:
+                await audit.record(
+                    session,
+                    project.id,
+                    audit.Actor.system(),
+                    audit.AuditAction.forget_purge,
+                    "project",
+                    project.id,
+                    summary="Rattrapage de l'oubli sur les contextes et snapshots persistés",
+                    details=result.as_dict(),
+                )
+            await session.commit()
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False))
+    else:
+        for line in report:
+            verb = "à réécrire" if args.dry_run else "réécrits"
+            print(
+                f"{line['project']} : {line['decisions']} extrait(s), {line['requests']} contexte(s), "
+                f"{line['snapshots']} snapshot(s) {verb}"
+            )
+    return 0
 
 
 async def _evaluator(session, project: Project, email: str | None) -> User | None:
@@ -104,6 +187,8 @@ async def _main(argv: Sequence[str] | None) -> int:
     try:
         if args.command == "eval":
             return await run_eval(args)
+        if args.command == "purge-forgotten":
+            return await run_purge_forgotten(args)
         return 2
     finally:
         await dispose_engine()

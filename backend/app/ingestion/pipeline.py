@@ -1087,9 +1087,15 @@ async def handle_forget(session: AsyncSession, job: IngestionJob) -> None:
             version.extracted_text = FORGOTTEN_TEXT
         document.pii_count = 0
         document.status_reason = None
+        from app.context.purge import purge_persisted_context
+
+        # Served contexts keep the text of the chunks (decisions, request Markdown, snapshots): rewrite it.
+        chunk_ids = list(await session.scalars(select(Chunk.id).where(Chunk.document_id == document.id)))
+        persisted = await purge_persisted_context(session, document.project_id, chunk_ids=chunk_ids)
         step.detail = (
             f"{chunk_count} fragment(s) remplacé(s) par « {FORGOTTEN_TEXT} », "
-            f"{len(versions)} version(s) purgée(s), {purged_files} fichier(s) supprimé(s)"
+            f"{len(versions)} version(s) purgée(s), {purged_files} fichier(s) supprimé(s), "
+            f"{persisted.decisions} extrait(s) de contexte et {persisted.snapshots} snapshot(s) réécrits"
         )
 
     from app.memory import lifecycle
