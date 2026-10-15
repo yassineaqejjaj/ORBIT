@@ -23,6 +23,7 @@ from app.models import IngestionJob
 from app.models.features_feed import Webhook, WebhookDelivery
 from app.worker import Worker
 from tests.conftest import UserInfo
+from tests.test_feature_feed import _revoke_everything
 
 JSON = dict[str, Any]
 PUBLIC_IP = "93.184.216.34"
@@ -266,3 +267,66 @@ def test_signature_and_ip_helpers() -> None:
     assert security.is_forbidden_ip("127.0.0.1") and security.is_forbidden_ip("::ffff:10.0.0.1")
     assert security.is_forbidden_ip("fe80::1") and security.is_forbidden_ip("172.16.0.1")
     assert not security.is_forbidden_ip(PUBLIC_IP)
+
+
+REVOCATION_TYPES = [
+    "document.acl_changed",
+    "memory.acl_changed",
+    "document.classification_changed",
+    "member.removed",
+    "agent.revoked",
+]
+
+
+async def test_revocation_events_are_delivered_signed_to_explicit_subscribers_only(
+    admin_client: httpx.AsyncClient,
+    project: JSON,
+    receiver: Receiver,
+    make_user: Callable[..., Awaitable[UserInfo]],
+) -> None:
+    explicit = await _hook(admin_client, project, types=REVOCATION_TYPES)
+    # An existing subscriber with an empty selection (« every other type ») must not start receiving them.
+    legacy = await _hook(admin_client, project, url="https://legacy.exemple.test/orbit")
+    ids = await _revoke_everything(admin_client, project, make_user)
+    await _run_webhook_jobs()
+
+    delivered = [
+        (request, json.loads(request.content))
+        for request in receiver.requests
+        if request.headers["X-Orbit-Event"] in REVOCATION_TYPES
+    ]
+    assert {body["type"] for _, body in delivered} == set(REVOCATION_TYPES)
+    assert {str(request.url) for request, _ in delivered} == {"https://hooks.exemple.test/orbit"}
+    by_type = {body["type"]: body for _, body in delivered}
+    for request, body in delivered:
+        expected = (
+            "sha256=" + hmac.new(explicit["secret"].encode(), request.content, hashlib.sha256).hexdigest()
+        )
+        assert request.headers["X-Orbit-Signature"] == expected
+        assert body["project"]["slug"] == project["slug"] and body["effective_at"] == body["created_at"]
+        assert set(body) == {
+            "id", "type", "project", "target_type", "target_id", "created_at", "restricted", "title",
+            "summary", "effective_at", "old_classification", "new_classification",
+        }  # fmt: skip
+        text = json.dumps(body)
+        assert "role:owner" not in text and "user:" not in text and "Plan de salle" not in text
+    assert by_type["document.acl_changed"]["target_id"] == ids["document"]
+    assert by_type["document.acl_changed"]["restricted"] is True  # the document is now owner-only
+    classification = by_type["document.classification_changed"]
+    assert (classification["old_classification"], classification["new_classification"]) == (1, 3)
+    assert (
+        by_type["memory.acl_changed"]["old_classification"],
+        by_type["memory.acl_changed"]["new_classification"],
+    ) == (1, 2)
+    for kind, target in (("member.removed", ids["member"]), ("agent.revoked", ids["agent"])):
+        assert by_type[kind]["target_id"] == target and by_type[kind]["restricted"] is True
+        assert by_type[kind]["title"] == "Élément restreint" and by_type[kind]["summary"] == ""
+        assert by_type[kind]["old_classification"] is None and by_type[kind]["new_classification"] is None
+
+    legacy_events = {
+        request.headers["X-Orbit-Event"]
+        for request in receiver.requests
+        if str(request.url) == "https://legacy.exemple.test/orbit"
+    }
+    assert legacy_events and not legacy_events & set(REVOCATION_TYPES)
+    assert legacy["id"] != explicit["id"]

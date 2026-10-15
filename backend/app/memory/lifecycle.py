@@ -737,7 +737,10 @@ async def new_version(
         resolved,
         AuditAction.memory_edit,
         f"Nouvelle version (v{new.version}) de {_quote(new.title)}",
-        {"fields": sorted(diff)},
+        {
+            "fields": sorted(diff),
+            **({"classification": diff["classification"]} if "classification" in diff else {}),
+        },
     )
     await session.flush()
 

@@ -62,6 +62,39 @@ déterministe ; compteur Prometheus `orbit_llm_guardrail_skips_total{reason}`. S
   `memory.changed`, `snapshot.created` (identifiants seulement), `degraded`, `reconnect` ; heartbeat 15 s, `Last-Event-ID`,
   diffusion Valkey pub/sub publiée après commit, filtrage par habilitation/ACL de l'abonné. L'interface se replie sur un polling de 10 s.
 
+### F2 ter — Événements de révocation
+
+Ce qui dérive d'une source dont l'accès a été retiré doit être invalidé par ses consommateurs (NOVA, FORGE). Cinq types du fil
+des changements, produits à partir des événements d'audit existants :
+
+| Type | Déclencheur (audit) | Cible (`target_type` / `target_id`) |
+|---|---|---|
+| `document.acl_changed` | `governance.acl_change` (PATCH document) | `document` / id du document |
+| `document.classification_changed` | `governance.classification_change` (manuel ou relèvement automatique) | `document` / id du document |
+| `memory.acl_changed` | `memory.edit` qui change la classification ou la portée | `memory` / id de la nouvelle version |
+| `member.removed` | `member.remove` | `user` / id de l'utilisateur |
+| `agent.revoked` | `agent.revoke` | `agent` / id de l'agent |
+
+Les ACL d'une mémoire ne sont pas modifiables après création : `memory.acl_changed` couvre donc le changement de classification
+ou de portée (nouvelle version). Visibilité dans le fil : celle de la cible après modification ; `member.removed` et `agent.revoked`
+sont réservés aux propriétaires.
+
+**Webhooks : opt-in.** Comme `context.served`, ces types ne sont livrés qu'aux webhooks qui les listent explicitement dans `types` ;
+un webhook sans sélection (« tous les autres types ») continue de recevoir exactement ce qu'il recevait avant. Payload minimal et non
+fuyant, signé comme les autres (`X-Orbit-Event` = type) :
+
+```json
+{"id": "<uuid>", "type": "document.classification_changed", "project": {"id": "<uuid>", "slug": "atlas"},
+ "target_type": "document", "target_id": "<uuid>", "created_at": "2026-10-15T09:30:00+00:00",
+ "restricted": true, "title": "Élément restreint", "summary": "",
+ "effective_at": "2026-10-15T09:30:00+00:00", "old_classification": 1, "new_classification": 3}
+```
+
+`restricted` : la cible n'est plus lisible par tout le projet au niveau C0-C1 (le titre n'est alors pas diffusé). `old_classification`
+et `new_classification` valent le niveau courant pour un changement d'ACL (inchangé), l'ancien et le nouveau niveau pour un changement
+de classification, `null` pour `member.removed` / `agent.revoked`. Jamais d'entrée d'ACL, de nom ni de contenu. `effective_at` est
+l'instant de l'enregistrement de la modification.
+
 ## F3 — Extraction de mémoire assistée par LLM
 
 - `app/memory/llm_extraction.py` : prompt structuré → JSON validé (pydantic) de « fiches » `{kind, title, statement, decided_by?, decided_at?,
