@@ -1,0 +1,71 @@
+{
+ "id": "60b7e3f2-0000-4000-8000-000000000007",
+ "name": "discovery",
+ "version": 7,
+ "parent_version": 6,
+ "task": "Préparer l'atelier de cadrage",
+ "intent": "general",
+ "token_count": 42,
+ "items_count": 4,
+ "content_hash": "sha256:abababababababababababababababababababababababababababababababab",
+ "created_by_label": "agent",
+ "created_at": "2026-10-01T12:00:00Z",
+ "schema_version": 2,
+ "content": "[S1] Le client veut un export CSV hebdomadaire.\n[S2] Décision : export CSV le lundi.\n[S3] Le prix plancher synthétique est de 120 EUR.",
+ "items": [
+  {
+   "key": "chunk:c1",
+   "citation": "S1",
+   "candidate_type": "chunk",
+   "id": "c1",
+   "title": "Note client",
+   "excerpt": "Le client veut un export CSV hebdomadaire.",
+   "source_kind": "document",
+   "memory_kind": null,
+   "version": 3,
+   "forgotten": false,
+   "classification": 1
+  },
+  {
+   "key": "memory:m1",
+   "citation": "S2",
+   "candidate_type": "memory",
+   "id": "m1",
+   "title": "Décision export",
+   "excerpt": "Décision : export CSV le lundi.",
+   "source_kind": null,
+   "memory_kind": "decision",
+   "version": 1,
+   "forgotten": false,
+   "classification": 2
+  },
+  {
+   "key": "chunk:c3",
+   "citation": "S3",
+   "candidate_type": "chunk",
+   "id": "c3",
+   "title": "Grille tarifaire [C3 synthétique]",
+   "excerpt": "Le prix plancher synthétique est de 120 EUR.",
+   "source_kind": "document",
+   "memory_kind": null,
+   "version": 4,
+   "forgotten": false,
+   "classification": 3
+  },
+  {
+   "key": "chunk:c2",
+   "citation": "S4",
+   "candidate_type": "chunk",
+   "id": "c2",
+   "title": "Contenu retiré",
+   "excerpt": "[contenu oublié]",
+   "source_kind": "document",
+   "memory_kind": null,
+   "version": 1,
+   "forgotten": true,
+   "classification": 1
+  }
+ ],
+ "request_id": "9a9a9a9a-0000-4000-8000-000000000001",
+ "max_classification": 3
+}
