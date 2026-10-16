@@ -30,7 +30,7 @@ NEW_COLUMNS = ("workspace_id", "orion_project_id")
 OWNING_TABLES = ("users", "projects", "agents", "webhooks")
 
 #: Tables that do not exist before the migration (excluded from the before/after comparison).
-NEW_TABLES = {"workspaces"}
+NEW_TABLES = {"workspaces", "external_identities"}
 SKIPPED_TABLES = {"alembic_version"}
 
 
@@ -297,6 +297,16 @@ async def _assert_migrated(conn: asyncpg.Connection, default_id: str = DEFAULT_W
     ) == await conn.fetchval("SELECT count(*) FROM projects")
 
 
+async def _insert_identity(conn: asyncpg.Connection) -> None:
+    await conn.execute(
+        "INSERT INTO external_identities (id, user_id, workspace_id, issuer, subject, email, linked_by) "
+        "VALUES ($1, $2, $3::uuid, 'https://idp.example.test/realms/orion', 'sub-1', 'a@example.test', 'confirmed')",
+        _id("identity"),
+        _id("u-alice"),
+        DEFAULT_WORKSPACE_ID,
+    )
+
+
 async def _step(coro_factory: Any) -> Any:
     conn = await _connect()
     try:
@@ -331,8 +341,18 @@ def test_the_migration_is_additive_and_reversible_on_a_populated_database(
     assert after_up == before, "rows lost or modified by the upgrade"
     tables_up = asyncio.run(_step(_tables))
     assert "workspaces" in tables_up
-    assert "h009 (head)" in _alembic("current").stdout
+    assert "h010 (head)" in _alembic("current").stdout
     _alembic("check")  # the models and the migrated schema agree
+
+    # h010 (NOV-109) adds a table only: dropping it again changes no existing row, and an upgrade re-creates it empty
+    asyncio.run(_step(_insert_identity))
+    _alembic("downgrade", "h009")
+    assert asyncio.run(_step(_fingerprint)) == before, "rows lost or modified by the h010 downgrade"
+    assert "external_identities" not in asyncio.run(_step(_tables))
+    assert "workspaces" in asyncio.run(_step(_tables))
+    _alembic("upgrade", "head")
+    assert asyncio.run(_step(_fingerprint)) == before, "rows lost or modified by the h010 upgrade"
+    assert asyncio.run(_step(lambda c: c.fetchval("SELECT count(*) FROM external_identities"))) == 0
 
     _alembic("downgrade", OLD_HEAD)
     after_down = asyncio.run(_step(_fingerprint))

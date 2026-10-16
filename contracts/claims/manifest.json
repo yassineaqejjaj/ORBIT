@@ -1,0 +1,133 @@
+{
+ "contract": "orion-claims",
+ "contract_version": 1,
+ "source": "NOVA scripts/generate_claims_fixtures.py (throw-away RSA test key, synthetic data); table of ADR 001 §4",
+ "claims": [
+  "act",
+  "amr",
+  "aud",
+  "email",
+  "email_verified",
+  "exp",
+  "iat",
+  "iss",
+  "nbf",
+  "orion_clearance",
+  "orion_project_id",
+  "orion_workspace_id",
+  "realm_access.roles",
+  "scope",
+  "sub"
+ ],
+ "module": {
+  "path": "nova/domain/orion_claims.py",
+  "sha256": "b893529988e8c9b5cfb9311064b0738b69d8ff0d31d2f0c2da48d79e274e36e1"
+ },
+ "files": {
+  "case_administrator.json": {
+   "sha256": "722b2e01def870adafe48d484026a88eb023f1d7d877229a2250bf95a067798c"
+  },
+  "case_alg_hs256.json": {
+   "sha256": "092f3c675e7e96656f8cd85f475b31a44c273c155b8066e2f2e873922cb408d8"
+  },
+  "case_alg_none.json": {
+   "sha256": "0f40e8fc823b0bef1fbbe6d3fa6344354ce978ad4e52535d64cd36febaea1185"
+  },
+  "case_bad_signature.json": {
+   "sha256": "04346825dc59e99ff298745364502a68640031ff7bbc97a50b3e76f4a75a720e"
+  },
+  "case_clearance_absent.json": {
+   "sha256": "d9df732c0eee3ac0cee1b065cbd97a417809469a06273e2dba96134aee4a1449"
+  },
+  "case_clearance_higher.json": {
+   "sha256": "228629fcec3cc55354e37b0b35a3fd4aea4fae71bf4203f79fcbb0db48c1a80d"
+  },
+  "case_clearance_lower.json": {
+   "sha256": "7fcdb2f71849b7aeb4745dacd4f8af113e9c53be8eae3caf84f1861e69cd198e"
+  },
+  "case_clearance_malformed.json": {
+   "sha256": "5c4891a09040c9f854d5c82ed17cafb8234efd9e152dab5e44cb38907fe25fef"
+  },
+  "case_clearance_out_of_range.json": {
+   "sha256": "5d2f9efa086689683b7275e50f574e00aa2c7548b783b7a1a7df2da88f819ac0"
+  },
+  "case_clearance_zero.json": {
+   "sha256": "7854a8136dc567c1ef0b7851e8add1008e1eaf9f8fca336df4939025a5d277e3"
+  },
+  "case_delegated.json": {
+   "sha256": "5d796af9c07a7fc9b2ecf67eec9ff7a1ef2ea6d534bc4672b10b2fddb7a7b8ad"
+  },
+  "case_delegated_too_long.json": {
+   "sha256": "3a36463f7d29d503a236d7bf34b340fc61e28de30301a21d1f57e4323853cc11"
+  },
+  "case_email_unverified.json": {
+   "sha256": "0c8ff73f443b7d91f134582ca7738ac5f737c404ae556686cd64a50ffcf2b67c"
+  },
+  "case_expired.json": {
+   "sha256": "f69f1bcb4ae5855feb859152b237c80b03e370396a12e801d34ffa21507d2a67"
+  },
+  "case_expires_now.json": {
+   "sha256": "abbb7b605e6516c0860ae3cdb416c4d4e5337a19e43966f162f405f7030ac711"
+  },
+  "case_forge_admin_does_not_raise.json": {
+   "sha256": "d785bc5d0e9f7314075206ef2a753405f1e02b2a8c0ac4dae48571fecc6912f4"
+  },
+  "case_forge_no_realm_role.json": {
+   "sha256": "94e4ba4a74f2e0d971edd3d11dc91bce5604658e0d423e678c3aae4e9ca3f34e"
+  },
+  "case_forge_role_cap.json": {
+   "sha256": "6b22f452c4386b60561ed1ee32ff7e31a2d1faa1fafbfcfdb2bcdd4aebf9a62a"
+  },
+  "case_invalid_workspace_id.json": {
+   "sha256": "1591b8e83706d5e1a9d59fb6cdc15c74545c308e76b46b01c25d83cce3674e03"
+  },
+  "case_malformed_roles.json": {
+   "sha256": "d6bd0873e75086d3287a6ff4e4f75a64778e60e44c718d5a66765c73ea0edd8b"
+  },
+  "case_missing_subject.json": {
+   "sha256": "06065d22f995d2f0009d56a5253c21a58c26dbc043862284d4d928af6e5c212f"
+  },
+  "case_no_local_role.json": {
+   "sha256": "1f9033f9eb4a80dedfc9de04bdea0c23c6058d5570b455ca66d4280aa29d62f8"
+  },
+  "case_no_workspace.json": {
+   "sha256": "9fae972157d7d593b0cf21f83e73de37523db10ec8c7e5977de15fb93b5b8a3e"
+  },
+  "case_not_yet_valid.json": {
+   "sha256": "ee89f9a3049f0fc87456ef1d53a89b7a141b1243088e18e3371c8dce55a42a4b"
+  },
+  "case_project_without_workspace.json": {
+   "sha256": "f75f54dfe7b81ca3fea57d0a9b5e6328c295c4d58144e18385a2f1dbf7c9c3a9"
+  },
+  "case_role_prefix_isolation.json": {
+   "sha256": "ef53ea14ee38f9c59a843836d7d6991c139ca88998128d40941b04667143ec98"
+  },
+  "case_service_account.json": {
+   "sha256": "1adcbff7dae1a8877e617873ba89d337d965793c61281064e009be9899ad69a8"
+  },
+  "case_standard_user.json": {
+   "sha256": "a2102ce727346b02a925adc243b315dc146f0703715c103e10ac8ac6468cd54e"
+  },
+  "case_tampered_payload.json": {
+   "sha256": "7b7598a63045e36c703adad3be00f844d5ae6de5cb959809bc2dc29984f80c64"
+  },
+  "case_unknown_claims.json": {
+   "sha256": "a91944c07b34c79aedcc4ef7f37c09532b8e77fe455851622734c5aab419f58d"
+  },
+  "case_workspace_without_project.json": {
+   "sha256": "bfcc1d060f4e4927411f91bce01a41554024f942b38239e7efcf742f81ee6af3"
+  },
+  "case_wrong_audience.json": {
+   "sha256": "e595fa79b93729ab3d42d2dbfc046b731b9facdcf9ec490061d1bb36cb04485b"
+  },
+  "case_wrong_issuer.json": {
+   "sha256": "edd49511f46ccf8b4383cbed0431755c235b5dac836dcaf0785e99a148f4366b"
+  },
+  "context.json": {
+   "sha256": "547191da7025c4c83cdb32ef2a02e71a80040835a11a0b3a9b33274dc2a3ce04"
+  },
+  "jwks.json": {
+   "sha256": "79335a40afd86efbbe952c4f19b0f60fcf999ab1505eb273b6f5b38312b51409"
+  }
+ }
+}

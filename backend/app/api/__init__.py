@@ -25,6 +25,7 @@ from app.api import (
     memory,
     meta,
     metrics,
+    oidc,
     projects,
     search,
     sessions,
@@ -41,6 +42,7 @@ API_PREFIX = "/api/v1"
 api_router = APIRouter(prefix=API_PREFIX)
 for module in (
     auth,
+    oidc,
     users,
     projects,
     members,

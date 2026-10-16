@@ -1,0 +1,100 @@
+{
+ "name": "invalid_workspace_id",
+ "description": "orion_workspace_id that is not a UUID: refused.",
+ "defect": null,
+ "claims": {
+  "iss": "https://idp.orion.test/realms/orion",
+  "sub": "5b1d0000-0000-4000-8000-000000000001",
+  "iat": 1792151940,
+  "exp": 1792152540,
+  "email": "alice@example.test",
+  "email_verified": true,
+  "name": "Alice Example",
+  "preferred_username": "alice@example.test",
+  "orion_workspace_id": "not-a-uuid",
+  "orion_project_id": "11111111-1111-4111-8111-111111111111",
+  "orion_clearance": 2,
+  "realm_access": {
+   "roles": [
+    "forge-editor"
+   ]
+  },
+  "scope": "orion:context.read",
+  "amr": [
+   "pwd"
+  ]
+ },
+ "tokens": {
+  "nova": "eyJhbGciOiJSUzI1NiIsImtpZCI6Im9yaW9uLXRlc3Qta2V5LTEiLCJ0eXAiOiJKV1QifQ.eyJhbXIiOlsicHdkIl0sImF1ZCI6Im5vdmEtd2ViIiwiZW1haWwiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZXhwIjoxNzkyMTUyNTQwLCJpYXQiOjE3OTIxNTE5NDAsImlzcyI6Imh0dHBzOi8vaWRwLm9yaW9uLnRlc3QvcmVhbG1zL29yaW9uIiwibmFtZSI6IkFsaWNlIEV4YW1wbGUiLCJvcmlvbl9jbGVhcmFuY2UiOjIsIm9yaW9uX3Byb2plY3RfaWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJvcmlvbl93b3Jrc3BhY2VfaWQiOiJub3QtYS11dWlkIiwicHJlZmVycmVkX3VzZXJuYW1lIjoiYWxpY2VAZXhhbXBsZS50ZXN0IiwicmVhbG1fYWNjZXNzIjp7InJvbGVzIjpbImZvcmdlLWVkaXRvciJdfSwic2NvcGUiOiJvcmlvbjpjb250ZXh0LnJlYWQiLCJzdWIiOiI1YjFkMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEifQ.W0psAFaA0AaEpDUiis-JMjAEBpBO4XhMtQfGTQdy0UWcdBecYpAdeOJbuY4Ukb1rbQEQDOTiQr-vgryTiclWneAuYVTSPdXpGtwSoRaTZA4WQ2GN244VYB8RgmcKV40QUIMiFxO7TKAK1j_4OMbtpX_jNERqI_FpuGDBc7DXSxYxjLOP4aerknpU59K1yELvxZUNeNPCOwJjoEAb5bN-zF_QQmkOjRgBqzwyRAz3I10XVm3eEUZc0EVPgP6Zqzx8HjcjhVZURdIwtxYBVJZHnxelJ0JZL5xpQ7EppYfb_F8-WkzRCevkMlfObEoGOwWjjpSTJbXE9PvecPTNeoZCuQ",
+  "orbit": "eyJhbGciOiJSUzI1NiIsImtpZCI6Im9yaW9uLXRlc3Qta2V5LTEiLCJ0eXAiOiJKV1QifQ.eyJhbXIiOlsicHdkIl0sImF1ZCI6Im9yYml0IiwiZW1haWwiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZXhwIjoxNzkyMTUyNTQwLCJpYXQiOjE3OTIxNTE5NDAsImlzcyI6Imh0dHBzOi8vaWRwLm9yaW9uLnRlc3QvcmVhbG1zL29yaW9uIiwibmFtZSI6IkFsaWNlIEV4YW1wbGUiLCJvcmlvbl9jbGVhcmFuY2UiOjIsIm9yaW9uX3Byb2plY3RfaWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJvcmlvbl93b3Jrc3BhY2VfaWQiOiJub3QtYS11dWlkIiwicHJlZmVycmVkX3VzZXJuYW1lIjoiYWxpY2VAZXhhbXBsZS50ZXN0IiwicmVhbG1fYWNjZXNzIjp7InJvbGVzIjpbImZvcmdlLWVkaXRvciJdfSwic2NvcGUiOiJvcmlvbjpjb250ZXh0LnJlYWQiLCJzdWIiOiI1YjFkMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEifQ.XP--oPlakiMCiCMzyQol_M3gSVpKTOZ-1e1WL-ctb7ebcEQArcIigRRZprqE71TZ69ZZv_UC8gemRXCGC2awQUM0QpHGioU0Q1rctj-glbDRb5E6cRV8G0h-cwWeG8Opqt68PDBmamO-SP_EQz4I9a4HkANW81Zlb31shSS_R79MxsasAOD23S5RZkqepxDP6LGJ2Kri_RbUNhWMfLvprlY5No0YhQAsFGeiXgh5ymp21g-FaziIpBaG8pAa3Ok_MCbKsg-wOUcjsvZ7H0eudGEQxpWN_NgGXXzUOlmwc9riOdo4eqbEH08Zdhw0kjh_0EZaZSa4_ZrH1epjVOxSfQ",
+  "forge": "eyJhbGciOiJSUzI1NiIsImtpZCI6Im9yaW9uLXRlc3Qta2V5LTEiLCJ0eXAiOiJKV1QifQ.eyJhbXIiOlsicHdkIl0sImF1ZCI6ImZvcmdlIiwiZW1haWwiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZXhwIjoxNzkyMTUyNTQwLCJpYXQiOjE3OTIxNTE5NDAsImlzcyI6Imh0dHBzOi8vaWRwLm9yaW9uLnRlc3QvcmVhbG1zL29yaW9uIiwibmFtZSI6IkFsaWNlIEV4YW1wbGUiLCJvcmlvbl9jbGVhcmFuY2UiOjIsIm9yaW9uX3Byb2plY3RfaWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJvcmlvbl93b3Jrc3BhY2VfaWQiOiJub3QtYS11dWlkIiwicHJlZmVycmVkX3VzZXJuYW1lIjoiYWxpY2VAZXhhbXBsZS50ZXN0IiwicmVhbG1fYWNjZXNzIjp7InJvbGVzIjpbImZvcmdlLWVkaXRvciJdfSwic2NvcGUiOiJvcmlvbjpjb250ZXh0LnJlYWQiLCJzdWIiOiI1YjFkMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEifQ.VMxHTZJOOCTxiMsnhhb_IKvwup9ZAmQABPEbDuA4bfzLmFO_JfhwuhzxhcB44gV8IJGPwHAcuWFCoWamqC08LLBtrEtgbhGs92Y-hh8PbkqQv-FxdB8_indbHDuDuM3SyDe-rL2i9uTgONGXpuphNgBydi0EPjsoYB9k-OOOMMBby1IwIK25A9tD8CzXdtXBhd9OMih5VBqEcbmWxoqvYb1wrJ5VbsaZr-s79-4J9VOJT3Sz0A1Qqc5w-boRt4SIveElVL5cQLYZm-dHJLDuYNWLoduWGogtc_AE13fsNmaDCqNHKMm8vmD7Kaz6t9c7GTd-F2KXlBr8PXK9AOcSOw"
+ },
+ "services": {
+  "nova": {
+   "local": {
+    "clearance": 3,
+    "role": "editor"
+   },
+   "expect": {
+    "valid": false,
+    "error": "invalid_claim:orion_workspace_id",
+    "subject": null,
+    "workspace_id": null,
+    "project_id": null,
+    "space_access": false,
+    "platform_admin": false,
+    "role": null,
+    "effective_clearance": null,
+    "mfa": false,
+    "email_matchable": false,
+    "delegated_by": null,
+    "is_service": false,
+    "scopes": []
+   }
+  },
+  "orbit": {
+   "local": {
+    "clearance": 3,
+    "role": "editor"
+   },
+   "expect": {
+    "valid": false,
+    "error": "invalid_claim:orion_workspace_id",
+    "subject": null,
+    "workspace_id": null,
+    "project_id": null,
+    "space_access": false,
+    "platform_admin": false,
+    "role": null,
+    "effective_clearance": null,
+    "mfa": false,
+    "email_matchable": false,
+    "delegated_by": null,
+    "is_service": false,
+    "scopes": []
+   }
+  },
+  "forge": {
+   "local": {
+    "clearance": 3,
+    "role": "editor"
+   },
+   "expect": {
+    "valid": false,
+    "error": "invalid_claim:orion_workspace_id",
+    "subject": null,
+    "workspace_id": null,
+    "project_id": null,
+    "space_access": false,
+    "platform_admin": false,
+    "role": null,
+    "effective_clearance": null,
+    "mfa": false,
+    "email_matchable": false,
+    "delegated_by": null,
+    "is_service": false,
+    "scopes": []
+   }
+  }
+ }
+}

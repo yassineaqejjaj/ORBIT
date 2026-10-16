@@ -1,0 +1,100 @@
+{
+ "name": "expires_now",
+ "description": "exp equal to the clock: expired (the boundary belongs to 'expired').",
+ "defect": null,
+ "claims": {
+  "iss": "https://idp.orion.test/realms/orion",
+  "sub": "5b1d0000-0000-4000-8000-000000000001",
+  "iat": 1792151400,
+  "exp": 1792152000,
+  "email": "alice@example.test",
+  "email_verified": true,
+  "name": "Alice Example",
+  "preferred_username": "alice@example.test",
+  "orion_workspace_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "orion_project_id": "11111111-1111-4111-8111-111111111111",
+  "orion_clearance": 2,
+  "realm_access": {
+   "roles": [
+    "forge-editor"
+   ]
+  },
+  "scope": "orion:context.read",
+  "amr": [
+   "pwd"
+  ]
+ },
+ "tokens": {
+  "nova": "eyJhbGciOiJSUzI1NiIsImtpZCI6Im9yaW9uLXRlc3Qta2V5LTEiLCJ0eXAiOiJKV1QifQ.eyJhbXIiOlsicHdkIl0sImF1ZCI6Im5vdmEtd2ViIiwiZW1haWwiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZXhwIjoxNzkyMTUyMDAwLCJpYXQiOjE3OTIxNTE0MDAsImlzcyI6Imh0dHBzOi8vaWRwLm9yaW9uLnRlc3QvcmVhbG1zL29yaW9uIiwibmFtZSI6IkFsaWNlIEV4YW1wbGUiLCJvcmlvbl9jbGVhcmFuY2UiOjIsIm9yaW9uX3Byb2plY3RfaWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJvcmlvbl93b3Jrc3BhY2VfaWQiOiJhYWFhYWFhYS1hYWFhLTRhYWEtOGFhYS1hYWFhYWFhYWFhYWEiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsiZm9yZ2UtZWRpdG9yIl19LCJzY29wZSI6Im9yaW9uOmNvbnRleHQucmVhZCIsInN1YiI6IjViMWQwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSJ9.X3tDFXL7Y0q9lVz8I2pGDIwG4ud68RtjwsENWRox5I2xDcLe5X02tcuViODJCU--4uSQXBdJzVj5AvLI8O69lub3ljuyCzjBgKg13uOYHQeF1rU1p9gxJKeSdSQ3kB8FmHVavobVx_j31qkEkdwc-IQAyaiqjjee5AwkpGSq2ct5Ry_oS81s4T_7mEHsGK_Jdm1Js0DLXixr8xE67YVPTscIENGfTu9vQE7Q1r7Al_ZEGXcET0UYrcjpjjDkpoB9S3hH294-SVMTi6sip9-UASQJ-kHBZXGxOFJSNVqt1Ux8M1My8Bf_-QPKdADHpLm86t_d_uDxhe7vCymc8_-mbw",
+  "orbit": "eyJhbGciOiJSUzI1NiIsImtpZCI6Im9yaW9uLXRlc3Qta2V5LTEiLCJ0eXAiOiJKV1QifQ.eyJhbXIiOlsicHdkIl0sImF1ZCI6Im9yYml0IiwiZW1haWwiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZXhwIjoxNzkyMTUyMDAwLCJpYXQiOjE3OTIxNTE0MDAsImlzcyI6Imh0dHBzOi8vaWRwLm9yaW9uLnRlc3QvcmVhbG1zL29yaW9uIiwibmFtZSI6IkFsaWNlIEV4YW1wbGUiLCJvcmlvbl9jbGVhcmFuY2UiOjIsIm9yaW9uX3Byb2plY3RfaWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJvcmlvbl93b3Jrc3BhY2VfaWQiOiJhYWFhYWFhYS1hYWFhLTRhYWEtOGFhYS1hYWFhYWFhYWFhYWEiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsiZm9yZ2UtZWRpdG9yIl19LCJzY29wZSI6Im9yaW9uOmNvbnRleHQucmVhZCIsInN1YiI6IjViMWQwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSJ9.jGebchZpjzTnYg2xH1k7CH9m2tvAH8eboSu7vBhC9qO0JA2AEva9A8UrHhoHVCrQ1yHsc5myUCRFe6mi4nMOeYGvpkZR1f3iWbusjVg5GyyrR61Godb79FC3DUjXeFrsnUoXS2QCWJ-wPRKhBC1jsX4nxtDPWFgkGta76QY-sfyDmW_YYMC5XA5FdIBDnMYvCXzkNMjreBwbKVJG16Qyjjtjkeh_AXJj5N3YQIu2jRI1ssrhU3e7zWzvYVuhtGQMcfKTpcLEIQowZlpfCRGdE6HAR7G8I5uVAGV83HpkHkJF3RNTOnzV9-sJ96CIa453nsIEJ0O1YqkrmrBGdjcIZg",
+  "forge": "eyJhbGciOiJSUzI1NiIsImtpZCI6Im9yaW9uLXRlc3Qta2V5LTEiLCJ0eXAiOiJKV1QifQ.eyJhbXIiOlsicHdkIl0sImF1ZCI6ImZvcmdlIiwiZW1haWwiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZXhwIjoxNzkyMTUyMDAwLCJpYXQiOjE3OTIxNTE0MDAsImlzcyI6Imh0dHBzOi8vaWRwLm9yaW9uLnRlc3QvcmVhbG1zL29yaW9uIiwibmFtZSI6IkFsaWNlIEV4YW1wbGUiLCJvcmlvbl9jbGVhcmFuY2UiOjIsIm9yaW9uX3Byb2plY3RfaWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJvcmlvbl93b3Jrc3BhY2VfaWQiOiJhYWFhYWFhYS1hYWFhLTRhYWEtOGFhYS1hYWFhYWFhYWFhYWEiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsiZm9yZ2UtZWRpdG9yIl19LCJzY29wZSI6Im9yaW9uOmNvbnRleHQucmVhZCIsInN1YiI6IjViMWQwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSJ9.FIcx_cbkBdnfYSiXEOq6qE-R00Yrt2DpKbp_mc6tlnrqjUXMnxLxydpjLsBZyEJJoK6ouWWrFiOvDQKyw2UFARTxwkFAZbm-9KU1Y-wi4wwnYn1jTYAveueLm86KksrvNRuBwqbfIPxlYBVTzOwWnAtmAa_JBY6OLqRkvS-Eg9hOBTS3Na22WNJBvZ8laVQv3aJYq1flhdDNz46RWj0NtoTzIvLVWTBajPnqYV5Kyd1Fo30aavOSLYgadPecMwRHUhqWZE_KpRrVTSEwjaC1d4KPlAB1li9KpaeGcBkMmF56Q2g06FuMp1Tb8_8Mgaxq0dwJgLN4xBEwcfhjA7p7Pg"
+ },
+ "services": {
+  "nova": {
+   "local": {
+    "clearance": 3,
+    "role": "editor"
+   },
+   "expect": {
+    "valid": false,
+    "error": "expired",
+    "subject": null,
+    "workspace_id": null,
+    "project_id": null,
+    "space_access": false,
+    "platform_admin": false,
+    "role": null,
+    "effective_clearance": null,
+    "mfa": false,
+    "email_matchable": false,
+    "delegated_by": null,
+    "is_service": false,
+    "scopes": []
+   }
+  },
+  "orbit": {
+   "local": {
+    "clearance": 3,
+    "role": "editor"
+   },
+   "expect": {
+    "valid": false,
+    "error": "expired",
+    "subject": null,
+    "workspace_id": null,
+    "project_id": null,
+    "space_access": false,
+    "platform_admin": false,
+    "role": null,
+    "effective_clearance": null,
+    "mfa": false,
+    "email_matchable": false,
+    "delegated_by": null,
+    "is_service": false,
+    "scopes": []
+   }
+  },
+  "forge": {
+   "local": {
+    "clearance": 3,
+    "role": "editor"
+   },
+   "expect": {
+    "valid": false,
+    "error": "expired",
+    "subject": null,
+    "workspace_id": null,
+    "project_id": null,
+    "space_access": false,
+    "platform_admin": false,
+    "role": null,
+    "effective_clearance": null,
+    "mfa": false,
+    "email_matchable": false,
+    "delegated_by": null,
+    "is_service": false,
+    "scopes": []
+   }
+  }
+ }
+}

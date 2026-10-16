@@ -314,6 +314,25 @@ jamais d'un paramètre, d'un en-tête ou d'un corps. `ORBIT_WORKSPACE_ENFORCEMEN
 
 En `enforce`, la mémoire d'organisation (`project_id NULL`) appartient à l'espace par défaut : elle n'est servie qu'aux projets de cet espace.
 
+## OIDC relying party (NOV-109)
+
+Désactivé par défaut (`ORBIT_OIDC_ENABLED=false` : aucune route d'authentification ne change, les routes `/auth/oidc/*` répondent 404).
+Activé, il s'ajoute au mot de passe, à la session et aux clés `orb_…` (double pile, inchangés).
+
+* **Jeton Bearer de l'IdP** (RS256, JWKS en cache rechargé à un `kid` inconnu) validé par le contrat de claims partagé
+  (`backend/app/orion_claims.py`, copie vérifiée par hash de NOVA, `contracts/claims/`) : `iss`, `aud=orbit`, `exp`, `nbf`.
+  Il désigne le compte **lié** (`external_identities`) ; l'espace est celui du jeton (`orion_workspace_id`, égal à celui du compte),
+  un jeton sans espace ou de compte de service est refusé (403), `orion_project_id` restreint l'accès à ce projet,
+  le rôle fonctionnel reste l'appartenance locale, `habilitation = min(User.clearance, orion_clearance)`, et `orbit-admin` ne
+  donne l'administration qu'à un compte déjà administrateur local.
+* **Navigateur** : `GET /auth/oidc/login` (Authorization Code + PKCE S256, state, nonce) puis `GET /auth/oidc/callback` :
+  sujet lié → cookie de session ORBIT ; sujet inconnu avec e-mail **vérifié** correspondant à un compte du même espace →
+  `202 {status: "link_required", link_token}` (rien n'est lié) ; sinon 403 (aucun compte n'est créé sauf `ORBIT_OIDC_AUTO_PROVISION=true`).
+* **Liaison confirmée** : `POST /auth/oidc/link/confirm {link_token, password}` (mot de passe local du compte) crée la liaison
+  et ouvre la session ; le jeton de liaison dure 10 min et se brûle après 5 mots de passe faux. `GET` / `DELETE /auth/oidc/identity` :
+  voir / supprimer ses propres liaisons.
+* Un utilisateur désactivé dans l'IdP perd l'accès à l'expiration du jeton ; les événements de révocation (NOV-80) sont inchangés.
+
 ## Observabilité & audit
 
 | Méthode | Chemin | Rôle | Query | Réponse |

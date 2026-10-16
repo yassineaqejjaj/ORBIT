@@ -95,6 +95,32 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("ORION_DEFAULT_WORKSPACE_ID", "ORBIT_DEFAULT_WORKSPACE_ID"),
     )
 
+    # --- OIDC relying party (ADR 001 §2, §4, §8 — NOV-109); everything is off by default -------------
+    #: Accept IdP tokens and the Authorization Code + PKCE login next to the password / session / ``orb_``
+    #: keys.
+    oidc_enabled: bool = False
+    #: Exact ``iss`` of the IdP tokens (e.g. ``https://idp.example/realms/orion``). Required when enabled.
+    oidc_issuer: str = ""
+    #: Expected ``aud`` of access tokens (ADR §3: ``orbit``).
+    oidc_audience: str = "orbit"
+    oidc_client_id: str = "orbit"
+    #: Optional: a public client with PKCE needs none.
+    oidc_client_secret: str = ""
+    #: Public callback of the browser flow (``…/api/v1/auth/oidc/callback``). Required for the browser login.
+    oidc_redirect_uri: str = ""
+    oidc_scopes: str = "openid email profile"
+    #: Overrides of the endpoints otherwise read from ``<issuer>/.well-known/openid-configuration``.
+    oidc_jwks_url: str = ""
+    oidc_authorization_endpoint: str = ""
+    oidc_token_endpoint: str = ""
+    oidc_jwks_cache_seconds: int = Field(default=600, ge=30, le=86_400)
+    #: Clock-skew tolerance on ``exp`` / ``nbf`` (the contract default is none).
+    oidc_leeway_seconds: int = Field(default=0, ge=0, le=120)
+    oidc_http_timeout_seconds: float = Field(default=5.0, ge=0.5, le=30)
+    #: Create a local account (clearance C1, no password) for an unknown, e-mail-verified subject. Off by
+    #: default.
+    oidc_auto_provision: bool = False
+
     # --- Optional LLM (OpenAI-compatible) ---------------------------------------------------------
     llm_base_url: str = ""
     llm_model: str = ""
@@ -321,6 +347,16 @@ class Settings(BaseSettings):
             raise ValueError(
                 "ORBIT_JWT_SECRET doit être défini (au moins 32 caractères) lorsque ORBIT_ENV=production."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _check_oidc(self) -> Settings:
+        if not self.oidc_enabled:
+            return self
+        if not self.oidc_issuer.strip():
+            raise ValueError("ORBIT_OIDC_ISSUER est requis lorsque ORBIT_OIDC_ENABLED=true.")
+        if self.env == "production" and not self.oidc_issuer.startswith("https://"):
+            raise ValueError("ORBIT_OIDC_ISSUER doit être une URL https en production.")
         return self
 
     @model_validator(mode="after")

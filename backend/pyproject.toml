@@ -54,7 +54,8 @@ package = false
 [tool.ruff]
 line-length = 110
 target-version = "py312"
-extend-exclude = ["alembic/versions"]
+#: ``app/orion_claims.py`` is copied byte for byte from NOVA (docs/CONTRACTS.md, manifest hash): never reformatted.
+extend-exclude = ["alembic/versions", "app/orion_claims.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "SIM", "RUF"]
