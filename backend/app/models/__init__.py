@@ -14,6 +14,7 @@ from app.models.evaluation import (  # §E
     EvalSet,
     RankingWeightChange,
 )
+from app.models.external_identity import ExternalIdentity
 from app.models.features_ask import *  # noqa: F403  (feature tables)
 from app.models.features_feed import *  # noqa: F403  (feature tables)
 from app.models.governance import Tombstone
@@ -43,6 +44,7 @@ __all__ = [
     "EvalCase",
     "EvalRun",
     "EvalSet",
+    "ExternalIdentity",
     "IngestionJob",
     "MemoryEvent",
     "MemoryItem",

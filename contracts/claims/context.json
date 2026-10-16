@@ -1,0 +1,11 @@
+{
+ "issuer": "https://idp.orion.test/realms/orion",
+ "now": 1792152000,
+ "audiences": {
+  "nova": "nova-web",
+  "orbit": "orbit",
+  "forge": "forge"
+ },
+ "kid": "orion-test-key-1",
+ "note": "Evaluate each case with now=<now>, issuer=<issuer>, audience <audiences[service]>, jwks.json."
+}

@@ -36,6 +36,14 @@ uv run python scripts/export_contract_fixtures.py --check  # code 1 si les fichi
 `tests/test_context_contract.py` (NOV-73) garde en plus la règle « additif uniquement » : les clés historiques ne
 sont ni renommées ni supprimées.
 
+## Contrat de claims OIDC (copie de NOVA, NOV-109)
+
+ORBIT consomme le contrat de claims de NOVA (NOV-104) sans le modifier : `backend/app/orion_claims.py` (même octets que
+`nova/domain/orion_claims.py`), `contracts/claims/` (jetons signés, JWKS public, manifeste) et le test portable
+`backend/tests/test_claims_contract.py` (`SERVICES = ("orbit",)`). `manifest.json` porte le sha256 de chaque fichier et du module ;
+le test échoue si l'un diffère. Rafraîchir : copier ces fichiers depuis NOVA (`git show origin/preprod:<chemin>`) puis relancer
+`pytest tests/test_claims_contract.py`. `ruff` exclut le module copié (jamais reformaté).
+
 ## Historique des ajouts additifs
 
 | Ticket | Ajout | `schema_version` |
