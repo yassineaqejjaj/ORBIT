@@ -44,6 +44,7 @@ from app.security import (
     verify_api_key,
 )
 from app.services import projects as project_service
+from app.services import workspaces
 from app.services.audit import Actor
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -107,6 +108,14 @@ class Principal:
     @property
     def agent_id(self) -> uuid.UUID | None:
         return self.agent.id if self.agent is not None else None
+
+    @property
+    def workspace_id(self) -> uuid.UUID:
+        """Workspace of the validated identity (ADR 001 §9): the user's or key's own, never a parameter."""
+        if self.user is not None:
+            return self.user.workspace_id
+        assert self.agent is not None
+        return self.agent.workspace_id
 
     @property
     def actor_type(self) -> ActorType:
@@ -292,6 +301,9 @@ async def get_project_access(
     """Resolve ``slug`` for ``principal`` and enforce ``min_role`` (404 non-member, 403 insufficient role)."""
     project = await project_service.get_by_slug(session, slug)
     if project is None:
+        raise not_found("Projet introuvable")
+    # Another workspace answers exactly like an unknown project (same message, before any role is looked at).
+    if not workspaces.allows(principal.workspace_id, project.workspace_id, surface="project"):
         raise not_found("Projet introuvable")
 
     if principal.is_agent:

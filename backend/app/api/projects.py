@@ -11,7 +11,7 @@ from app.errors import conflict
 from app.models import Project, ProjectMember
 from app.schemas import Project as ProjectOut
 from app.schemas import ProjectCreateIn, ProjectSummary, ProjectUpdateIn
-from app.services import audit
+from app.services import audit, workspaces
 from app.services import projects as project_service
 from app.services.audit import AuditAction
 
@@ -29,7 +29,13 @@ async def list_projects(user: CurrentUser, session: SessionDep) -> list[ProjectS
         if not memberships:
             return []
         stmt = stmt.where(Project.id.in_(list(memberships)))
-    projects = list(await session.scalars(stmt))
+    # Workspace filter (ADR 001 §9): a project of another workspace is not listed (``enforce``),
+    # or only counted (``shadow``).
+    projects = [
+        p
+        for p in await session.scalars(stmt)
+        if workspaces.allows(user.workspace_id, p.workspace_id, surface="project_list")
+    ]
     stats = await project_service.project_stats(session, [p.id for p in projects])
     return [
         project_service.to_summary(p, Role.owner if user.is_admin else memberships[p.id], stats[p.id])

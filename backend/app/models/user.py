@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Index, SmallInteger, Text, text
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base, CreatedAtMixin, UUIDPkMixin
 from app.models._types import range_check
+from app.models.workspace import forbid_workspace_change, workspace_id_column
 
 DEFAULT_AVATAR_COLOR = "#4f46e5"
 
@@ -18,7 +20,11 @@ class User(UUIDPkMixin, CreatedAtMixin, Base):
     __table_args__ = (
         range_check("clearance", 0, 3),
         Index("uq_users_email", "email", unique=True),
+        Index("ix_users_workspace_id", "workspace_id"),
     )
+
+    #: Space of the account (ADR 001 §5). Immutable; a request's workspace comes from the validated identity.
+    workspace_id: Mapped[uuid.UUID] = workspace_id_column()
 
     email: Mapped[str] = mapped_column(Text, nullable=False)
     full_name: Mapped[str] = mapped_column(Text, nullable=False)
@@ -33,3 +39,6 @@ class User(UUIDPkMixin, CreatedAtMixin, Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: Set when the user finishes or skips the first-login onboarding tour; NULL means "not onboarded yet".
     onboarding_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+forbid_workspace_change(User)

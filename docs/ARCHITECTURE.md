@@ -38,6 +38,8 @@ Flux : `Sources métier → ingestion & normalisation → indexation → gouvern
 | `ORBIT_VALKEY_URL` | `redis://valkey:6379/0` | |
 | `ORBIT_JWT_SECRET` | (requis en prod, valeur dev dans `.env.example`) | HS256 |
 | `ORBIT_JWT_TTL_MINUTES` | `720` | |
+| `ORBIT_WORKSPACE_ENFORCEMENT` | `off` | `off` \| `shadow` \| `enforce` : isolation par espace (ADR 001 §9, NOV-106) ; voir [API.md](API.md#espaces-et-isolation-adr-001-nov-106) |
+| `ORION_DEFAULT_WORKSPACE_ID` | `6f5e1c00-0000-4000-8000-000000000001` | espace par défaut créé par la migration `h009` (à fixer **avant** la migration) |
 | `ORBIT_COOKIE_SECURE` | `false` | |
 | `ORBIT_OBJECT_STORE_BACKEND` | `local` | `local` (volume) \| `s3` (S3 ou compatible) ; voir [OBJECT_STORAGE.md](OBJECT_STORAGE.md) |
 | `ORBIT_OBJECT_STORE_PATH` | `/data/objects` | backend `local` |

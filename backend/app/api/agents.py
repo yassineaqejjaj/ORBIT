@@ -48,6 +48,7 @@ async def create_agent(body: AgentCreateIn, access: OwnerAccess, session: Sessio
     key = generate_api_key()
     agent = Agent(
         project_id=access.project_id,
+        workspace_id=access.project.workspace_id,
         name=body.name,
         kind=body.kind,
         description=body.description,

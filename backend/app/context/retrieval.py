@@ -51,6 +51,7 @@ from app.governance.policy import (
 from app.models import Agent, Chunk, Document, MemoryEvent, MemoryItem, MemoryProvenance, Source, User
 from app.models.source import effective_trust
 from app.search.tokens import estimate_tokens
+from app.services import workspaces
 
 logger = logging.getLogger("orbit.context.retrieval")
 
@@ -389,10 +390,10 @@ async def hydrate_chunks(
     return result
 
 
-def _belongs(item: MemoryItem, project_id: uuid.UUID) -> bool:
+def _belongs(item: MemoryItem, project_id: uuid.UUID, *, org_memory: bool = True) -> bool:
     if item.project_id == project_id:
         return True
-    return item.project_id is None and item.scope == MemoryScope.long_term
+    return org_memory and item.project_id is None and item.scope == MemoryScope.long_term
 
 
 async def hydrate_memory(
@@ -413,7 +414,8 @@ async def hydrate_memory(
     if lineage_ids:
         conditions.append(MemoryItem.lineage_id.in_(lineage_ids))
     fetched = list((await session.scalars(select(MemoryItem).where(or_(*conditions)))).all())
-    by_id = {item.id: item for item in fetched if _belongs(item, project_id)}
+    org_memory = await workspaces.org_memory_visible_for(session, project_id)
+    by_id = {item.id: item for item in fetched if _belongs(item, project_id, org_memory=org_memory)}
 
     # Resolve every requested lineage to its current (or latest) version.
     requested_ids = set(item_ids)
@@ -424,7 +426,7 @@ async def hydrate_memory(
     if missing:
         extra = await session.scalars(select(MemoryItem).where(MemoryItem.lineage_id.in_(missing)))
         for item in extra:
-            if _belongs(item, project_id):
+            if _belongs(item, project_id, org_memory=org_memory):
                 by_id[item.id] = item
     current_by_lineage: dict[uuid.UUID, MemoryItem] = {}
     for item in by_id.values():
@@ -558,6 +560,8 @@ async def retrieve(
 ) -> RawRetrieval:
     """Parallel index/session retrieval, Postgres fallback, then batched hydration."""
     raw = RawRetrieval(pinned=list(pinned), pinned_label=pinned_label)
+    # Organisation-wide memory belongs to the default workspace (ADR 001 §9; no-op unless shadow/enforce).
+    include_org_memory = include_org_memory and await workspaces.org_memory_visible_for(session, project_id)
 
     async def _nothing() -> list[Any]:
         return []
@@ -666,6 +670,7 @@ async def search_more(
     kinds = [k for k, on in (("chunks", include_chunks), ("memory", include_memory)) if on]
     if not queries or not kinds:
         return 0
+    include_org_memory = include_org_memory and await workspaces.org_memory_visible_for(session, project_id)
 
     async def _one(kind: str, text: str, vector: Sequence[float] | None) -> list[IndexHit]:
         size = CHUNK_TOP_K if kind == "chunks" else MEMORY_TOP_K
@@ -780,10 +785,13 @@ async def add_procedures(
     from app.memory import skills
 
     known = {h.id for h in raw.memory_hits}
+    org_memory = await workspaces.org_memory_visible_for(session, project_id)
     rows = await session.scalars(
         select(MemoryItem)
         .where(
-            or_(MemoryItem.project_id == project_id, MemoryItem.project_id.is_(None)),
+            or_(MemoryItem.project_id == project_id, MemoryItem.project_id.is_(None))
+            if org_memory
+            else MemoryItem.project_id == project_id,
             MemoryItem.kind == MemoryKind.procedure,
             MemoryItem.is_current.is_(True),
             MemoryItem.status == MemoryStatus.validated,

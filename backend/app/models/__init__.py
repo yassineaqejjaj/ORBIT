@@ -22,6 +22,7 @@ from app.models.memory import Entity, EntityAlias, MemoryEvent, MemoryItem, Memo
 from app.models.project import Project, ProjectMember
 from app.models.source import DEFAULT_ACL, Source, default_acl
 from app.models.user import User
+from app.models.workspace import Workspace
 
 __all__ = [
     "DEFAULT_ACL",
@@ -53,5 +54,6 @@ __all__ = [
     "Source",
     "Tombstone",
     "User",
+    "Workspace",
     "default_acl",
 ]

@@ -32,6 +32,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base, CreatedAtMixin, TimestampMixin, UUIDPkMixin
 from app.models._types import range_check
 from app.models.source import default_acl
+from app.models.workspace import forbid_workspace_change, workspace_id_column
 
 __all__ = ["ChangeEvent", "ConflictResolution", "Subscription", "Webhook", "WebhookDelivery"]
 
@@ -87,8 +88,13 @@ class Subscription(UUIDPkMixin, TimestampMixin, Base):
 
 class Webhook(UUIDPkMixin, TimestampMixin, Base):
     __tablename__ = "webhooks"
-    __table_args__ = (Index("ix_webhooks_project_id", "project_id"),)
+    __table_args__ = (
+        Index("ix_webhooks_project_id", "project_id"),
+        Index("ix_webhooks_workspace_id", "workspace_id"),
+    )
 
+    #: Space of the webhook: the workspace of its project at creation. Immutable.
+    workspace_id: Mapped[uuid.UUID] = workspace_id_column()
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
     )
@@ -166,3 +172,6 @@ class ConflictResolution(CreatedAtMixin, Base):
         Text, nullable=False, default="", server_default=text("''")
     )
     resolved_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
+forbid_workspace_change(Webhook)

@@ -699,6 +699,7 @@ async def _run(
             config=config,
             warnings=warnings,
             max_classification=max((int(d.candidate.classification) for d in included), default=0),
+            orion_project_id=resolved.access.project.orion_project_id,
         )
         if settings.context_sufficiency:
             package.sufficiency = sufficiency.assess(
