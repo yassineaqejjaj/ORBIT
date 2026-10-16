@@ -209,16 +209,22 @@ def is_active(item: MemoryItem) -> bool:
 # --- Embeddings & index (best effort) --------------------------------------------------------------
 
 
-async def embed_texts(texts: Sequence[str]) -> list[list[float]] | None:
-    """Embed passages with the configured model; ``None`` when the model is unavailable."""
+async def embed_texts(
+    texts: Sequence[str], classifications: Sequence[int | None] | None = None
+) -> list[list[float] | None] | None:
+    """Embed passages with the configured model; ``None`` when the model is unavailable.
+
+    ``classifications``: level of each text. A remote embedder never receives a text above the LLM
+    guardrail ceiling (its vector is ``None``: lexical similarity only); a missing level counts as C3.
+    """
     if not texts:
         return []
     try:
-        vectors = await embeddings.get_embedder().embed_documents(list(texts))
+        vectors = await embeddings.embed_documents_guarded(embeddings.get_embedder(), texts, classifications)
     except Exception as exc:
         logger.warning("Embedding unavailable for memory items (%s): lexical similarity only", exc)
         return None
-    return [list(map(float, vector)) for vector in vectors]
+    return [None if vector is None else list(map(float, vector)) for vector in vectors]
 
 
 def index_document(item: MemoryItem, vector: Sequence[float] | None) -> dict[str, Any]:
@@ -264,7 +270,9 @@ async def index_items(
     missing = [index for index, (_item, vector) in enumerate(pairs) if not vector]
     vectors: list[Sequence[float] | None] = [vector for _item, vector in pairs]
     if missing:
-        computed = await embed_texts([embedding_text(pairs[i][0]) for i in missing])
+        computed = await embed_texts(
+            [embedding_text(pairs[i][0]) for i in missing], [pairs[i][0].classification for i in missing]
+        )
         if computed:
             for position, vector in zip(missing, computed, strict=True):
                 vectors[position] = vector
@@ -578,7 +586,7 @@ async def create_item(
     await session.flush()
 
     if vector is None:
-        computed = await embed_texts([embedding_text(item)])
+        computed = await embed_texts([embedding_text(item)], [item.classification])
         vector = computed[0] if computed else None
     await index_items([(item, vector)], refresh=refresh_index)
 
@@ -737,12 +745,15 @@ async def new_version(
         resolved,
         AuditAction.memory_edit,
         f"Nouvelle version (v{new.version}) de {_quote(new.title)}",
-        {"fields": sorted(diff)},
+        {
+            "fields": sorted(diff),
+            **({"classification": diff["classification"]} if "classification" in diff else {}),
+        },
     )
     await session.flush()
 
     await _index_delete([current.id])
-    computed = await embed_texts([embedding_text(new)])
+    computed = await embed_texts([embedding_text(new)], [new.classification])
     vector = computed[0] if computed else None
     await index_items([(new, vector)])
     if is_active(new) and set(values) & set(_RELATION_FIELDS):
@@ -1068,13 +1079,22 @@ async def forget(session: AsyncSession, item: MemoryItem, actor: ActorLike, reas
             except Exception as exc:
                 logger.warning("Valkey purge failed while forgetting memory %s: %s", item.id, exc)
 
+    from app.context.purge import purge_persisted_context
+
+    # The text also lives in persisted contexts (decisions, request Markdown, snapshots): rewrite it too.
+    persisted = await purge_persisted_context(session, item.project_id, lineage_ids=[item.lineage_id])
     await record_event(
         session,
         item,
         MemoryEventType.forgotten,
         resolved,
         reason=reason,
-        data={"previous_status": previous, "versions": len(versions), "purged_turns": purged},
+        data={
+            "previous_status": previous,
+            "versions": len(versions),
+            "purged_turns": purged,
+            "purged_context": persisted.as_dict(),
+        },
     )
     await _audit(
         session,
@@ -1082,7 +1102,12 @@ async def forget(session: AsyncSession, item: MemoryItem, actor: ActorLike, reas
         resolved,
         AuditAction.memory_forget,
         f"Oubli sélectif de {_quote(original_title)}",
-        {"reason": reason, "versions": len(versions), "purged_turns": purged},
+        {
+            "reason": reason,
+            "versions": len(versions),
+            "purged_turns": purged,
+            "purged_context": persisted.as_dict(),
+        },
     )
     await session.flush()
     await _index_delete(version_ids)
@@ -1299,12 +1324,16 @@ async def detect_relations(
         return []
     system = Actor.system() if actor is None else resolve_actor(actor)
     if vector is None:
-        computed = await embed_texts([embedding_text(item)])
+        computed = await embed_texts([embedding_text(item)], [item.classification])
         vector = computed[0] if computed else None
     candidates = await _relation_candidates(session, item, vector)
     if not candidates:
         return []
-    candidate_vectors = await embed_texts([embedding_text(c) for c in candidates]) if vector else None
+    candidate_vectors = (
+        await embed_texts([embedding_text(c) for c in candidates], [c.classification for c in candidates])
+        if vector
+        else None
+    )
     vectors: list[Sequence[float] | None] = (
         list(candidate_vectors) if candidate_vectors else [None] * len(candidates)
     )

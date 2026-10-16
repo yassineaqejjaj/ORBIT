@@ -12,6 +12,18 @@ LLM **optionnel**. Deux fournisseurs : `ORBIT_LLM_PROVIDER=openai` (compatible O
 pour un LLM auto-hébergé), `ORBIT_LLM_REDACT_PII` (défaut `true`). Tout contenu au-dessus du plafond est traité en mode
 déterministe ; compteur Prometheus `orbit_llm_guardrail_skips_total{reason}`. Sans LLM, tout fonctionne (repli déterministe).
 
+Le niveau de classification est **obligatoire** pour tout appel (`llm.generate` / `complete` / `complete_json`) ; un niveau
+inconnu (`None`) est traité comme C3 (fail-closed) : rien n'est envoyé à un LLM externe.
+
+**Embeddings distants.** Le même plafond s'applique à un fournisseur d'embeddings externe (`ORBIT_EMBEDDING_PROVIDER=openai`) :
+à l'ingestion un fragment au-dessus du plafond n'est pas envoyé (il est indexé sans vecteur, donc retrouvable par BM25
+seulement ; mémoire : similarité lexicale) ; à la requête, le niveau pris en compte est l'habilitation du demandeur, et
+au-dessus du plafond la recherche reste lexicale. Chaque refus incrémente `orbit_llm_guardrail_skips_total{reason="embedding"}`.
+Le fournisseur local (`fastembed`, défaut) n'est jamais restreint. Pas de repli vers un autre modèle (vecteurs incompatibles
+dans un même index). Démarrage : un fournisseur externe avec un plafond > C1 sans `ORBIT_LLM_LOCAL=true` est **refusé en
+production** (`ORBIT_ENV=production`) et signalé par un avertissement ailleurs ; `ORBIT_LLM_LOCAL=true` déclare aussi le
+service d'embeddings auto-hébergé. Réindexer (`reindex`) après un relèvement du plafond vectorise les fragments restés sans vecteur.
+
 ## F1 — Tri de la mémoire & arbitrage des contradictions (`/projects/{slug}/inbox`)
 
 - `GET /projects/{slug}/inbox?kind=&min_confidence=&sort=impact|confidence|recent&page=` (editor) → `Page<InboxItem>` :
@@ -61,6 +73,39 @@ déterministe ; compteur Prometheus `orbit_llm_guardrail_skips_total{reason}`. S
 - `GET /projects/{slug}/events/stream` (SSE, cookie ou Bearer, rôle lecteur) : `context.served`, `ingestion.updated`,
   `memory.changed`, `snapshot.created` (identifiants seulement), `degraded`, `reconnect` ; heartbeat 15 s, `Last-Event-ID`,
   diffusion Valkey pub/sub publiée après commit, filtrage par habilitation/ACL de l'abonné. L'interface se replie sur un polling de 10 s.
+
+### F2 ter — Événements de révocation
+
+Ce qui dérive d'une source dont l'accès a été retiré doit être invalidé par ses consommateurs (NOVA, FORGE). Cinq types du fil
+des changements, produits à partir des événements d'audit existants :
+
+| Type | Déclencheur (audit) | Cible (`target_type` / `target_id`) |
+|---|---|---|
+| `document.acl_changed` | `governance.acl_change` (PATCH document) | `document` / id du document |
+| `document.classification_changed` | `governance.classification_change` (manuel ou relèvement automatique) | `document` / id du document |
+| `memory.acl_changed` | `memory.edit` qui change la classification ou la portée | `memory` / id de la nouvelle version |
+| `member.removed` | `member.remove` | `user` / id de l'utilisateur |
+| `agent.revoked` | `agent.revoke` | `agent` / id de l'agent |
+
+Les ACL d'une mémoire ne sont pas modifiables après création : `memory.acl_changed` couvre donc le changement de classification
+ou de portée (nouvelle version). Visibilité dans le fil : celle de la cible après modification ; `member.removed` et `agent.revoked`
+sont réservés aux propriétaires.
+
+**Webhooks : opt-in.** Comme `context.served`, ces types ne sont livrés qu'aux webhooks qui les listent explicitement dans `types` ;
+un webhook sans sélection (« tous les autres types ») continue de recevoir exactement ce qu'il recevait avant. Payload minimal et non
+fuyant, signé comme les autres (`X-Orbit-Event` = type) :
+
+```json
+{"id": "<uuid>", "type": "document.classification_changed", "project": {"id": "<uuid>", "slug": "atlas"},
+ "target_type": "document", "target_id": "<uuid>", "created_at": "2026-10-15T09:30:00+00:00",
+ "restricted": true, "title": "Élément restreint", "summary": "",
+ "effective_at": "2026-10-15T09:30:00+00:00", "old_classification": 1, "new_classification": 3}
+```
+
+`restricted` : la cible n'est plus lisible par tout le projet au niveau C0-C1 (le titre n'est alors pas diffusé). `old_classification`
+et `new_classification` valent le niveau courant pour un changement d'ACL (inchangé), l'ancien et le nouveau niveau pour un changement
+de classification, `null` pour `member.removed` / `agent.revoked`. Jamais d'entrée d'ACL, de nom ni de contenu. `effective_at` est
+l'instant de l'enregistrement de la modification.
 
 ## F3 — Extraction de mémoire assistée par LLM
 

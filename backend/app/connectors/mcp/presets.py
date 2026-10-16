@@ -390,8 +390,8 @@ def _map_jira(item: dict[str, Any], _: Any, ctx: Ctx) -> Record | None:
     key = text_of(item.get("key")) or text_of(item.get("id"))
     if not key:
         return None
-    fields = item.get("fields") if isinstance(item.get("fields"), dict) else {}
-    data = {**fields, **item}
+    fields = item.get("fields")
+    data = {**(fields if isinstance(fields, dict) else {}), **item}
     summary = text_of(data.get("summary"))
     comments = data.get("comments") or dig(data, "comment.comments") or []
     title = f"{key} — {summary}" if summary else key
@@ -602,7 +602,8 @@ def _graph_next(payload: Any, items: list[dict[str, Any]], ctx: Ctx) -> list[Any
 def _map_mail(item: dict[str, Any], full: Any, ctx: Ctx) -> Record | None:
     data = full if isinstance(full, dict) and full.get("id") else item
     subject = text_of(data.get("subject")) or "(sans objet)"
-    body = data.get("body") if isinstance(data.get("body"), dict) else {}
+    body = data.get("body")
+    body = body if isinstance(body, dict) else {}
     html = str(body.get("contentType", "")).lower() == "html"
     sender = text_of(first(data, "from.emailAddress.name", "from.emailAddress.address"))
     content = text_of(body.get("content")) or text_of(data.get("bodyPreview"))
@@ -1883,7 +1884,8 @@ def _figma_items(payload: Any, ctx: Ctx) -> list[dict[str, Any]]:
         return []
     key = figma_file_key(ctx.item)
     file_name = str(dig(payload, "metadata.name") or key or "Figma")
-    nodes = payload.get("nodes") if isinstance(payload.get("nodes"), list) else []
+    nodes = payload.get("nodes")
+    nodes = nodes if isinstance(nodes, list) else []
     pages = [n for n in nodes if isinstance(n, dict) and n.get("type") == "CANVAS"]
     if not pages and nodes:  # a single node (nodeId) or a file without pages: one document
         pages = [{"id": "0:0", "name": file_name, "type": "CANVAS", "children": nodes}]

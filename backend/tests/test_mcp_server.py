@@ -561,6 +561,7 @@ async def test_search_sources_filters_rights_and_redacts(
     class FakeEmbedder:
         model_name = "hash"
         dim = 4
+        remote = False
 
         async def embed_query(self, text: str) -> list[float]:
             return [0.5, 0.5, 0.5, 0.5]
@@ -746,5 +747,8 @@ async def test_get_snapshot_hides_restricted_items(
     )
     assert first["restricted_items"] == 1 and first["items_count"] == 1
     assert [i["citation"] for i in first["items"]] == ["S1"]
+    # NOV-73: the level of what was delivered (read from the item's current state for legacy snapshots).
+    assert first["schema_version"] == 2 and first["items"][0]["classification"] == first["max_classification"]
+    assert first["max_classification"] == rows["visible"].classification
     assert "480" not in first["content"] and "Budget" not in json.dumps(first)
     assert "Snapshot « design-atlas » introuvable" in error_text(missing)

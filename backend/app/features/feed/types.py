@@ -20,6 +20,12 @@ class ChangeType(StrEnum):
     snapshot_created = "snapshot.created"
     connector_synced = "connector.synced"
     context_served = "context.served"
+    #: Revocation events (NOV-80): access to something was withdrawn, derived artifacts must be invalidated.
+    document_acl_changed = "document.acl_changed"
+    memory_acl_changed = "memory.acl_changed"
+    document_classification_changed = "document.classification_changed"
+    member_removed = "member.removed"
+    agent_revoked = "agent.revoked"
 
 
 CHANGE_TYPE_LABELS: dict[str, str] = {
@@ -37,10 +43,30 @@ CHANGE_TYPE_LABELS: dict[str, str] = {
     ChangeType.snapshot_created: "Snapshot enregistré",
     ChangeType.connector_synced: "Connecteur synchronisé",
     ChangeType.context_served: "Contexte servi",
+    ChangeType.document_acl_changed: "Accès au document modifié",
+    ChangeType.memory_acl_changed: "Accès à une mémoire modifié",
+    ChangeType.document_classification_changed: "Classification du document modifiée",
+    ChangeType.member_removed: "Membre retiré du projet",
+    ChangeType.agent_revoked: "Clé d'agent révoquée",
 }
 
 #: Types a webhook only receives when explicitly selected (an empty selection = every *other* type).
 OPT_IN_TYPES: frozenset[str] = frozenset({ChangeType.context_served.value})
+
+#: Events telling a consumer to invalidate what it derived from a source whose access was withdrawn. Their
+#: webhook payload is minimal (ids, restricted flag, classification levels, ``effective_at``).
+REVOCATION_TYPES: frozenset[str] = frozenset(
+    {
+        ChangeType.document_acl_changed.value,
+        ChangeType.memory_acl_changed.value,
+        ChangeType.document_classification_changed.value,
+        ChangeType.member_removed.value,
+        ChangeType.agent_revoked.value,
+    }
+)
+#: Types a webhook only receives when explicitly selected: existing subscribers with an empty selection
+#: (« every other type ») keep receiving exactly what they received before. The feed shows all of them.
+WEBHOOK_OPT_IN_TYPES: frozenset[str] = OPT_IN_TYPES | REVOCATION_TYPES
 
 ALL_TYPES: tuple[str, ...] = tuple(t.value for t in ChangeType)
 #: Pseudo-type of webhook test deliveries.

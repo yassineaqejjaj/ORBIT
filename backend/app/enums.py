@@ -78,6 +78,14 @@ class MemoryScope(StrEnum):
     long_term = "long_term"
 
 
+class AccessScope(StrEnum):
+    """Non-leaking summary of who may read an item (never the ACL entries themselves, NOV-73)."""
+
+    public = "public"  # C0 and open to every project member
+    project = "project"  # open to every project member
+    restricted = "restricted"  # narrower than the project (roles, named users) or unknown
+
+
 class MemoryKind(StrEnum):
     decision = "decision"
     requirement = "requirement"

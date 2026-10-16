@@ -156,6 +156,7 @@ async def search_index(
                 project_id=str(project_id),
                 size_each=size_each,
                 include_org_memory=include_org_memory,
+                embed_missing=False,  # the vector comes from understanding (or was withheld: BM25 only)
             ),
             timeout=INDEX_TIMEOUT_SECONDS,
         )
@@ -436,9 +437,9 @@ async def hydrate_memory(
 
     requested: dict[str, MemoryRow] = {}
     for item_id in item_ids:
-        item = by_id.get(item_id)
-        if item is not None and item.lineage_id in rows_by_lineage:
-            requested[str(item_id)] = rows_by_lineage[item.lineage_id]
+        found = by_id.get(item_id)
+        if found is not None and found.lineage_id in rows_by_lineage:
+            requested[str(item_id)] = rows_by_lineage[found.lineage_id]
     for lid in lineage_ids:
         if lid in rows_by_lineage:
             requested[str(lid)] = rows_by_lineage[lid]
@@ -525,11 +526,11 @@ async def _enrich_memory(session: AsyncSession, rows: list[MemoryRow]) -> None:
         if r.item.status == MemoryStatus.forgotten:
             info = latest.get((lineage_id, MemoryEventType.forgotten.value))
             if info is not None:
-                actor_type, actor_id, at = info
+                actor_kind, actor_id, at = info
                 by = (
                     labels.get(actor_id)
                     if actor_id
-                    else ("Système ORBIT" if actor_type == "system" else None)
+                    else ("Système ORBIT" if actor_kind == "system" else None)
                 )
                 r.forgotten = ForgetInfo(at=at, by=by)
             else:
@@ -603,7 +604,7 @@ async def retrieve(
             )
             raw.sources_used[kind] = "fulltext"
         else:
-            hits = list(res)  # type: ignore[arg-type]
+            hits = list(res)
             raw.sources_used[kind] = "hybrid"
         if kind == "chunks":
             raw.chunk_hits = hits
@@ -620,7 +621,7 @@ async def retrieve(
         if session_id:
             raw.warnings.append(SESSION_UNAVAILABLE_WARNING)
     else:
-        raw.session_turns = list(session_res)  # type: ignore[arg-type]
+        raw.session_turns = list(session_res)
 
     pinned_chunk_ids = [p.id for p in raw.pinned if p.candidate_type == CandidateType.chunk]
     pinned_lineages = [p.id for p in raw.pinned if p.candidate_type == CandidateType.memory]
@@ -1032,13 +1033,13 @@ def fuse(raw: RawRetrieval, *, session_id: str | None) -> list[Candidate]:
         _apply_hit(candidate, hit)
 
     for hit in raw.memory_hits:
-        row = raw.memory_resolution.get(hit.id)
-        if row is None:
+        memory_row = raw.memory_resolution.get(hit.id)
+        if memory_row is None:
             continue
-        key = f"memory:{row.item.lineage_id}"
+        key = f"memory:{memory_row.item.lineage_id}"
         candidate = by_key.get(key)
         if candidate is None:
-            candidate = memory_candidate(row)
+            candidate = memory_candidate(memory_row)
             by_key[key] = candidate
         _apply_hit(candidate, hit)
 

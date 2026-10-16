@@ -146,7 +146,9 @@ async def expand_source(
                     for cid in (
                         await session.scalars(
                             select(Chunk.id)
-                            .where(Chunk.document_id == document.id, Chunk.version == document.version)
+                            .where(
+                                Chunk.document_id == document.id, Chunk.version == document.current_version
+                            )
                             .order_by(Chunk.ordinal)
                         )
                     ).all()
@@ -233,7 +235,7 @@ async def get_memory(
             error = _refuse(verdict)
         elif decision_only and candidate.memory_kind != MemoryKind.decision:
             error = LookupDenied("Cet élément n'est pas une décision : utilisez get_memory_item")
-    if error is not None or candidate is None:
+    if row is None or error is not None or candidate is None:
         error = error or LookupDenied(NOT_FOUND)
         await _audit(session, gov, tool, "memory_item", str(item_id), allowed=False, reason=error.reason)
         raise error
@@ -266,7 +268,7 @@ async def search_more(
     teaser_tokens: int = 60,
 ) -> list[dict[str, Any]]:
     """Additional governed retrieval (chunks + memory) for a follow-up question."""
-    vector, _model = await embed_query(query)
+    vector, _model = await embed_query(query, int(gov.ctx.clearance))
     raw = await retrieval.retrieve(
         session,
         task=query,

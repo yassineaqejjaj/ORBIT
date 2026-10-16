@@ -448,8 +448,10 @@ def _params(resolved: ResolvedRequest, understanding: Understanding) -> dict[str
     }
 
 
-async def _embedded(queries: list[query_rewrite.RewrittenQuery]) -> list[tuple[str, list[float] | None]]:
-    vectors = await asyncio.gather(*(embed_query(q.text) for q in queries))
+async def _embedded(
+    queries: list[query_rewrite.RewrittenQuery], clearance: int
+) -> list[tuple[str, list[float] | None]]:
+    vectors = await asyncio.gather(*(embed_query(q.text, clearance) for q in queries))
     return [(q.text, vector) for q, (vector, _model) in zip(queries, vectors, strict=True)]
 
 
@@ -467,7 +469,7 @@ async def _iterative_retrieve(
     searches of the sub-topics no retrieved item covers yet (§B4); stops early when everything is
     covered or a round finds nothing new. Every round is traced in ``timings.rounds``."""
     body = resolved.body
-    scope = {
+    scope: dict[str, Any] = {
         "project_id": resolved.project_id,
         "include_chunks": body.include_sources,
         "include_memory": bool(resolved.scopes),
@@ -491,7 +493,7 @@ async def _iterative_retrieve(
             extra = [query_rewrite.RewrittenQuery(aliased, KIND_ALIAS), *extra]
     if extra:
         found += await retrieval.search_more(
-            session, raw, await _embedded(extra), discount=REWRITE_DISCOUNT, **scope
+            session, raw, await _embedded(extra, resolved.clearance), discount=REWRITE_DISCOUNT, **scope
         )
     missing = query_rewrite.uncovered(rewritten.subtopics, retrieval.coverage_texts(raw))
     timer.rounds.append(
@@ -503,7 +505,7 @@ async def _iterative_retrieve(
         begin = time.perf_counter()
         targeted = [query_rewrite.RewrittenQuery(t, query_rewrite.KIND_SUBTOPIC) for t in missing]
         new = await retrieval.search_more(
-            session, raw, await _embedded(targeted), discount=ROUND_DISCOUNT, **scope
+            session, raw, await _embedded(targeted, resolved.clearance), discount=ROUND_DISCOUNT, **scope
         )
         missing = query_rewrite.uncovered(missing, retrieval.coverage_texts(raw))
         timer.rounds.append(_round(number, targeted, new, missing, begin))
@@ -539,7 +541,10 @@ async def _run(
 
     with timer.stage("understand") as span:
         understanding = await understand(
-            body.task, body.intent, resolved.agent.kind if resolved.agent else None
+            body.task,
+            body.intent,
+            resolved.agent.kind if resolved.agent else None,
+            classification=resolved.clearance,
         )
         span.set_attribute("orbit.intent", understanding.intent.value)
         span.set_attribute("orbit.dense", understanding.query_vector is not None)
@@ -693,6 +698,7 @@ async def _run(
             snapshot=None,
             config=config,
             warnings=warnings,
+            max_classification=max((int(d.candidate.classification) for d in included), default=0),
         )
         if settings.context_sufficiency:
             package.sufficiency = sufficiency.assess(

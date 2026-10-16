@@ -737,6 +737,7 @@ async def hybrid_chunk_search(scope: AgentScope, query: str, limit: int) -> list
             size_each=min(max(limit * 4, 20), 100),
             filters=filters,
             include_org_memory=False,
+            classification=visibility.clearance,
         )
     except NotImplementedError as exc:
         raise ToolError("Recherche indisponible : l'index des sources n'est pas encore opérationnel") from exc
@@ -803,6 +804,8 @@ async def snapshot_view(
     ``restricted_items``; forgotten items keep their title but their excerpt is redacted. When
     anything was removed or redacted, ``content`` is rebuilt from the visible items only.
     """
+    from app.context.snapshots import delivered_level, max_delivered
+
     items: list[SnapshotItem] = []
     for raw in snapshot.items or []:
         try:
@@ -826,13 +829,13 @@ async def snapshot_view(
             chunk_meta[str(cid)] = (list(acl), int(level), forgotten)
     memory_meta: dict[str, tuple[list[str], int, bool]] = {}
     if memory_ids:
-        rows = await session.execute(
+        memory_rows = await session.execute(
             select(
                 MemoryItem.id, MemoryItem.acl_principals, MemoryItem.classification, MemoryItem.status
             ).where(MemoryItem.id.in_(memory_ids))
         )
-        for mid, acl, level, status in rows.tuples():
-            memory_meta[str(mid)] = (list(acl), int(level), status == MemoryStatus.forgotten)
+        for mid, acl, level, memory_status in memory_rows.tuples():
+            memory_meta[str(mid)] = (list(acl), int(level), memory_status == MemoryStatus.forgotten)
 
     visible: list[SnapshotItem] = []
     restricted = 0
@@ -846,8 +849,12 @@ async def snapshot_view(
             restricted += 1
             continue
         if meta[2] or item.forgotten:
-            item = item.model_copy(update={"excerpt": FORGOTTEN_EXCERPT, "forgotten": True})
+            item = item.model_copy(
+                update={"excerpt": FORGOTTEN_EXCERPT, "forgotten": True, "classification": None}
+            )
             redacted = True
+        else:
+            item = item.model_copy(update={"classification": delivered_level(item, meta[1])})
         visible.append(item)
 
     content = snapshot.content
@@ -886,6 +893,7 @@ async def snapshot_view(
         content=content,
         items=visible,
         request_id=snapshot.request_id,
+        max_classification=max_delivered(visible),
     )
     data = view.model_dump(mode="json")
     if spotlight.enabled() and data.get("content") and not spotlight.is_wrapped(data["content"]):

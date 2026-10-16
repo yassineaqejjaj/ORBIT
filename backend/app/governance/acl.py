@@ -21,7 +21,7 @@ import uuid
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
 
-from app.enums import ROLE_RANK, Role
+from app.enums import ROLE_RANK, AccessScope, Role
 
 if TYPE_CHECKING:
     from app.deps import ProjectAccess
@@ -113,6 +113,16 @@ def classification_allowed(classification: int, clearance: int) -> bool:
 def is_restricted(acl_principals: Sequence[str] | None) -> bool:
     """An ACL is restricted when it does not grant access to every project member."""
     return PROJECT_ALL not in (acl_principals or ())
+
+
+def access_scope(acls: Iterable[Sequence[str] | None], classification: int) -> AccessScope:
+    """Provenance summary of an item for consumers: ``restricted`` as soon as one of its ACLs (an item
+    served from a chunk carries the chunk's and its document's) is narrower than the whole project,
+    empty or unknown (fail-closed); else ``public`` for C0 and ``project`` above. Never exposes entries."""
+    sources = list(acls)
+    if not sources or any(not acl or is_restricted(acl) for acl in sources):
+        return AccessScope.restricted
+    return AccessScope.public if int(classification) == 0 else AccessScope.project
 
 
 def merge_acls(acls: Iterable[Sequence[str] | None]) -> list[str]:

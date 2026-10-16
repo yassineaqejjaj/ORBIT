@@ -17,10 +17,11 @@ un stagiaire.
 - **Assemble un contexte gouverné** pour chaque tâche d'agent : recherche hybride, fraîcheur, résolution des
   conflits, dédoublonnage, habilitations et ACL, budget de tokens — chaque élément retenu ou exclu porte un
   **code de raison** explicable.
-- **Partage un contexte commun** entre agents grâce aux **snapshots** versionnés et comparables (diff).
+- **Partage un contexte commun** entre agents grâce aux **snapshots** versionnés et comparables (diff) ; chaque contexte
+  et chaque snapshot indique la **classification** de ce qu'il livre.
 - **Se branche sur les outils de l'équipe** : connecteurs natifs SharePoint/OneDrive, Confluence et Jira, et
-  connecteurs **MCP** (Confluence & Jira, Microsoft 365, Google Workspace, Slack, GitHub, Linear, Obsidian), avec un
-  assistant de démarrage en 5 étapes ; MarkItDown convertit PPTX, XLSX, e-mails, EPUB…
+  connecteurs **MCP** (Confluence & Jira, Microsoft 365, Google Workspace, Slack, GitHub, Linear, Obsidian, Figma ; un
+  préréglage `custom` est réservé aux administrateurs, `ORBIT_MCP_ALLOW_CUSTOM`), avec un assistant de démarrage en 5 étapes ; MarkItDown convertit PPTX, XLSX, e-mails, EPUB…
 - **Fait vivre la mémoire** : *Revue mémoire* (tri des propositions par impact, actions groupées, arbitrage des
   contradictions côte à côte), extraction assistée par **LLM optionnel** (fiches décision avec justification et
   citation vérifiée) et fil des **Changements** avec abonnements et **webhooks** signés.
@@ -220,12 +221,18 @@ configuration. Outils exposés :
 
 | Outil | Description |
 |---|---|
-| `get_context(task, intent?, token_budget?, scopes?, on_behalf_of?, session_id?, base_snapshot?, save_snapshot?)` | Contexte gouverné en Markdown avec citations `[S1]…`, compteurs d'exclusion, `request_id` |
-| `get_snapshot(name, version?)` | Contexte commun enregistré (`latest` par défaut) |
+| `get_context(task, intent?, token_budget?, scopes?, on_behalf_of?, session_id?, base_snapshot?, save_snapshot?, cache_hints?, mode?, as_of?)` | Contexte gouverné en Markdown avec citations `[S1]…`, compteurs d'exclusion, `request_id`. `mode="progressive"` : résumé + index, le détail se demande ensuite ; `as_of` : mémoire telle que connue à une date |
+| `get_snapshot(name, version?)` | Contexte commun enregistré (`latest` par défaut), avec `max_classification` |
 | `search_sources(query, limit?)` | Recherche hybride filtrée par les droits de l'agent |
 | `propose_memory(kind, title, content, scope?, provenance_document_ids?)` | Proposition de mémoire (statut `proposed`, à valider par un humain) |
 | `record_turn(session_id, role, content)` | Mémoire court terme de session |
 | `send_feedback(request_id, rating, comment?)` | Évaluation du contexte reçu |
+| `expand_source(source_id)` | Texte complet d'un extrait ou d'un document (contexte à la demande) |
+| `get_decision(decision_id)` · `get_memory_item(item_id)` | Version en vigueur d'une décision ou d'un élément de mémoire |
+| `search_more(query)` | Recherche complémentaire gouvernée ; chaque résultat indique l'outil qui renvoie son détail |
+| `list_skills(task_type?)` · `get_skill(name)` | Façons de faire du projet servies comme skills (SKILL.md) |
+
+Une clé d'agent peut vérifier son propre état avec `GET /api/v1/agents/self` (identité, habilitation, projet, clé).
 
 ### API REST
 
@@ -237,6 +244,22 @@ curl -s http://localhost:8000/api/v1/projects/atlas/context \
 ```
 
 Référence complète : [`docs/API.md`](docs/API.md) et la documentation OpenAPI (`/api/v1/docs`).
+
+### Mémoire dans le temps, contradictions et contexte manquant
+
+- **Tel que connu au** : `as_of` (corps de `POST /context`, outil `get_context`, `GET /memory?as_of=`) sert les versions de la mémoire
+  valides à une date ; `GET /memory/as-of-diff?from=&to=` compare ce que le projet savait à deux dates.
+- **Contradictions** : `GET /memory/contradictions` regroupe les éléments vivants qui se contredisent (gravité, élément à garder suggéré,
+  arêtes expliquées) ; `GET /memory/{id}/trail` raconte pourquoi une décision est en vigueur.
+- **Boucle « contexte manquant »** : un agent qui a échoué faute d'information appelle
+  `POST /context/requests/{id}/complete` avec ce qui manquait ; ORBIT réassemble autour de ces manques (nouvelle version du
+  snapshot) et `GET /knowledge-gaps` agrège ce que les agents demandent sans que la mémoire sache y répondre.
+- **Révocation** : le fil des changements et les webhooks signés annoncent aussi les retraits d'accès (`document.acl_changed`,
+  `document.classification_changed`, `memory.acl_changed`, `member.removed`, `agent.revoked` ; opt-in côté webhook), pour que les
+  consommateurs invalident ce qu'ils ont dérivé.
+
+Détail des routes et des formats : [`docs/API.md`](docs/API.md) ; événements : [`docs/FEATURES.md`](docs/FEATURES.md) (F2 ter) ; état
+de chaque fonctionnalité : [`docs/STATUS.md`](docs/STATUS.md).
 
 ---
 
@@ -250,6 +273,7 @@ Variables d'environnement préfixées `ORBIT_` (voir [`.env.example`](.env.examp
 | `ORBIT_DATABASE_URL` / `ORBIT_OPENSEARCH_URL` / `ORBIT_VALKEY_URL` | services Compose | Infrastructure |
 | `ORBIT_JWT_SECRET` | valeur de dev | **Obligatoire en production** (≥ 32 caractères) |
 | `ORBIT_COOKIE_SECURE` | `false` | `true` derrière HTTPS |
+| `ORBIT_OBJECT_STORE_BACKEND` / `ORBIT_OBJECT_STORE_S3_*` | `local` | Fichiers originaux : volume local ou S3 / compatible S3 (bucket requis avec `s3`) ; voir [`docs/OBJECT_STORAGE.md`](docs/OBJECT_STORAGE.md) |
 | `ORBIT_EMBEDDING_PROVIDER` | `fastembed` | `fastembed` (local, hors ligne), `openai` (TEI, vLLM, LiteLLM… via `ORBIT_EMBEDDING_BASE_URL` / `_API_KEY`), `hash` (tests) |
 | `ORBIT_EMBEDDING_MODEL` / `ORBIT_EMBEDDING_DIM` | `paraphrase-multilingual-MiniLM-L12-v2` / `384` | Modèle et dimension (doivent correspondre) |
 | `ORBIT_RERANKER` | `heuristic` | `heuristic`, `fastembed` (cross-encoder multilingue local) ou `none` |
@@ -322,8 +346,8 @@ de vie de la mémoire court terme se règlent **par projet** (écran Paramètres
   ni identifiant) pour qui n'a pas lui-même accès ; les agents ne reçoivent que des compteurs.
 - **Données personnelles** : détection à l'ingestion (email, téléphone, IBAN, carte avec Luhn, NIR, IPv4, noms) ; le
   contexte servi utilise **toujours** le texte caviardé.
-- **Oubli sélectif** (RGPD) : tombstone, retrait de l'index, contenu effacé, propagation aux éléments dérivés et aux
-  snapshots, audit.
+- **Oubli sélectif** (RGPD) : tombstone, retrait de l'index, contenu effacé, propagation aux éléments dérivés, réécriture au
+  repos des contextes et snapshots persistés (`python -m app.admin purge-forgotten` après une restauration), audit.
 - **Audit** : chaque action sensible (ingestion, changement d'ACL ou de classification, oubli, contexte servi, export,
   question posée, synchronisation, webhook) est tracée ; les détails restreints ne sont visibles que des owners et admins.
 - **Secrets d'intégration** (connecteurs, webhooks, Teams) chiffrés (Fernet, `ORBIT_ENCRYPTION_KEY`), jamais
@@ -331,13 +355,13 @@ de vie de la mémoire court terme se règlent **par projet** (écran Paramètres
 - **Connecteurs MCP** : seuls les serveurs des presets peuvent être lancés (liste autorisée, arguments construits côté
   serveur), dans un environnement isolé ne contenant que les identifiants du connecteur, avec délais et plafonds ;
   serveurs personnalisés désactivés par défaut.
-- **LLM** : garde-fou de classification et masquage des données personnelles avant tout envoi à un LLM externe ;
+- **LLM** : garde-fou de classification (niveau obligatoire, inconnu = C3 ; appliqué aussi aux embeddings distants) et masquage des données personnelles avant tout envoi à un LLM externe ;
   aucune affirmation sans citation dans *Demander à ORBIT*.
 - **Webhooks** signés (HMAC-SHA256), charge utile caviardée pour les contenus C2+ ou à ACL restreinte ; webhook
   Teams vérifié par HMAC avec protection contre le rejeu.
 
 > Le durcissement complet pour la production (SSO OIDC, MFA, sessions révocables, CSRF renforcé, limitation des
-> tentatives, audit chaîné, sauvegardes, chart Helm, CI/CD) est en cours sur la branche `production-readiness`.
+> tentatives, audit chaîné, sauvegardes, chart Helm) est en cours sur la branche `production-readiness`.
 
 ---
 
@@ -356,6 +380,24 @@ Les tests d'intégration créent une base et des index dédiés (`ORBIT_TEST_DAT
 `ORBIT_TEST_VALKEY_URL`) et n'affectent jamais les données de la plateforme. Le jeu de démonstration est lui-même
 testé : cohérence manifeste ↔ fichiers, dates relatives, couverture de chaque mécanisme de `docs/DEMO.md`, et
 exécution complète du seed contre une API simulée (`tests/test_seed_data*.py`).
+
+### Intégration continue
+
+`.github/workflows/ci.yml` (GitHub Actions) tourne sur chaque pull request (quelle que soit la branche de base) et sur les
+pushs vers `main` et `preprod`. Droits `contents: read`, délais maximaux, actions épinglées par SHA, annulation des runs
+obsolètes. Quatre jobs :
+
+| Job | Contrôles |
+|---|---|
+| `backend` | PostgreSQL 17 / OpenSearch 2.19 / Valkey 8 (mêmes ports que `docker-compose.yml`) ; `ruff check` et `ruff format --check` ; **mypy sans régression** contre `backend/mypy-baseline.txt` ; **`alembic upgrade head` puis `alembic check`** (une migration manquante fait échouer le job) ; `pytest` |
+| `web` | `npm ci`, `typecheck`, `lint --max-warnings=0`, `build` |
+| `docker` | build (sans push) de `backend/Dockerfile`, `backend/Dockerfile.railway` et `frontend/Dockerfile` |
+| `audit` | **informatif** (n'échoue jamais) : `pip-audit` sur `uv.lock`, `npm audit --audit-level=high` |
+
+La baseline mypy compte les erreurs par fichier et code (`backend/scripts/mypy_baseline.py`) : un nouveau fichier doit être
+propre, un fichier existant ne peut pas gagner d'erreurs. Après un nettoyage :
+`cd backend && uv run mypy app --no-error-summary | uv run python scripts/mypy_baseline.py --update`. La CI ne déploie
+rien : le backend ORBIT se déploie à la main (`railway up`), le frontend par Vercel.
 
 ---
 
@@ -383,6 +425,7 @@ orbit/
     Dockerfile        image standard ; Dockerfile.railway pour Railway (API + worker, Node.js et serveurs MCP inclus)
   frontend/           Next.js 15 (App Router), TypeScript strict, Tailwind CSS v4, Radix UI, TanStack Query, Recharts
     public/landing.html  landing page servie à la racine du site
+    src/assets/fonts/    Montserrat (latin, police variable, licence SIL OFL 1.1) embarquée : le build ne contacte pas Google Fonts
 ```
 
 ---
@@ -393,7 +436,8 @@ orbit/
 Jira) et MCP (7 presets + MarkItDown), mémoire à cycle de vie complet avec revue et arbitrage, extraction assistée par
 LLM, assemblage de contexte gouverné et explicable, *Demander à ORBIT* (application et Teams), snapshots et diff, fil
 des changements, abonnements et webhooks, vue d'ensemble orientée pilotage, observabilité (métriques, export NDJSON),
-audit, API REST, serveur MCP, jeu de démonstration de bout en bout, instance en ligne (Railway + Vercel). LLM et
+audit, API REST, serveur MCP (12 outils), mémoire « telle que connue au », graphe de contradictions, boucle de contexte manquant,
+stockage objet local ou S3, événements de révocation, jeu de démonstration de bout en bout, instance en ligne (Railway + Vercel). LLM et
 reranker neuronal sont des **options** : sans eux, ORBIT fonctionne en mode déterministe (règles, extraction,
 heuristiques).
 
@@ -401,9 +445,8 @@ heuristiques).
 
 | Sujet | Description |
 |---|---|
-| Graphe de connaissances | Spike : relations mémoire ↔ documents exploitées au classement (parcours multi-sauts) |
-| Durcissement production | Branche `production-readiness` : configuration refusant les réglages non sûrs, sessions révocables, CSRF, limitation des tentatives et file de jobs robuste déjà faits ; à venir : SSO OIDC et MFA, audit chaîné, effacement RGPD complet et durées de conservation, sauvegardes, chart Helm, CI/CD |
+| Graphe de connaissances | Les relations mémoire ↔ documents servent déjà au classement (`context/selection.py`) et à `/memory/graph` ; reste le parcours multi-sauts |
+| Durcissement production | Branche `production-readiness` : configuration refusant les réglages non sûrs, sessions révocables, CSRF, limitation des tentatives et file de jobs robuste déjà faits ; à venir : SSO OIDC et MFA, audit chaîné, durées de conservation, sauvegardes, chart Helm, déploiement continu (la CI existe, voir « Intégration continue ») |
 | Connecteurs | CRM (Salesforce, HubSpot), OAuth interactif pour Microsoft 365 / Google / Linear via MCP ([docs/integrations/mcp-servers.md](docs/integrations/mcp-servers.md)) |
-| Stockage objets | Backend S3 / compatible S3 derrière l'abstraction `ObjectStore` (aujourd'hui : volume local) |
 | Autorisation externalisée | OpenFGA (ReBAC) pour les ACL, OPA pour les politiques de classification et de fraîcheur |
-| Évaluation | Boucle d'évaluation continue à partir des exports NDJSON et des feedbacks |
+| Évaluation | Les bancs, le juge LLM et l'apprentissage existent (`app/evaluation/`) ; reste la boucle continue et automatisée à partir des exports NDJSON et des feedbacks |

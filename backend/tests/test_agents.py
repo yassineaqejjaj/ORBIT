@@ -163,3 +163,34 @@ async def test_member_principals(
     body = (await c.get(f"/api/v1/_test/projects/{project['slug']}/viewer")).json()
     assert body["kind"] == "user"
     assert body["principals"] == sorted(["project:*", "role:viewer", "role:editor", f"user:{editor.id}"])
+
+
+async def test_agent_self_returns_the_identity_behind_the_key(
+    admin_client: httpx.AsyncClient,
+    project: dict,  # type: ignore[type-arg]
+    agent_client,  # type: ignore[no-untyped-def,type-arg]
+    client: httpx.AsyncClient,
+) -> None:
+    created = await _create_agent(admin_client, project["slug"], name="Agent santé", clearance=2)
+    key = created["api_key"]
+    response = await agent_client(key).get("/api/v1/agents/self")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == created["agent"]["id"] and body["name"] == "Agent santé"
+    assert body["kind"] == "product" and body["clearance"] == 2
+    assert body["project"] == {"id": project["id"], "slug": project["slug"], "name": project["name"]}
+    assert body["key"]["prefix"] == created["agent"]["api_key_prefix"] and body["key"]["status"] == "active"
+    assert body["key"]["last_used_at"] is not None and body["key"]["created_at"]
+    assert key not in response.text and "api_key_hash" not in response.text
+    assert (await agent_client(key, header="x-orbit-key").get("/api/v1/agents/self")).status_code == 200
+
+    # A person (session) has no agent identity; no or invalid credentials are refused.
+    assert (await admin_client.get("/api/v1/agents/self")).status_code == 403
+    assert (await client.get("/api/v1/agents/self")).status_code == 401
+    assert (await agent_client("orb_aaaaaaaa_" + "x" * 32).get("/api/v1/agents/self")).status_code == 401
+
+    # A revoked key says so (401) instead of describing itself.
+    revoked = await admin_client.delete(f"/api/v1/projects/{project['slug']}/agents/{created['agent']['id']}")
+    assert revoked.status_code in (200, 204), revoked.text
+    gone = await agent_client(key).get("/api/v1/agents/self")
+    assert gone.status_code == 401 and "révoquée" in gone.json()["detail"]

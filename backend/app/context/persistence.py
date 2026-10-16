@@ -46,6 +46,7 @@ from app.enums import (
     SourceKind,
 )
 from app.errors import not_found, validation_error
+from app.governance.acl import access_scope
 from app.models import (
     Agent,
     ContextDecision,
@@ -275,6 +276,7 @@ def item_from_decision(decision: Decision) -> ContextItem:
         tokens=decision.tokens,
         scores=scores_of(decision),
         classification=int(c.classification),
+        access_scope=access_scope(c.all_acls, int(c.classification)),
         date=c.date,
         pii_redacted=c.pii_redacted,
         reason_code=decision.verdict.reason_code,
@@ -291,9 +293,11 @@ def restrict_item(item: ContextItem, visibility: Visibility) -> tuple[ContextIte
     if visibility == Visibility.full:
         return item, None
     if visibility == Visibility.partial:
-        return item.model_copy(update={"excerpt": ""}), f"{item.title} — {RESTRICTED_TITLE.lower()}"
+        partial = item.model_copy(update={"excerpt": "", "access_scope": None})
+        return partial, f"{item.title} — {RESTRICTED_TITLE.lower()}"
     hidden = item.model_copy(
         update={
+            "access_scope": None,
             "id": "",
             "title": RESTRICTED_TITLE,
             "excerpt": "",
@@ -434,6 +438,7 @@ async def reconstitute(
     items: list[ContextItem] = []
     excluded: list[ExcludedItem] = []
     replacements: dict[str, str] = {}
+    delivered: list[int] = []  # levels of the items whose content this viewer received
     for row in decisions:
         meta = (row.scores or {}).get("meta") or {}
         acls = meta.get("acls") or []
@@ -462,6 +467,7 @@ async def reconstitute(
                 tokens=row.tokens,
                 scores=scores,
                 classification=row.classification,
+                access_scope=access_scope(acls, row.classification),
                 date=_parse_date(meta.get("date")),
                 pii_redacted=bool(meta.get("pii_redacted")),
                 reason_code=row.reason_code,
@@ -469,6 +475,8 @@ async def reconstitute(
             )
             item, replacement = restrict_item(stored, visibility)
             items.append(item)
+            if visibility == Visibility.full:
+                delivered.append(int(row.classification))
             if replacement is not None and row.citation:
                 replacements[row.citation] = replacement
         else:
@@ -538,6 +546,7 @@ async def reconstitute(
         warnings=list(params.get("warnings") or []),
         profile=params.get("profile") or None,
         sufficiency=params.get("sufficiency") or None,
+        max_classification=max(delivered, default=0),
         mode="progressive" if (params.get("request") or {}).get("mode") == "progressive" else "full",
         cache_prefix_hash=(params.get("cache") or {}).get("prefix_hash"),
         cache_prefix_tokens=int((params.get("cache") or {}).get("prefix_tokens") or 0),

@@ -1,0 +1,129 @@
+name: CI
+
+# Pull requests (any base branch, `preprod` and `main` included) and pushes to the integration branches.
+on:
+  push:
+    branches: [main, preprod]
+  pull_request:
+
+# Least privilege: the jobs only read the repository. Nothing here deploys or pushes anything.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Third-party actions are pinned by commit SHA (the tag is in the comment).
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    # Same ports and versions as docker-compose.yml and tests/conftest.py.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: orbit
+          POSTGRES_PASSWORD: orbit
+          POSTGRES_DB: orbit
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U orbit -d orbit" --health-interval 5s --health-timeout 5s --health-retries 20
+      opensearch:
+        image: opensearchproject/opensearch:2.19.6
+        env:
+          discovery.type: single-node
+          bootstrap.memory_lock: "false"
+          DISABLE_SECURITY_PLUGIN: "true"
+          DISABLE_INSTALL_DEMO_CONFIG: "true"
+          OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+          cluster.routing.allocation.disk.threshold_enabled: "false"
+        ports: ["9201:9200"]
+        options: >-
+          --health-cmd "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s'"
+          --health-interval 10s --health-timeout 10s --health-retries 30 --health-start-period 30s
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports: ["6380:6379"]
+        options: >-
+          --health-cmd "valkey-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      ORBIT_EMBEDDING_PROVIDER: hash
+      ORBIT_RERANKER: heuristic
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Types (mypy, no regression against mypy-baseline.txt)
+        run: |
+          uv run mypy app --no-error-summary > mypy-output.txt || status=$?
+          # 0 = clean, 1 = type errors (compared with the baseline); anything else is a crash.
+          if [ "${status:-0}" -gt 1 ]; then cat mypy-output.txt; exit "$status"; fi
+          uv run python scripts/mypy_baseline.py < mypy-output.txt
+      - name: Migrations match the models (alembic check)
+        env:
+          ORBIT_DATABASE_URL: postgresql+asyncpg://orbit:orbit@localhost:5433/orbit
+        run: uv run alembic upgrade head && uv run alembic check
+      - name: Tests
+        run: uv run pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck && npm run lint
+      - run: npm run build
+
+  docker:
+    # The three images build (nothing is pushed). The backend images download Node, the MCP servers and the
+    # embedding model: this is the slow job.
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - {name: backend, context: backend, file: backend/Dockerfile}
+          - {name: backend-railway, context: backend, file: backend/Dockerfile.railway}
+          - {name: web, context: frontend, file: frontend/Dockerfile}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - run: docker build --pull --file "${{ matrix.image.file }}" --tag "orbit-${{ matrix.image.name }}:ci" "${{ matrix.image.context }}"
+
+  audit:
+    # Informational: reports known vulnerabilities, never fails the run.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - name: pip-audit (backend, uv.lock)
+        working-directory: backend
+        continue-on-error: true
+        run: |
+          uv export --frozen --no-dev --no-emit-project --format requirements-txt -o /tmp/requirements.txt
+          uvx pip-audit --requirement /tmp/requirements.txt --no-deps --disable-pip
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: npm audit (frontend, high and above)
+        working-directory: frontend
+        continue-on-error: true
+        run: npm audit --audit-level=high

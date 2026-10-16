@@ -140,7 +140,7 @@ def needs_conversion(mime_type: str | None, filename: str | None = None, data: b
 
     if markitdown.is_convertible(mime_type, filename):
         return True
-    return bool(data) and data[:4] == b"\xd0\xcf\x11\xe0" and _canonical(mime_type) == CSV
+    return data is not None and data[:4] == b"\xd0\xcf\x11\xe0" and _canonical(mime_type) == CSV
 
 
 def decode_text(data: bytes) -> str:

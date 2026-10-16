@@ -39,7 +39,11 @@ Flux : `Sources métier → ingestion & normalisation → indexation → gouvern
 | `ORBIT_JWT_SECRET` | (requis en prod, valeur dev dans `.env.example`) | HS256 |
 | `ORBIT_JWT_TTL_MINUTES` | `720` | |
 | `ORBIT_COOKIE_SECURE` | `false` | |
-| `ORBIT_OBJECT_STORE_PATH` | `/data/objects` | |
+| `ORBIT_OBJECT_STORE_BACKEND` | `local` | `local` (volume) \| `s3` (S3 ou compatible) ; voir [OBJECT_STORAGE.md](OBJECT_STORAGE.md) |
+| `ORBIT_OBJECT_STORE_PATH` | `/data/objects` | backend `local` |
+| `ORBIT_OBJECT_STORE_S3_BUCKET` / `_ENDPOINT` / `_REGION` | (vide) | backend `s3` ; le bucket est requis, endpoint vide = AWS |
+| `ORBIT_OBJECT_STORE_S3_ACCESS_KEY` / `_SECRET_KEY` | (vide) | ensemble, ou aucun (chaîne d'identifiants AWS) |
+| `ORBIT_OBJECT_STORE_S3_PREFIX` / `_PATH_STYLE` | (vide) / `true` | préfixe des clés ; adressage path-style (MinIO) |
 | `ORBIT_EMBEDDING_PROVIDER` | `fastembed` | `fastembed` \| `openai` (TEI/vLLM/LiteLLM compatible OpenAI) \| `hash` (tests) |
 | `ORBIT_EMBEDDING_MODEL` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | |
 | `ORBIT_EMBEDDING_DIM` | `384` | doit correspondre au modèle |
@@ -327,7 +331,19 @@ chunks précédents `superseded`, relation `supersedes` document→document.
   fiable gagne (validé > proposé, puis plus récent, puis confiance) ; l'autre ⇒ `EXCLUDED_CONFLICT`.
 - **Oubli sélectif** : tombstone → suppression de l'index, statut `forgotten`, contenu remplacé par `[oublié]` en base
   (on garde titre/métadonnées pour l'audit), propagation aux items dérivés (items dont toutes les provenances sont
-  oubliées ⇒ oubliés ; sinon confiance réduite), purge Valkey, snapshots marqués (items caviardés à l'affichage).
+  oubliées ⇒ oubliés ; sinon confiance réduite), purge Valkey. Les copies persistées du texte sont **réécrites au repos**
+  (NOV-97) : `context_decisions.excerpt`, `context_requests.context_text` (puces et lignes de sources des citations
+  concernées) et `context_snapshots` (`content`, `items[].excerpt|title`, drapeau `forgotten`, `content_hash` recalculé), dans
+  `forget` (mémoire, y compris par propagation d'un document) et dans la tâche `forget` d'un document (`app/context/purge.py`).
+  Restent en l'état : les titres des décisions de contexte (audit) et les empreintes de préfixe de cache déjà stockées.
+  L'affichage continue de caviarder à la lecture (défense en profondeur).
+
+  *Rattrapage et restauration.* `python -m app.admin purge-forgotten [--project <slug>] [--dry-run]` réécrit ce qui cite
+  encore du contenu oublié (idempotent ; `--dry-run` ne fait que compter ; une ligne d'audit `governance.forget_purge`
+  par projet modifié). **Après toute restauration de sauvegarde, lancer cette commande** : elle rejoue l'oubli pour tout
+  ce que la base restaurée marque déjà `forgotten`. Un oubli demandé *après* le point de sauvegarde n'est pas dans la base
+  restaurée : il faut le rejouer à partir de l'audit conservé hors de la base (`memory.forget`, `document.forget`) en
+  réémettant la demande d'oubli, puis relancer la commande.
 
 ---
 

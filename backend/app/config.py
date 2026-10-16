@@ -7,6 +7,7 @@ they are all documented in ``.env.example``.
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -49,7 +50,19 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
 
     # --- Storage ---------------------------------------------------------------------------------
+    #: ``local`` = filesystem volume (``object_store_path``); ``s3`` = S3 or any S3-compatible service.
+    object_store_backend: Literal["local", "s3"] = "local"
     object_store_path: str = "/data/objects"
+    #: S3 backend. Empty endpoint = AWS; empty keys = default AWS credential chain (IAM role, env).
+    object_store_s3_endpoint: str = ""
+    object_store_s3_bucket: str = ""
+    object_store_s3_region: str = ""
+    object_store_s3_access_key: str = ""
+    object_store_s3_secret_key: str = ""
+    #: Prepended to every key (several environments can share one bucket).
+    object_store_s3_prefix: str = ""
+    #: Path-style addressing (``endpoint/bucket/key``): required by MinIO and most self-hosted services.
+    object_store_s3_path_style: bool = True
     max_upload_mb: int = 50
 
     # --- Retrieval models ------------------------------------------------------------------------
@@ -265,16 +278,46 @@ class Settings(BaseSettings):
     def _upper_level(cls, value: str) -> str:
         return value.upper()
 
-    @field_validator("llm_base_url", "embedding_base_url", "otlp_endpoint")
+    @field_validator("llm_base_url", "embedding_base_url", "otlp_endpoint", "object_store_s3_endpoint")
     @classmethod
     def _strip_trailing_slash(cls, value: str) -> str:
         return value.strip().rstrip("/")
+
+    @model_validator(mode="after")
+    def _check_external_embeddings(self) -> Settings:
+        """An external embedding provider only sees what the LLM guardrail lets through (C0-C1 by default)."""
+        if self.embedding_provider != "openai" or self.llm_local or self.llm_max_classification <= 1:
+            return self
+        message = (
+            "ORBIT_EMBEDDING_PROVIDER=openai envoie les textes à un service externe alors que "
+            f"ORBIT_LLM_MAX_CLASSIFICATION={self.llm_max_classification} (> C1) : "
+            "définissez ORBIT_LLM_LOCAL=true si le service d'embeddings est auto-hébergé, "
+            "ou ramenez le plafond à 1."
+        )
+        if self.env == "production":
+            raise ValueError(message)
+        logging.getLogger("orbit.config").warning(message)
+        return self
 
     @model_validator(mode="after")
     def _check_production_secrets(self) -> Settings:
         if self.env == "production" and (self.jwt_secret == DEV_JWT_SECRET or len(self.jwt_secret) < 32):
             raise ValueError(
                 "ORBIT_JWT_SECRET doit être défini (au moins 32 caractères) lorsque ORBIT_ENV=production."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _check_object_store(self) -> Settings:
+        """Fail at start-up, not at the first upload, when the S3 backend is half configured."""
+        if self.object_store_backend != "s3":
+            return self
+        if not self.object_store_s3_bucket.strip():
+            raise ValueError("ORBIT_OBJECT_STORE_S3_BUCKET est requis lorsque ORBIT_OBJECT_STORE_BACKEND=s3.")
+        if bool(self.object_store_s3_access_key) != bool(self.object_store_s3_secret_key):
+            raise ValueError(
+                "ORBIT_OBJECT_STORE_S3_ACCESS_KEY et ORBIT_OBJECT_STORE_S3_SECRET_KEY vont ensemble "
+                "(ou aucun des deux : chaîne d'identifiants AWS par défaut)."
             )
         return self
 

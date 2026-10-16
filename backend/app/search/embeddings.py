@@ -15,6 +15,9 @@ Contract (ARCHITECTURE §1, §6, §9):
   == dot product), matching the ``knn_vector`` mapping (``cosinesimil``).
 * ``get_embedder()`` returns a process-wide singleton (model loaded once). Loading a local model is
   blocking: async callers should use :func:`aget_embedder` (or ``asyncio.to_thread(get_embedder)``).
+* ``Embedder.remote`` tells whether texts leave ORBIT (``openai``): such an embedder must be called through
+  :func:`embed_documents_guarded` / :func:`embed_query_guarded`, which apply the LLM guardrail (NOV-78).
+  An embedder that does not declare ``remote`` is treated as remote (fail-closed).
 * :func:`check_embedder` embeds a probe and validates the dimension (called at startup through
   ``app.search.opensearch.ensure_indices``).
 """
@@ -59,6 +62,8 @@ class EmbeddingDimensionError(EmbeddingError):
 class Embedder(Protocol):
     model_name: str
     dim: int
+    #: ``True`` when texts are sent to an external service (subject to the LLM guardrail).
+    remote: bool
 
     async def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         """Embed passages (batched). Returns one vector per input, same order."""
@@ -219,6 +224,8 @@ def hash_tokens(text: str) -> list[str]:
 class HashEmbedder:
     """Deterministic feature-hashing embedder (unigrams weight 1, bigrams weight 0.5, signed buckets)."""
 
+    remote = False
+
     def __init__(self, dim: int) -> None:
         if dim <= 0:
             raise ValueError("La dimension des embeddings doit être positive")
@@ -268,6 +275,8 @@ def _fastembed_cache_dir() -> str | None:
 
 class FastEmbedEmbedder:
     """Local ONNX embeddings with fastembed. The model is loaded in ``__init__`` (blocking)."""
+
+    remote = False
 
     def __init__(self, model_name: str, dim: int, cache_dir: str | None = None) -> None:
         from fastembed import TextEmbedding
@@ -334,6 +343,8 @@ def _embeddings_url(base_url: str) -> str:
 
 class OpenAIEmbedder:
     """``POST /v1/embeddings`` on an OpenAI-compatible server."""
+
+    remote = True
 
     def __init__(self, base_url: str, model_name: str, dim: int, api_key: str = "") -> None:
         if not base_url:
@@ -409,6 +420,59 @@ class OpenAIEmbedder:
         for client in self._clients.values():
             await client.aclose()
         self._clients.clear()
+
+
+# --- Guardrail (NOV-78) ---------------------------------------------------------------------------------
+
+
+def is_remote(embedder: Embedder) -> bool:
+    """Whether ``embedder`` sends texts out of ORBIT (undeclared ⇒ yes, fail-closed)."""
+    return bool(getattr(embedder, "remote", True))
+
+
+async def embed_documents_guarded(
+    embedder: Embedder, texts: Sequence[str], classifications: Sequence[int | None] | None = None
+) -> list[list[float] | None]:
+    """:meth:`Embedder.embed_documents` with the LLM guardrail applied per text.
+
+    A remote embedder only receives the texts whose level (``classifications``, same order) is within
+    :func:`app.llm.guardrail.ceiling`; the others get ``None`` (no vector, lexical search only) and are
+    counted in ``orbit_llm_guardrail_skips_total{reason="embedding"}``. A missing or ``None`` level is C3.
+    A local embedder is never restricted.
+    """
+    from app.llm import guardrail
+
+    items = list(texts)
+    if not is_remote(embedder):
+        return list(await embedder.embed_documents(items))
+    levels: list[int | None] = list(classifications) if classifications is not None else [None] * len(items)
+    if len(levels) != len(items):
+        raise ValueError("Un niveau de classification est requis pour chaque texte à vectoriser")
+    allowed = [i for i, level in enumerate(levels) if guardrail.allows(level)]
+    guardrail.record_skip(guardrail.REASON_EMBEDDING, len(items) - len(allowed))
+    vectors: list[list[float] | None] = [None] * len(items)
+    if allowed:
+        for index, vector in zip(
+            allowed, await embedder.embed_documents([items[i] for i in allowed]), strict=True
+        ):
+            vectors[index] = vector
+    return vectors
+
+
+async def embed_query_guarded(
+    embedder: Embedder, text: str, classification: int | None
+) -> list[float] | None:
+    """:meth:`Embedder.embed_query` behind the guardrail; ``None`` when a remote embedder must not see it.
+
+    ``classification`` is the highest level the query may relate to (the requester's clearance); ``None``
+    is C3. Callers fall back to lexical retrieval on ``None``.
+    """
+    from app.llm import guardrail
+
+    if is_remote(embedder) and not guardrail.allows(classification):
+        guardrail.record_skip(guardrail.REASON_EMBEDDING)
+        return None
+    return await embedder.embed_query(text)
 
 
 # --- Singleton ------------------------------------------------------------------------------------------

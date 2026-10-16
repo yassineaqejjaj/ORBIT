@@ -379,6 +379,8 @@ def _prepare_doc(doc: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
     doc_id = body.get("id")
     if not doc_id:
         raise ValueError("Chaque document indexé doit avoir un champ « id »")
+    if body.get("embedding") is None:
+        body.pop("embedding", None)  # no vector (guardrail, NOV-78): the document stays searchable by BM25
     embedding = body.get("embedding")
     if embedding is not None:
         if len(embedding) != settings.embedding_dim:

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import utcnow
 from tests.conftest import UserInfo
-from tests.test_api_documents import drain
+from tests.test_api_documents import _text, drain
 
 JSON = dict[str, Any]
 
@@ -252,3 +252,94 @@ async def test_digest_and_subscriptions(
     sent.clear()
     await service.send_due_digests(db_session)
     assert not any(to == user.email for to, _, _ in sent)  # not due again before a day
+
+
+async def _revoke_everything(
+    admin_client: httpx.AsyncClient,
+    project: JSON,
+    make_user: Callable[..., Awaitable[UserInfo]],
+) -> dict[str, str]:
+    """Run each audited action that withdraws access; returns the ids of the targets."""
+    base = _base(project)
+    document = await _text(
+        admin_client, project["slug"], title="Plan de salle", content="Le hall A accueille 40 stands."
+    )
+    await drain()
+    acl = await admin_client.patch(
+        f"{base}/documents/{document['id']}", json={"acl_principals": ["role:owner"]}
+    )
+    assert acl.status_code == 200, acl.text
+    level = await admin_client.patch(f"{base}/documents/{document['id']}", json={"classification": 3})
+    assert level.status_code == 200, level.text
+    decision = await _create(admin_client, project, title="Décision ouverte")
+    raised = await admin_client.patch(f"{base}/memory/{decision['id']}", json={"classification": 2})
+    assert raised.status_code == 200, raised.text
+    leaver = await make_user(clearance=1)
+    added = await admin_client.post(f"{base}/members", json={"email": leaver.email, "role": "viewer"})
+    assert added.status_code == 201, added.text
+    assert (await admin_client.delete(f"{base}/members/{leaver.id}")).status_code == 204
+    agent = (
+        await admin_client.post(
+            f"{base}/agents", json={"name": "Agent partant", "kind": "product", "clearance": 1}
+        )
+    ).json()
+    assert (await admin_client.delete(f"{base}/agents/{agent['agent']['id']}")).status_code == 204
+    return {
+        "document": document["id"],
+        "memory": decision["id"],
+        "member": str(leaver.id),
+        "agent": agent["agent"]["id"],
+    }
+
+
+async def test_revocation_events_are_in_the_feed_with_a_minimal_payload(
+    admin_client: httpx.AsyncClient,
+    project: JSON,
+    make_user: Callable[..., Awaitable[UserInfo]],
+    client_for: Callable[[UserInfo], Awaitable[httpx.AsyncClient]],
+) -> None:
+    ids = await _revoke_everything(admin_client, project, make_user)
+    events = await _changes(admin_client, project)
+    by_type = {
+        e["type"]: e
+        for e in events
+        if e["type"].split(".")[-1] in ("acl_changed", "classification_changed", "removed", "revoked")
+    }
+    assert set(by_type) == {
+        "document.acl_changed",
+        "document.classification_changed",
+        "memory.acl_changed",
+        "member.removed",
+        "agent.revoked",
+    }
+    assert by_type["document.acl_changed"]["target_id"] == ids["document"]
+    classification = by_type["document.classification_changed"]
+    assert classification["target_id"] == ids["document"]
+    assert (
+        classification["data"]["old_classification"] == 1
+        and classification["data"]["new_classification"] == 3
+    )
+    memory = by_type["memory.acl_changed"]
+    assert memory["target_type"] == "memory"
+    assert memory["data"]["old_classification"] == 1 and memory["data"]["new_classification"] == 2
+    assert (
+        by_type["member.removed"]["target_type"] == "user"
+        and by_type["member.removed"]["target_id"] == ids["member"]
+    )
+    assert (
+        by_type["agent.revoked"]["target_type"] == "agent"
+        and by_type["agent.revoked"]["target_id"] == ids["agent"]
+    )
+    assert all(e["type_label"] for e in by_type.values())
+    only = await _changes(admin_client, project, types="member.removed,agent.revoked")
+    assert {e["type"] for e in only} == {"member.removed", "agent.revoked"}
+
+    # Withdrawing a member or a key is an owner matter: other members do not see it in the feed.
+    editor_user = await make_user(clearance=3)
+    await admin_client.post(f"{_base(project)}/members", json={"email": editor_user.email, "role": "editor"})
+    editor = await client_for(editor_user)
+    seen = {e["type"] for e in await _changes(editor, project)}
+    assert "member.removed" not in seen and "agent.revoked" not in seen
+    assert (
+        not {"document.acl_changed", "document.classification_changed"} & seen
+    )  # now an owner-only document
