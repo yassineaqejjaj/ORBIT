@@ -26,7 +26,7 @@ from app.context.visibility import FORGOTTEN_TEXT, RESTRICTED_TITLE, Viewer, Vis
 from app.enums import ActorType, CandidateType, ChunkStatus, DocumentStatus, MemoryStatus
 from app.errors import validation_error
 from app.governance.acl import DEFAULT_ACL
-from app.models import Agent, Chunk, ContextRequest, ContextSnapshot, Document, MemoryItem, User
+from app.models import Agent, Chunk, ContextRequest, ContextSnapshot, Document, MemoryItem, Project, User
 from app.schemas.context import ContextPackage
 from app.schemas.snapshots import Snapshot, SnapshotDiff, SnapshotGroup, SnapshotItem, SnapshotSummary
 from app.services.audit import ActorLike, resolve_actor
@@ -440,6 +440,9 @@ async def present(session: AsyncSession, snapshot: ContextSnapshot, viewer: View
         items=shown,
         request_id=snapshot.request_id,
         max_classification=max_delivered(shown),
+        orion_project_id=await session.scalar(
+            select(Project.orion_project_id).where(Project.id == snapshot.project_id)
+        ),
     )
 
 

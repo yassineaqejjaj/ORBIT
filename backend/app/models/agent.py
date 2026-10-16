@@ -12,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base, CreatedAtMixin, UUIDPkMixin
 from app.enums import AgentKind
 from app.models._types import StrEnumType, enum_check, range_check
+from app.models.workspace import forbid_workspace_change, workspace_id_column
 
 
 class Agent(UUIDPkMixin, CreatedAtMixin, Base):
@@ -21,7 +22,11 @@ class Agent(UUIDPkMixin, CreatedAtMixin, Base):
         range_check("clearance", 0, 3),
         Index("uq_agents_api_key_prefix", "api_key_prefix", unique=True),
         Index("ix_agents_project_id", "project_id"),
+        Index("ix_agents_workspace_id", "workspace_id"),
     )
+
+    #: Space of the key (ADR 001 §7): the workspace of its project at creation. Immutable.
+    workspace_id: Mapped[uuid.UUID] = workspace_id_column()
 
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
@@ -37,3 +42,6 @@ class Agent(UUIDPkMixin, CreatedAtMixin, Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+forbid_workspace_change(Agent)

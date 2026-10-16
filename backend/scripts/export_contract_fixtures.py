@@ -51,6 +51,8 @@ MANIFEST = "manifest.json"
 NOW = datetime(2026, 10, 1, 12, tzinfo=UTC)
 REQUEST_ID = uuid.UUID("9a9a9a9a-0000-4000-8000-000000000001")
 SNAPSHOT_ID = uuid.UUID("d0d62e58-0010-4373-9403-7c6a253b3383")
+#: Id shared by the ORION services for the synthetic project (``orion_project_id``, NOV-106, additive).
+ORION_PROJECT_ID = uuid.UUID("0a0b0c0d-0000-4000-8000-000000000106")
 
 
 def _uuid(n: int) -> uuid.UUID:
@@ -137,6 +139,7 @@ def _package(
         snapshot=ContextSnapshotInfo(id=SNAPSHOT_ID, name="discovery", version=7),
         config=ContextConfig(reranker="heuristic", embedding_model="synthetic-hash"),
         max_classification=max((i.classification for i in items), default=0),
+        orion_project_id=ORION_PROJECT_ID,
     )
 
 
@@ -225,6 +228,7 @@ def snapshot() -> Snapshot:
         items=items,
         request_id=REQUEST_ID,
         max_classification=3,
+        orion_project_id=ORION_PROJECT_ID,
     )
 
 

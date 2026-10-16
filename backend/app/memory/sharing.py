@@ -29,6 +29,7 @@ from app.memory.visibility import MemoryViewer, can_view
 from app.models import MemoryItem
 from app.schemas.memory import MemoryIn, ProvenanceIn
 from app.services import projects as project_service
+from app.services import workspaces
 
 MAX_SHAREABLE_CLASSIFICATION = 1
 
@@ -65,6 +66,12 @@ async def share_learning(
             if target and principal.user
             else None
         )
+        if (
+            target is not None
+            and principal.user is not None
+            and not workspaces.allows(principal.workspace_id, target.workspace_id, surface="project")
+        ):
+            target = None  # a project of another workspace answers like an unknown one
         if target is None or (role is None and not principal.is_admin):
             raise not_found(
                 f"Projet « {slug} » introuvable"

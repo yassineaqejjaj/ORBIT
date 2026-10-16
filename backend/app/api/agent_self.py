@@ -8,6 +8,7 @@ from app.deps import CurrentPrincipal, SessionDep
 from app.errors import forbidden, not_found
 from app.models import Project
 from app.schemas.agents import AgentSelf, AgentSelfKey, AgentSelfProject
+from app.services import workspaces
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -20,7 +21,7 @@ async def agent_self(principal: CurrentPrincipal, session: SessionDep) -> AgentS
     if agent is None:
         raise forbidden("Cette ressource décrit une clé d'agent : appelez-la avec une clé d'agent")
     project = await session.get(Project, agent.project_id)
-    if project is None:
+    if project is None or not workspaces.allows(agent.workspace_id, project.workspace_id, surface="project"):
         raise not_found("Projet de l'agent introuvable")
     return AgentSelf(
         id=agent.id,

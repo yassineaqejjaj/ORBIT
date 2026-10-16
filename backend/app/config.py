@@ -8,11 +8,12 @@ they are all documented in ``.env.example``.
 from __future__ import annotations
 
 import logging
+import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_VERSION = "1.0.0"
@@ -21,6 +22,9 @@ APP_VERSION = "1.0.0"
 DEV_JWT_SECRET = "orbit-dev-secret-change-me-0123456789abcdef"
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
+
+#: Default workspace of a fresh install (override with ``ORION_DEFAULT_WORKSPACE_ID``).
+DEFAULT_WORKSPACE_ID = uuid.UUID("6f5e1c00-0000-4000-8000-000000000001")
 
 
 class Settings(BaseSettings):
@@ -78,6 +82,18 @@ class Settings(BaseSettings):
     #: Candidates scored by the cross-encoder and passage length sent (latency bound, §B2).
     reranker_top_n: int = Field(default=20, ge=1, le=200)
     reranker_max_chars: int = Field(default=800, ge=100, le=8000)
+
+    # --- Workspaces (ADR 001 §5, §9 — NOV-106) -------------------------------------------------
+    #: ``off`` = no workspace filter (historical behaviour); ``shadow`` = evaluate and count violations
+    #: (``orbit_workspace_violations_total``) without blocking; ``enforce`` = a resource of another workspace
+    #: answers 404, indistinguishable from an unknown one.
+    workspace_enforcement: Literal["off", "shadow", "enforce"] = "off"
+    #: Id of the default workspace created by the migration; every pre-existing user, project, agent key and
+    #: webhook belongs to it. Read from ``ORION_DEFAULT_WORKSPACE_ID`` (also ``ORBIT_DEFAULT_WORKSPACE_ID``).
+    default_workspace_id: uuid.UUID = Field(
+        default=DEFAULT_WORKSPACE_ID,
+        validation_alias=AliasChoices("ORION_DEFAULT_WORKSPACE_ID", "ORBIT_DEFAULT_WORKSPACE_ID"),
+    )
 
     # --- Optional LLM (OpenAI-compatible) ---------------------------------------------------------
     llm_base_url: str = ""

@@ -13,7 +13,7 @@ from app.models import User
 from app.schemas import User as UserOut
 from app.schemas import UserCreateIn, UserUpdateIn
 from app.security import hash_password
-from app.services import audit
+from app.services import audit, workspaces
 from app.services import users as user_service
 from app.services.audit import AuditAction
 
@@ -27,11 +27,17 @@ async def list_users(
     q: str | None = Query(default=None, max_length=200, description="Filtre sur l'e-mail ou le nom"),
 ) -> list[UserOut]:
     stmt = select(User).order_by(User.full_name, User.email).limit(500)
+    if workspaces.is_enforcing():  # an administrator only sees the accounts of their own workspace
+        stmt = stmt.where(User.workspace_id == admin.workspace_id)
     if q and q.strip():
         pattern = f"%{q.strip()}%"
         stmt = stmt.where(or_(User.email.ilike(pattern), User.full_name.ilike(pattern)))
     rows = await session.scalars(stmt)
-    return [UserOut.model_validate(u) for u in rows]
+    return [
+        UserOut.model_validate(u)
+        for u in rows
+        if workspaces.allows(admin.workspace_id, u.workspace_id, surface="user_list")
+    ]
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED, summary="Créer un utilisateur")
@@ -45,6 +51,7 @@ async def create_user(body: UserCreateIn, admin: AdminUser, session: SessionDep)
         password=body.password,
         clearance=body.clearance,
         is_admin=body.is_admin,
+        workspace_id=admin.workspace_id,  # the creator's workspace, never a request parameter
     )
     await audit.record(
         session,
@@ -65,7 +72,7 @@ async def update_user(
     user_id: uuid.UUID, body: UserUpdateIn, admin: AdminUser, session: SessionDep
 ) -> UserOut:
     user = await session.get(User, user_id)
-    if user is None:
+    if user is None or not workspaces.allows(admin.workspace_id, user.workspace_id, surface="user"):
         raise not_found("Utilisateur introuvable")
     changes: dict[str, object] = {}
     if body.full_name is not None and body.full_name != user.full_name:

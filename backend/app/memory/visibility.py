@@ -25,6 +25,7 @@ from sqlalchemy.types import Text
 from app.enums import MemoryScope
 from app.governance.acl import acl_allows, effective_principals
 from app.models import MemoryItem
+from app.services import workspaces
 
 if TYPE_CHECKING:
     from app.deps import ProjectAccess
@@ -38,6 +39,8 @@ class MemoryViewer:
     principals: frozenset[str]
     clearance: int
     user_id: uuid.UUID | None
+    #: Organisation-wide memory belongs to the default workspace (ADR 001 §9, ``enforce`` only).
+    org_memory: bool = True
 
     @classmethod
     def from_access(cls, access: ProjectAccess) -> MemoryViewer:
@@ -47,14 +50,19 @@ class MemoryViewer:
             principals=frozenset(effective_principals(access)),
             clearance=int(principal.clearance),
             user_id=principal.user_id,
+            org_memory=workspaces.org_memory_visible(access.project),
         )
 
 
 def visibility_clause(viewer: MemoryViewer) -> ColumnElement[bool]:
     """SQL condition selecting the memory items visible to ``viewer`` (any version)."""
-    in_scope = or_(
-        MemoryItem.project_id == viewer.project_id,
-        and_(MemoryItem.project_id.is_(None), MemoryItem.scope == MemoryScope.long_term),
+    in_scope = (
+        or_(
+            MemoryItem.project_id == viewer.project_id,
+            and_(MemoryItem.project_id.is_(None), MemoryItem.scope == MemoryScope.long_term),
+        )
+        if viewer.org_memory
+        else MemoryItem.project_id == viewer.project_id
     )
     principals = sorted(viewer.principals) or ["__none__"]
     conditions: list[ColumnElement[bool]] = [
@@ -74,7 +82,7 @@ def visibility_clause(viewer: MemoryViewer) -> ColumnElement[bool]:
 def can_view(item: MemoryItem, viewer: MemoryViewer) -> bool:
     """Python equivalent of :func:`visibility_clause` for one loaded item."""
     if item.project_id is None:
-        if MemoryScope(item.scope) != MemoryScope.long_term:
+        if not viewer.org_memory or MemoryScope(item.scope) != MemoryScope.long_term:
             return False
     elif item.project_id != viewer.project_id:
         return False

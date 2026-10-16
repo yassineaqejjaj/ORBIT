@@ -39,7 +39,7 @@ FROZEN_PACKAGE_KEYS = {
     "schema_version", "request_id", "trace_id", "task", "intent", "created_at", "context", "items", "excluded",
     "exclusion_summary", "tokens_used", "token_budget", "candidates_count", "timings", "snapshot", "config",
     "warnings", "cache_prefix_hash", "cache_prefix_tokens", "cache_prefix_reused", "cache_hints", "mode", "index",
-    "profile", "sufficiency", "max_classification",
+    "profile", "sufficiency", "max_classification", "orion_project_id",
 }  # fmt: skip
 FROZEN_SNAPSHOT_ITEM_KEYS = {
     "key", "citation", "candidate_type", "id", "title", "excerpt", "source_kind", "memory_kind", "version",
@@ -48,6 +48,7 @@ FROZEN_SNAPSHOT_ITEM_KEYS = {
 FROZEN_SNAPSHOT_KEYS = {
     "schema_version", "id", "name", "version", "parent_version", "task", "intent", "token_count", "items_count",
     "content_hash", "created_by_label", "created_at", "content", "items", "request_id", "max_classification",
+    "orion_project_id",
 }  # fmt: skip
 
 

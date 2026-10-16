@@ -32,6 +32,8 @@ class ProjectSettingsPatch(InputModel):
 
 class Project(ApiModel):
     id: uuid.UUID
+    #: Project id shared by the ORION services (ADR 001 §5); immutable. The slug is a readable alias.
+    orion_project_id: uuid.UUID
     slug: str
     name: str
     description: str

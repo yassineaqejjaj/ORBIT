@@ -18,6 +18,7 @@ async def test_create_project_with_generated_slug(admin_client: httpx.AsyncClien
     assert project["settings"] == DEFAULT_PROJECT_SETTINGS
     assert set(project) == {
         "id",
+        "orion_project_id",  # NOV-106 (additive)
         "slug",
         "name",
         "description",

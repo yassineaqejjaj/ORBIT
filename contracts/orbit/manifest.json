@@ -4,13 +4,13 @@
  "source": "ORBIT backend/scripts/export_contract_fixtures.py (real Pydantic schemas, synthetic data)",
  "files": {
   "context_package.json": {
-   "sha256": "4095efb8b2348cb429996ec5a408d07dcb769dcbd6421c69fdca934ce3a5bb4d"
+   "sha256": "bfbedf1be918603fcdeeac7c0d67fc4e5016fe8b2f386a97447d9fe050b6e247"
   },
   "context_package_limited_rights.json": {
-   "sha256": "220afdfac8ccfdda9cdc783170292d886fb78fc778cf9d8138316a1d2ce3c47f"
+   "sha256": "d00f54a5afdc5afdc0fc2f54f5f242e1d21317d1e65ed27d20165b2bfb0e036d"
   },
   "snapshot.json": {
-   "sha256": "46d0a520d02d510163666f0c826e2bc0dac666c63037eef7d4b24aff301085c9"
+   "sha256": "3e3877ad6016736f6c5ae613dea20cbbf667139814bf22fe79380213b77681fc"
   }
  }
 }

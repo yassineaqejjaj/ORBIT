@@ -36,6 +36,15 @@ uv run python scripts/export_contract_fixtures.py --check  # code 1 si les fichi
 `tests/test_context_contract.py` (NOV-73) garde en plus la règle « additif uniquement » : les clés historiques ne
 sont ni renommées ni supprimées.
 
+## Historique des ajouts additifs
+
+| Ticket | Ajout | `schema_version` |
+|---|---|---|
+| NOV-106 | `orion_project_id` (UUID ou `null`) sur `ContextPackage` et `Snapshot` : id du projet commun aux services ORION (ADR 001 §5). Les fixtures portent la valeur synthétique `0a0b0c0d-0000-4000-8000-000000000106`. | inchangée (2) : champ optionnel, aucun sens existant modifié |
+
+Après ce changement, propager dans FORGE (`scripts/sync_contract_fixtures.py --orbit …`, puis `generate_fap_fixtures.py`) et
+NOVA (`sync_contract_fixtures.py --orbit …`), et ajouter `orion_project_id` aux listes de clés figées de leurs tests.
+
 ## Changer le contrat
 
 1. Modifier le schéma ; si la clé est nouvelle, l'ajouter aux listes `FROZEN_*` du test et, si le sens change,

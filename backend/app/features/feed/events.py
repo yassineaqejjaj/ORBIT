@@ -431,6 +431,14 @@ def is_public(event: ChangeEvent) -> bool:
     )
 
 
+def _workspace_fields(project: Project | None) -> dict[str, str | None]:
+    """Additive payload keys (NOV-106): the workspace and the ORION-wide project id of the event's project."""
+    return {
+        "workspace_id": str(project.workspace_id) if project else None,
+        "orion_project_id": str(project.orion_project_id) if project else None,
+    }
+
+
 def _revocation_payload(
     event: ChangeEvent, project: Project | None, public: bool, created: datetime
 ) -> dict[str, Any]:
@@ -441,6 +449,7 @@ def _revocation_payload(
         "id": str(event.id),
         "type": event.type,
         "project": {"id": str(event.project_id), "slug": project.slug if project else None},
+        **_workspace_fields(project),
         "target_type": event.target_type,
         "target_id": event.target_id,
         "created_at": created.isoformat(),
@@ -463,6 +472,7 @@ def webhook_payload(event: ChangeEvent, project: Project | None) -> dict[str, An
         "id": str(event.id),
         "type": event.type,
         "project": {"id": str(event.project_id), "slug": project.slug if project else None},
+        **_workspace_fields(project),
         "target_type": event.target_type,
         "target_id": event.target_id,
         "created_at": created.isoformat(),
