@@ -46,6 +46,7 @@ Légende des colonnes :
 | L'oubli réécrit au repos les contextes et snapshots persistés ; `python -m app.admin purge-forgotten` | NOV-97 | oui | `test_forget_purge` | non | oui | non |
 | Entité espace : `workspaces`, `workspace_id` (utilisateurs, projets, clés d'agent, webhooks), `orion_project_id`, `ORBIT_WORKSPACE_ENFORCEMENT=off\|shadow\|enforce` (défaut `off`) | NOV-106 | oui | `test_workspace_migration` (base peuplée), `test_workspace_isolation`, `test_workspace_inventory`, `test_contract_fixtures` | non | en cours (PR) | non |
 | OIDC relying party (désactivé par défaut) : jetons de l'IdP, Authorization Code + PKCE, liaison confirmée, table `external_identities` | NOV-109 | oui | `test_oidc`, `test_claims_contract`, `test_workspace_migration`, `test_workspace_inventory` | non | en cours (PR) | non |
+| Clés d'agent rattachées espace/projet : rôle explicite, expiration facultative, rotation, `python -m app.admin keys list` / `revoke-misplaced` (sans secret) | NOV-112 (ORBIT) | oui | `test_agent_keys`, `test_workspace_migration` | non | en cours (PR) | non |
 | CI GitHub Actions (ruff, mypy baseline, `alembic check`, pytest, web, builds Docker, audits informatifs) | NOV-87 | oui | exécutée sur la PR (voir l'onglet *Checks*) | non | voir la PR | sans objet |
 
 ## Pas encore fait

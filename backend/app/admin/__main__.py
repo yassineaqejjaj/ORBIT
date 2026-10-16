@@ -10,6 +10,11 @@ runs the project's golden sets synchronously (docs/AI_CONTEXT_ENGINEERING.md §E
 ``python -m app.admin purge-forgotten [--project <slug>] [--dry-run] [--json]`` rewrites, at rest, the
 persisted contexts and snapshots that still quote forgotten chunks or memory (NOV-97). Idempotent; to run
 after restoring a backup (docs/FEATURES.md, « Oubli sélectif »).
+
+``python -m app.admin keys list [--workspace <uuid>] [--project <slug>] [--json]`` lists the agent
+keys by workspace / project (role, clearance, age, last use, expiry, status) **without any secret**;
+``keys revoke-misplaced [--dry-run]`` revokes the keys whose workspace is no longer their project's
+(NOV-112).
 """
 
 from __future__ import annotations
@@ -49,7 +54,50 @@ def _parser() -> argparse.ArgumentParser:
     )
     pf.add_argument("--dry-run", action="store_true", help="Compter sans rien écrire")
     pf.add_argument("--json", action="store_true", help="Sortie JSON")
+    keys = sub.add_parser(
+        "keys", help="Clés d'agent : inventaire (sans secret) et révocation des clés sorties de leur espace"
+    )
+    keys_sub = keys.add_subparsers(dest="keys_command", required=True)
+    klist = keys_sub.add_parser("list", help="Lister les clés par espace / projet (âge, usage)")
+    klist.add_argument("--workspace", default=None, help="Filtrer sur un espace (UUID)")
+    klist.add_argument("--project", default=None, help="Filtrer sur un projet (slug)")
+    klist.add_argument("--json", action="store_true", help="Sortie JSON")
+    krevoke = keys_sub.add_parser(
+        "revoke-misplaced", help="Révoquer les clés dont l'espace n'est plus celui de leur projet"
+    )
+    krevoke.add_argument("--dry-run", action="store_true", help="Lister sans rien écrire")
+    krevoke.add_argument("--json", action="store_true", help="Sortie JSON")
     return parser
+
+
+async def run_keys(args: argparse.Namespace) -> int:
+    from app.services import agent_keys
+
+    async with get_sessionmaker()() as session:
+        if args.keys_command == "list":
+            workspace = None
+            if args.workspace:
+                try:
+                    workspace = uuid.UUID(args.workspace)
+                except ValueError:
+                    print("--workspace attend un UUID", file=sys.stderr)
+                    return 2
+            rows = await agent_keys.inventory(session, workspace_id=workspace, project_slug=args.project)
+        else:
+            rows = await agent_keys.revoke_misplaced(session, dry_run=args.dry_run)
+    if args.json:
+        print(json.dumps([r.as_dict() for r in rows], ensure_ascii=False))
+        return 0
+    if not rows:
+        print("Aucune clé")
+    for r in rows:
+        used = f"{r.last_used_days_ago} j" if r.last_used_days_ago is not None else "jamais"
+        expires = r.expires_at.date().isoformat() if r.expires_at else "sans expiration"
+        print(
+            f"{r.status:9} {r.key:22} {r.project} ({str(r.workspace_id)[:8]}) {r.role} {r.clearance} "
+            f"âge {r.age_days} j, utilisée {used}, {expires}"
+        )
+    return 0
 
 
 async def run_purge_forgotten(args: argparse.Namespace) -> int:
@@ -189,6 +237,8 @@ async def _main(argv: Sequence[str] | None) -> int:
             return await run_eval(args)
         if args.command == "purge-forgotten":
             return await run_purge_forgotten(args)
+        if args.command == "keys":
+            return await run_keys(args)
         return 2
     finally:
         await dispose_engine()

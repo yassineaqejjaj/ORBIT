@@ -27,6 +27,8 @@ MIGRATION_DB = os.environ.get("ORBIT_TEST_MIGRATION_DATABASE", "orbit_mig_nov106
 OLD_HEAD = "h008"
 DEFAULT_WORKSPACE_ID = "6f5e1c00-0000-4000-8000-000000000001"
 NEW_COLUMNS = ("workspace_id", "orion_project_id")
+#: Columns added by h011 (NOV-112) to ``agents`` only: ``role`` exists elsewhere, so it is stripped per table.
+EXTRA_NEW_COLUMNS = {"agents": ("role", "expires_at", "rotated_at")}
 OWNING_TABLES = ("users", "projects", "agents", "webhooks")
 
 #: Tables that do not exist before the migration (excluded from the before/after comparison).
@@ -254,7 +256,7 @@ async def _fingerprint(conn: asyncpg.Connection) -> dict[str, tuple[int, str]]:
     ]
     result: dict[str, tuple[int, str]] = {}
     for table in tables:
-        strip = "".join(f" - '{col}'" for col in NEW_COLUMNS)
+        strip = "".join(f" - '{col}'" for col in (*NEW_COLUMNS, *EXTRA_NEW_COLUMNS.get(table, ())))
         row = await conn.fetchrow(_FINGERPRINT_SQL.format(table=f'"{table}"', strip=strip))
         assert row is not None
         result[table] = (int(row["n"]), str(row["digest"]))
@@ -341,7 +343,7 @@ def test_the_migration_is_additive_and_reversible_on_a_populated_database(
     assert after_up == before, "rows lost or modified by the upgrade"
     tables_up = asyncio.run(_step(_tables))
     assert "workspaces" in tables_up
-    assert "h010 (head)" in _alembic("current").stdout
+    assert "h011 (head)" in _alembic("current").stdout
     _alembic("check")  # the models and the migrated schema agree
 
     # h010 (NOV-109) adds a table only: dropping it again changes no existing row, and an upgrade re-creates it empty
@@ -353,6 +355,19 @@ def test_the_migration_is_additive_and_reversible_on_a_populated_database(
     _alembic("upgrade", "head")
     assert asyncio.run(_step(_fingerprint)) == before, "rows lost or modified by the h010 upgrade"
     assert asyncio.run(_step(lambda c: c.fetchval("SELECT count(*) FROM external_identities"))) == 0
+
+    # h011 (NOV-112): three columns on agents; every pre-existing key reads role=editor, no expiry, never rotated
+    keys = asyncio.run(_step(lambda c: c.fetch("SELECT role, expires_at, rotated_at FROM agents")))
+    assert len(keys) == 6 and {(k["role"], k["expires_at"], k["rotated_at"]) for k in keys} == {
+        ("editor", None, None)
+    }
+    _alembic("downgrade", "h010")
+    assert asyncio.run(_step(_fingerprint)) == before, "rows lost or modified by the h011 downgrade"
+    assert asyncio.run(_step(lambda c: _columns(c, "agents"))).isdisjoint(
+        {"role", "expires_at", "rotated_at"}
+    )
+    _alembic("upgrade", "head")
+    assert asyncio.run(_step(_fingerprint)) == before, "rows lost or modified by the h011 upgrade"
 
     _alembic("downgrade", OLD_HEAD)
     after_down = asyncio.run(_step(_fingerprint))

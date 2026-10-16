@@ -245,6 +245,8 @@ async def authenticate_agent_key(session: AsyncSession, key: str, *, touch: bool
         raise unauthorized("Clé d'agent invalide")
     if not agent_obj.active:
         raise unauthorized("Clé d'agent révoquée")
+    if agent_obj.expires_at is not None and agent_obj.expires_at <= utcnow():
+        raise unauthorized("Clé d'agent expirée — renouvelez-la")
     if touch:
         now = utcnow()
         if agent_obj.last_used_at is None or now - agent_obj.last_used_at >= AGENT_LAST_USED_RESOLUTION:
@@ -326,7 +328,7 @@ async def get_project_access(
         assert principal.agent is not None
         if principal.agent.project_id != project.id:
             raise not_found("Projet introuvable")
-        role = Role.editor
+        role = Role(principal.agent.role)  # explicit per key (default editor, never owner)
     elif principal.is_admin:
         role = Role.owner
     else:

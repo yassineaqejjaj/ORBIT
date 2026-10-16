@@ -22,7 +22,7 @@ Project     = { id, orion_project_id /* id commun ORION, immuable (= id) */, slu
 ProjectSettings = { freshness_days: Record<SourceKind, number>, default_token_budget: number, min_relevance: number, short_term_ttl_hours: number }
 ProjectSummary = Project & { stats: { sources: number, documents: number, memory_items: number, context_requests_7d: number } }
 
-Agent       = { id, name, kind: AgentKind, description, clearance, api_key_prefix, active, created_at, last_used_at }
+Agent       = { id, name, kind: AgentKind, description, clearance, api_key_prefix, active, created_at, last_used_at, role: "viewer"|"editor", expires_at: datetime|null, rotated_at: datetime|null }
 AgentCreated = { agent: Agent, api_key: string /* affichée une seule fois */ }
 
 Source      = { id, name, kind: SourceKind, description, default_classification, default_acl: string[], config: object,
@@ -81,8 +81,8 @@ AuditEvent  = { id, actor_type, actor_id, actor_label, action, target_type, targ
 | PATCH | `/projects/{slug}/members/{user_id}` | owner | `{role}` | `Member` |
 | DELETE | `/projects/{slug}/members/{user_id}` | owner | — | `204` (interdit de retirer le dernier owner → 409) |
 | GET | `/projects/{slug}/agents` | viewer | — | `Agent[]` |
-| POST | `/projects/{slug}/agents` | owner | `{name, kind, description?, clearance}` | `AgentCreated` |
-| POST | `/projects/{slug}/agents/{id}/rotate` | owner | — | `AgentCreated` |
+| POST | `/projects/{slug}/agents` | owner | `{name, kind, description?, clearance, role?: "viewer"\|"editor", expires_in_days?}` | `AgentCreated` |
+| POST | `/projects/{slug}/agents/{id}/rotate` | owner | `{expires_in_days?}` (optionnel) | `AgentCreated` |
 | DELETE | `/projects/{slug}/agents/{id}` | owner | — | `204` (révocation : `active=false`) |
 | GET | `/agents/self` | **clé d'agent** | — | `AgentSelf` (identité de la clé appelante, hors projet) |
 
@@ -91,6 +91,16 @@ AgentSelf = { id, name, kind: AgentKind, description, clearance: 0|1|2|3,
               project: { id, slug, name },
               key: { prefix, status: "active", created_at, last_used_at: string|null } }
 ```
+
+**Clés d'agent rattachées (ADR 001 §7, NOV-112).** Une clé `orb_…` appartient à un projet **et** à son espace (`workspace_id`, repris du
+projet à la création), porte une habilitation **explicite** (`clearance`), un rôle explicite (`viewer` ou `editor`, jamais `owner` ;
+`editor` par défaut, comme avant), une expiration facultative (`expires_in_days` ; une clé expirée répond `401`) et la date de sa
+dernière rotation. **Rotation** : `POST …/rotate` génère un nouveau secret (l'ancien est refusé aussitôt), garde espace, projet, rôle
+et habilitation, et renouvelle une clé expirée (avec `expires_in_days` ; sans corps l'expiration reste). L'audit nomme la clé
+(`actor_type=agent`), jamais un utilisateur. Outil d'administration, sans aucun secret :
+`python -m app.admin keys list [--workspace <uuid>] [--project <slug>] [--json]` (âge, dernière utilisation, statut
+`active|expired|revoked|misplaced`) et `python -m app.admin keys revoke-misplaced [--dry-run]` (révoque les clés dont l'espace n'est
+plus celui de leur projet).
 
 `GET /agents/self` répond avec une clé d'agent seulement (`Authorization: Bearer orb_…` ou `X-Orbit-Key`) : `403` avec une
 session utilisateur, `401` sans identifiants. Une clé révoquée, renouvelée ou inconnue reçoit `401` (« Clé d'agent révoquée » /

@@ -1,6 +1,6 @@
 """Pydantic v2 models of the REST contract (docs/API.md). Class names match the API type names."""
 
-from app.schemas.agents import Agent, AgentCreated, AgentCreateIn, AgentRef, AgentSelf
+from app.schemas.agents import Agent, AgentCreated, AgentCreateIn, AgentRef, AgentRotateIn, AgentSelf
 from app.schemas.audit import AuditEvent
 from app.schemas.common import (
     AclPrincipals,
@@ -116,6 +116,7 @@ __all__ = [
     "AgentCreateIn",
     "AgentCreated",
     "AgentRef",
+    "AgentRotateIn",
     "AgentSelf",
     "AgentUsage",
     "Alert",
