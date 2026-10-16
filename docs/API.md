@@ -206,7 +206,10 @@ ContextRequestIn = {
   session_id?: string,
   base_snapshot?: { name: string, version?: number },
   save_snapshot?: { name: string },
-  explain?: boolean                      // défaut true pour humains ; agents : false (compteurs uniquement)
+  explain?: boolean,                     // défaut true pour humains ; agents : false (compteurs uniquement)
+  mode?: "full"|"progressive",           // progressive : résumé + index d'identifiants, détail via expand_source / get_decision…
+  cache_hints?: boolean,                 // blocs de texte avec points d'arrêt cache_control (format Anthropic)
+  as_of?: datetime                       // mémoire « telle que connue au » (§D2) : versions connues et valides à cette date
 }
 
 ContextPackage = {
@@ -240,6 +243,7 @@ Scores = { bm25?: number, dense?: number, rrf?: number, rerank?: number, freshne
 |---|---|---|---|---|
 | GET | `/projects/{slug}/context/requests` | viewer | `agent_id?, page` | `Page<ContextRequestSummary>` |
 | GET | `/projects/{slug}/context/requests/{id}` | viewer | — | `ContextPackage` reconstitué (+ `feedback[]`) |
+| POST | `/projects/{slug}/context/requests/{id}/complete` | viewer **(agent)** | `{missing: string[1..10], snapshot?: {name}, token_budget?}` | `ContextCompletion` : réassemble le contexte autour des manques signalés (boucle « contexte manquant ») ; le résultat est la version suivante du snapshot ; un agent ne complète que ce qu'il a reçu (sinon `404`) |
 | POST | `/projects/{slug}/context/requests/{id}/feedback` | viewer **(agent)** | `{rating, comment?, item_flags?: {citation, flag}[]}` | `{id}` |
 
 **Provenance d'accès et classification (v2).** `items[].access_scope` résume qui peut lire la source, **sans jamais exposer les
@@ -248,6 +252,12 @@ entrées d'ACL** : `restricted` dès qu'une ACL de la source (fragment ou docume
 lecteur qui n'a pas le droit de lire l'item (restreint ou partiellement masqué dans une requête reconstituée, jamais pour
 l'agent ou l'utilisateur qui a reçu le contexte). `max_classification` est le plus haut niveau du contenu **effectivement livré** au
 lecteur : un item masqué pour lui n'y compte pas. Un artefact dérivé d'un contexte est au moins de ce niveau.
+
+```ts
+ContextCompletion = { request_id /* nouvelle requête */, completes /* requête d'origine */, snapshot: {id,name,version}|null,
+                      added: { citation, id, title, source_kind?, memory_kind?, classification }[], still_missing: string[],
+                      sufficiency: ContextSufficiency|null, tokens_used }
+```
 
 ```ts
 ContextRequestSummary = { id, trace_id, task, intent, agent: {id,name,kind}|null, user: {id, full_name}|null,
@@ -315,13 +325,14 @@ Metrics = {
 ## MCP (`/mcp`, streamable HTTP, clé API d'agent obligatoire)
 
 Outils :
-- `get_context(task, intent?, token_budget?, scopes?, on_behalf_of?, session_id?, base_snapshot?, save_snapshot?, as_of?)` → `{context, citations[], exclusion_summary, request_id, snapshot}`
+- `get_context(task, intent?, token_budget?, scopes?, on_behalf_of?, session_id?, base_snapshot?, save_snapshot?, cache_hints?, mode?, as_of?)` → `{context, citations[], exclusion_summary, request_id, snapshot}` (`mode="progressive"` ajoute `index`, `as_of` sert la mémoire telle que connue à une date)
 - `get_snapshot(name, version?)` → `Snapshot`
 - `search_sources(query, limit?)` → `SearchHit[]`
 - `propose_memory(kind, title, content, scope?, provenance_document_ids?)` → `MemoryItem` (statut `proposed`)
 - `record_turn(session_id, role, content)` → `{turns, expires_at}`
 - `send_feedback(request_id, rating, comment?)` → `{id}`
 - `list_skills(task_type?)` → `{skills: Skill[]}` · `get_skill(name)` → `Skill & {skill_md}` (§D1 façons de faire)
+- Contexte à la demande (mode `progressive`) : `expand_source(source_id)` (texte complet d'un extrait ou d'un document), `get_decision(decision_id)`, `get_memory_item(item_id)`, `search_more(query)` (recherche complémentaire ; chaque résultat indique l'outil de détail)
 
 Au-delà des outils (§E4, SDK `mcp` 2.2) :
 - *resources* : `orbit://about` (index statique) ; modèles `orbit://decisions{?limit}`, `orbit://decisions/{decision_id}`,
