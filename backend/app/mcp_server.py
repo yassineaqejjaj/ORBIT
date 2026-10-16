@@ -267,7 +267,9 @@ async def agent_scope(ctx: Context) -> AsyncIterator[AgentScope]:
                 agent.workspace_id, project.workspace_id, surface="project"
             ):
                 raise ToolError("Projet de l'agent introuvable")
-            access = ProjectAccess(project=project, principal=Principal.for_agent(agent), role=Role.editor)
+            access = ProjectAccess(
+                project=project, principal=Principal.for_agent(agent), role=Role(agent.role)
+            )
             genai.agent_attributes(agent)  # §E6 gen_ai.agent.* on the MCP server span
             yield AgentScope(session=session, access=access)
         except ToolError:
