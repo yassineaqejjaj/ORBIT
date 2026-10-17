@@ -28,7 +28,10 @@ OLD_HEAD = "h008"
 DEFAULT_WORKSPACE_ID = "6f5e1c00-0000-4000-8000-000000000001"
 NEW_COLUMNS = ("workspace_id", "orion_project_id")
 #: Columns added by h011 (NOV-112) to ``agents`` only: ``role`` exists elsewhere, so it is stripped per table.
-EXTRA_NEW_COLUMNS = {"agents": ("role", "expires_at", "rotated_at")}
+EXTRA_NEW_COLUMNS = {
+    "agents": ("role", "expires_at", "rotated_at"),
+    "users": ("password_login_disabled", "sso_required", "is_break_glass"),  # h012 (NOV-113)
+}
 OWNING_TABLES = ("users", "projects", "agents", "webhooks")
 
 #: Tables that do not exist before the migration (excluded from the before/after comparison).
@@ -343,7 +346,7 @@ def test_the_migration_is_additive_and_reversible_on_a_populated_database(
     assert after_up == before, "rows lost or modified by the upgrade"
     tables_up = asyncio.run(_step(_tables))
     assert "workspaces" in tables_up
-    assert "h011 (head)" in _alembic("current").stdout
+    assert "h012 (head)" in _alembic("current").stdout
     _alembic("check")  # the models and the migrated schema agree
 
     # h010 (NOV-109) adds a table only: dropping it again changes no existing row, and an upgrade re-creates it empty
@@ -368,6 +371,19 @@ def test_the_migration_is_additive_and_reversible_on_a_populated_database(
     )
     _alembic("upgrade", "head")
     assert asyncio.run(_step(_fingerprint)) == before, "rows lost or modified by the h011 upgrade"
+
+    # h012 (NOV-113): three flags on users, all false for every pre-existing account; downgrade drops them
+    flags = asyncio.run(
+        _step(lambda c: c.fetch("SELECT password_login_disabled, sso_required, is_break_glass FROM users"))
+    )
+    assert len(flags) == 4 and {tuple(f.values()) for f in flags} == {(False, False, False)}
+    _alembic("downgrade", "h011")
+    assert asyncio.run(_step(_fingerprint)) == before, "rows lost or modified by the h012 downgrade"
+    assert asyncio.run(_step(lambda c: _columns(c, "users"))).isdisjoint(
+        {"password_login_disabled", "sso_required", "is_break_glass"}
+    )
+    _alembic("upgrade", "head")
+    assert asyncio.run(_step(_fingerprint)) == before, "rows lost or modified by the h012 upgrade"
 
     _alembic("downgrade", OLD_HEAD)
     after_down = asyncio.run(_step(_fingerprint))

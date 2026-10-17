@@ -19,8 +19,8 @@ async def test_ready_reports_dependencies(client: httpx.AsyncClient) -> None:
     assert set(body["checks"]) == {"postgres", "opensearch", "valkey", "model"}
     assert body["checks"]["postgres"]["status"] == "ok"
     assert (
-        body["checks"]["postgres"]["info"]["migration"] == "h011"
-    )  # head of the migration chain (agent key lifecycle, NOV-112)
+        body["checks"]["postgres"]["info"]["migration"] == "h012"
+    )  # head of the migration chain (account migration flags, NOV-113)
     assert body["checks"]["valkey"]["status"] == "ok"
     assert body["checks"]["opensearch"]["status"] == "ok"
     assert response.status_code == (200 if body["status"] == "ok" else 503)

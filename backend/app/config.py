@@ -121,6 +121,16 @@ class Settings(BaseSettings):
     #: default.
     oidc_auto_provision: bool = False
 
+    # --- Account migration tool (ADR 001 §8, NOV-113): ``python -m app.admin accounts …`` -----------
+    #: HMAC key that signs / verifies the approval file of ``accounts reconcile --apply``. Empty = no apply.
+    accounts_approval_key: str = ""
+    #: Directory holding ``<backup id>.json`` manifests (``{"id", "created_at", "database"}``) that
+    #: ``--confirm-backup`` must point to. Empty = every write that needs a backup is refused.
+    accounts_backup_dir: str = ""
+    accounts_backup_max_age_hours: int = Field(default=24, ge=1, le=720)
+    #: Salt of the e-mail hashes of the inventory export (empty = unsalted).
+    accounts_export_salt: str = ""
+
     # --- Optional LLM (OpenAI-compatible) ---------------------------------------------------------
     llm_base_url: str = ""
     llm_model: str = ""
