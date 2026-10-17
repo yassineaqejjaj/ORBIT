@@ -1,0 +1,16 @@
+{
+ "contract": "orbit-context",
+ "schema_version": 2,
+ "source": "ORBIT backend/scripts/export_contract_fixtures.py (real Pydantic schemas, synthetic data)",
+ "files": {
+  "context_package.json": {
+   "sha256": "bfbedf1be918603fcdeeac7c0d67fc4e5016fe8b2f386a97447d9fe050b6e247"
+  },
+  "context_package_limited_rights.json": {
+   "sha256": "d00f54a5afdc5afdc0fc2f54f5f242e1d21317d1e65ed27d20165b2bfb0e036d"
+  },
+  "snapshot.json": {
+   "sha256": "3e3877ad6016736f6c5ae613dea20cbbf667139814bf22fe79380213b77681fc"
+  }
+ }
+}

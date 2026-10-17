@@ -407,7 +407,8 @@ rien : le backend ORBIT se déploie à la main (`railway up`), le frontend par V
 orbit/
   docker-compose.yml  Makefile  .env.example  README.md
   docs/               ARCHITECTURE.md (contrat), API.md (API REST + MCP), DEMO.md (jeu et scénario),
-                      FEATURES.md (fonctionnalités produit), integrations/ (serveurs MCP, Microsoft Teams)
+                      FEATURES.md (fonctionnalités produit), CONTRACTS.md (contrat de contexte versionné),
+                      integrations/ (serveurs MCP, Microsoft Teams)
   backend/            FastAPI + worker (Python 3.12, uv)
     app/api/          routers REST
     app/ingestion/    extracteurs, PII, classification, découpage, importeurs JSON/CSV, pipeline

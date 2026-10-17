@@ -59,6 +59,8 @@ class Snapshot(SnapshotSummary):
     request_id: uuid.UUID | None
     #: Highest classification (0-3) of the items delivered to this reader (hidden / forgotten ones excluded).
     max_classification: int = 0
+    #: Id of the project shared by the ORION services (ADR 001 §5, NOV-106). Additive.
+    orion_project_id: uuid.UUID | None = None
 
 
 class SnapshotDiff(ApiModel):

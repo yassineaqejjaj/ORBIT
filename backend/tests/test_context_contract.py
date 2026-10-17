@@ -77,7 +77,7 @@ def test_context_package_only_adds_keys() -> None:
     )
     data = package.model_dump(mode="json")
     assert set(data) >= LEGACY_PACKAGE_KEYS
-    assert set(data) - LEGACY_PACKAGE_KEYS == {"max_classification", "schema_version"}
+    assert set(data) - LEGACY_PACKAGE_KEYS == {"max_classification", "schema_version", "orion_project_id"}
     assert data["schema_version"] == CONTEXT_SCHEMA_VERSION == 2
     assert set(data["items"][0]) >= LEGACY_ITEM_KEYS
     assert set(data["items"][0]) - LEGACY_ITEM_KEYS == {"access_scope"}
@@ -127,6 +127,6 @@ def test_snapshot_only_adds_keys() -> None:
     )
     data = snapshot.model_dump(mode="json")
     assert set(data) >= LEGACY_SNAPSHOT_KEYS
-    assert set(data) - LEGACY_SNAPSHOT_KEYS == {"max_classification", "schema_version"}
+    assert set(data) - LEGACY_SNAPSHOT_KEYS == {"max_classification", "schema_version", "orion_project_id"}
     assert set(data["items"][0]) >= LEGACY_SNAPSHOT_ITEM_KEYS
     assert set(data["items"][0]) - LEGACY_SNAPSHOT_ITEM_KEYS == {"classification"}

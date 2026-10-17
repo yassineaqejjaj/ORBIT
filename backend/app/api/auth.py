@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request, Response, status
 from app.config import settings
 from app.db import utcnow
 from app.deps import CurrentUser, SessionDep, get_optional_user
-from app.errors import unauthorized
+from app.errors import forbidden, unauthorized
 from app.schemas import LoginIn
 from app.schemas import User as UserOut
 from app.security import (
@@ -69,6 +69,21 @@ async def login(body: LoginIn, request: Request, response: Response, session: Se
         )
         await session.commit()
         raise unauthorized("E-mail ou mot de passe incorrect")
+
+    if (user.password_login_disabled or user.sso_required) and not user.is_break_glass:
+        # Reached only with the right password: nothing is revealed to someone who does not hold it.
+        await audit.record(
+            session,
+            None,
+            user,
+            AuditAction.auth_login_failed,
+            "user",
+            user.id,
+            summary=f"Connexion par mot de passe refusée pour {email} (SSO requis)",
+            details={"email": email, "ip": _client_ip(request), "why": "password_login_disabled"},
+        )
+        await session.commit()
+        raise forbidden("La connexion par mot de passe est désactivée pour ce compte : utilisez le SSO")
 
     if password_needs_rehash(user.password_hash):
         user.password_hash = hash_password(body.password)

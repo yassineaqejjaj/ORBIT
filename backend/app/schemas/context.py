@@ -241,6 +241,9 @@ class ContextPackage(ApiModel):
     #: Highest classification (0-3) of the content delivered in ``items`` (items hidden from the reader
     #: do not count); 0 when there is none. A derived artifact is at least this classified.
     max_classification: int = 0
+    #: Id of the project shared by the ORION services (ADR 001 §5, NOV-106). Additive: ``None`` for a package
+    #: built before it existed. The workspace is not part of the contract (it comes from the identity).
+    orion_project_id: uuid.UUID | None = None
 
 
 class ItemFlag(InputModel):

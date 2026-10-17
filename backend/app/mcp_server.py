@@ -89,7 +89,7 @@ from app.schemas import (
 )
 from app.schemas import MemoryItem as MemoryItemOut
 from app.security import API_KEY_HEADER, looks_like_api_key
-from app.services import audit
+from app.services import audit, workspaces
 from app.services import projects as project_service
 from app.services.audit import AuditAction
 from app.services.metrics import Visibility, actor_labels
@@ -263,9 +263,13 @@ async def agent_scope(ctx: Context) -> AsyncIterator[AgentScope]:
         try:
             agent = await authenticate_agent_key(session, key, touch=False)
             project = await session.get(Project, agent.project_id)
-            if project is None:
+            if project is None or not workspaces.allows(
+                agent.workspace_id, project.workspace_id, surface="project"
+            ):
                 raise ToolError("Projet de l'agent introuvable")
-            access = ProjectAccess(project=project, principal=Principal.for_agent(agent), role=Role.editor)
+            access = ProjectAccess(
+                project=project, principal=Principal.for_agent(agent), role=Role(agent.role)
+            )
             genai.agent_attributes(agent)  # §E6 gen_ai.agent.* on the MCP server span
             yield AgentScope(session=session, access=access)
         except ToolError:
@@ -894,6 +898,9 @@ async def snapshot_view(
         items=visible,
         request_id=snapshot.request_id,
         max_classification=max_delivered(visible),
+        orion_project_id=await session.scalar(
+            select(Project.orion_project_id).where(Project.id == snapshot.project_id)
+        ),
     )
     data = view.model_dump(mode="json")
     if spotlight.enabled() and data.get("content") and not spotlight.is_wrapped(data["content"]):

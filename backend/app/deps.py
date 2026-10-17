@@ -43,8 +43,10 @@ from app.security import (
     password_fingerprint,
     verify_api_key,
 )
+from app.services import oidc, workspaces
 from app.services import projects as project_service
 from app.services.audit import Actor
+from app.services.oidc import OidcContext
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
@@ -62,16 +64,23 @@ class Principal:
     is_admin: bool
     clearance: int
     label: str
+    #: Set when the caller authenticated with an IdP token (NOV-109): the token narrows, never widens.
+    oidc: OidcContext | None = None
 
     @classmethod
-    def for_user(cls, user: User) -> Principal:
+    def for_user(cls, user: User, oidc: OidcContext | None = None) -> Principal:
         return cls(
             kind="user",
             user=user,
             agent=None,
-            is_admin=bool(user.is_admin),
-            clearance=int(user.clearance),
+            # ADR §4: effective clearance = min(local, orion_clearance); the realm role ``orbit-admin`` counts
+            # only for an account that is also a local administrator (a token alone grants no right).
+            is_admin=bool(user.is_admin) and (oidc is None or oidc.decision.platform_admin),
+            clearance=oidc.decision.effective_clearance
+            if oidc and oidc.decision.effective_clearance is not None
+            else int(user.clearance),
             label=user.full_name or user.email,
+            oidc=oidc,
         )
 
     @classmethod
@@ -107,6 +116,14 @@ class Principal:
     @property
     def agent_id(self) -> uuid.UUID | None:
         return self.agent.id if self.agent is not None else None
+
+    @property
+    def workspace_id(self) -> uuid.UUID:
+        """Workspace of the validated identity (ADR 001 §9): the user's or key's own, never a parameter."""
+        if self.user is not None:
+            return self.user.workspace_id
+        assert self.agent is not None
+        return self.agent.workspace_id
 
     @property
     def actor_type(self) -> ActorType:
@@ -193,7 +210,12 @@ def _session_token(request: Request) -> str | None:
     return cookie or None
 
 
-async def _user_from_token(session: AsyncSession, token: str) -> User:
+async def _user_from_token(session: AsyncSession, token: str, request: Request | None = None) -> User:
+    if oidc.is_idp_token(token):  # ORBIT_OIDC_ENABLED and not one of our own HS256 session tokens
+        sso_user, context = await oidc.authenticate_bearer(session, token)
+        if request is not None:
+            request.state.oidc = context
+        return sso_user
     try:
         claims = decode_access_token(token)
     except TokenError as exc:
@@ -223,6 +245,8 @@ async def authenticate_agent_key(session: AsyncSession, key: str, *, touch: bool
         raise unauthorized("Clé d'agent invalide")
     if not agent_obj.active:
         raise unauthorized("Clé d'agent révoquée")
+    if agent_obj.expires_at is not None and agent_obj.expires_at <= utcnow():
+        raise unauthorized("Clé d'agent expirée — renouvelez-la")
     if touch:
         now = utcnow()
         if agent_obj.last_used_at is None or now - agent_obj.last_used_at >= AGENT_LAST_USED_RESOLUTION:
@@ -242,7 +266,7 @@ async def get_current_user(request: Request, session: SessionDep) -> User:
         if _agent_key(request):
             raise forbidden("Cette opération n'est pas accessible avec une clé d'agent")
         raise unauthorized("Authentification requise")
-    return await _user_from_token(session, token)
+    return await _user_from_token(session, token, request)
 
 
 async def get_optional_user(request: Request, session: SessionDep) -> User | None:
@@ -250,7 +274,7 @@ async def get_optional_user(request: Request, session: SessionDep) -> User | Non
     if token is None:
         return None
     try:
-        return await _user_from_token(session, token)
+        return await _user_from_token(session, token, request)
     except Exception:
         return None
 
@@ -264,16 +288,16 @@ async def get_principal(request: Request, session: SessionDep) -> Principal:
     token = _session_token(request)
     if token is None:
         raise unauthorized("Authentification requise (session ou clé d'agent)")
-    user = await _user_from_token(session, token)
-    return Principal.for_user(user)
+    user = await _user_from_token(session, token, request)
+    return Principal.for_user(user, getattr(request.state, "oidc", None))
 
 
-async def get_user_principal(user: Annotated[User, Depends(get_current_user)]) -> Principal:
-    return Principal.for_user(user)
+async def get_user_principal(request: Request, user: Annotated[User, Depends(get_current_user)]) -> Principal:
+    return Principal.for_user(user, getattr(request.state, "oidc", None))
 
 
-async def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
-    if not user.is_admin:
+async def require_admin(request: Request, user: Annotated[User, Depends(get_current_user)]) -> User:
+    if not Principal.for_user(user, getattr(request.state, "oidc", None)).is_admin:
         raise forbidden("Action réservée aux administrateurs de la plateforme")
     return user
 
@@ -293,12 +317,18 @@ async def get_project_access(
     project = await project_service.get_by_slug(session, slug)
     if project is None:
         raise not_found("Projet introuvable")
+    # Another workspace answers exactly like an unknown project (same message, before any role is looked at).
+    if not workspaces.allows(principal.workspace_id, project.workspace_id, surface="project"):
+        raise not_found("Projet introuvable")
+    # A token that names a project (``orion_project_id``) opens that project only (ADR §3, NOV-109).
+    if principal.oidc is not None and principal.oidc.project_id not in (None, project.orion_project_id):
+        raise not_found("Projet introuvable")
 
     if principal.is_agent:
         assert principal.agent is not None
         if principal.agent.project_id != project.id:
             raise not_found("Projet introuvable")
-        role = Role.editor
+        role = Role(principal.agent.role)  # explicit per key (default editor, never owner)
     elif principal.is_admin:
         role = Role.owner
     else:

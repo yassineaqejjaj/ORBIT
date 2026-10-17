@@ -1,0 +1,102 @@
+{
+ "name": "tampered_payload",
+ "description": "A valid token whose payload was swapped afterwards to add admin roles and clearance 3.",
+ "defect": "tamper",
+ "claims": {
+  "iss": "https://idp.orion.test/realms/orion",
+  "sub": "5b1d0000-0000-4000-8000-000000000001",
+  "iat": 1792151940,
+  "exp": 1792152540,
+  "email": "alice@example.test",
+  "email_verified": true,
+  "name": "Alice Example",
+  "preferred_username": "alice@example.test",
+  "orion_workspace_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "orion_project_id": "11111111-1111-4111-8111-111111111111",
+  "orion_clearance": 3,
+  "realm_access": {
+   "roles": [
+    "nova-admin",
+    "orbit-admin",
+    "forge-admin"
+   ]
+  },
+  "scope": "orion:context.read",
+  "amr": [
+   "pwd"
+  ]
+ },
+ "tokens": {
+  "nova": "eyJhbGciOiJSUzI1NiIsImtpZCI6Im9yaW9uLXRlc3Qta2V5LTEiLCJ0eXAiOiJKV1QifQ.eyJhbXIiOlsicHdkIl0sImF1ZCI6Im5vdmEtd2ViIiwiZW1haWwiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZXhwIjoxNzkyMTUyNTQwLCJpYXQiOjE3OTIxNTE5NDAsImlzcyI6Imh0dHBzOi8vaWRwLm9yaW9uLnRlc3QvcmVhbG1zL29yaW9uIiwibmFtZSI6IkFsaWNlIEV4YW1wbGUiLCJvcmlvbl9jbGVhcmFuY2UiOjMsIm9yaW9uX3Byb2plY3RfaWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJvcmlvbl93b3Jrc3BhY2VfaWQiOiJhYWFhYWFhYS1hYWFhLTRhYWEtOGFhYS1hYWFhYWFhYWFhYWEiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsibm92YS1hZG1pbiIsIm9yYml0LWFkbWluIiwiZm9yZ2UtYWRtaW4iXX0sInNjb3BlIjoib3Jpb246Y29udGV4dC5yZWFkIiwic3ViIjoiNWIxZDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIn0.i9B6Gccxd6rS5cXDDlxb1_YkJ_YRHoVAWAEIfjaYPLg7teOKE3vA9_7RvVEOm72a3gR8z2Wf-UhnBibvX69P_6PbbaFjSnJSoza8rOMbfCmlZSAwC3d8L3uNZ5sMXu2cvsUFKtNZVfND3Ubyz8Ze8MEfQOuquWsY2QU2d9bWnO37JWtyZnshbYUWS_YaimsXbb_GYtDGg6ISqNYIuuNaIWz7v5Ie8auK-zQVAKW8wXeBCOW8Zv0uevtDYSVx8Y0bMWLqf1e5CYWBv-UFki3K8oYrtsQ8uY5cIkjN6AB0_wmQMJM2C90BI3mnPChl0I1BHl0SVsrFUT1eM_Ps02qomw",
+  "orbit": "eyJhbGciOiJSUzI1NiIsImtpZCI6Im9yaW9uLXRlc3Qta2V5LTEiLCJ0eXAiOiJKV1QifQ.eyJhbXIiOlsicHdkIl0sImF1ZCI6Im9yYml0IiwiZW1haWwiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZXhwIjoxNzkyMTUyNTQwLCJpYXQiOjE3OTIxNTE5NDAsImlzcyI6Imh0dHBzOi8vaWRwLm9yaW9uLnRlc3QvcmVhbG1zL29yaW9uIiwibmFtZSI6IkFsaWNlIEV4YW1wbGUiLCJvcmlvbl9jbGVhcmFuY2UiOjMsIm9yaW9uX3Byb2plY3RfaWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJvcmlvbl93b3Jrc3BhY2VfaWQiOiJhYWFhYWFhYS1hYWFhLTRhYWEtOGFhYS1hYWFhYWFhYWFhYWEiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsibm92YS1hZG1pbiIsIm9yYml0LWFkbWluIiwiZm9yZ2UtYWRtaW4iXX0sInNjb3BlIjoib3Jpb246Y29udGV4dC5yZWFkIiwic3ViIjoiNWIxZDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIn0.RR09rK2rvG9iwMr4MA1asci_1LswqcOeRFep8_8wCPITS_hx87RWM3JzKUWXX_cDSZ3IPwMC_Xu4q9uoPTRcxDXmFRogB94fsJUxS-vECDxAJHTu_rXx2Kv3Iqfnm4xuUDatVdr77f2DfJP4_o9Q3jdQyDYt8xz79EKtmCF5XmzNnzWyXQh2pYNaqNpdfY9bDWeoHGFJb671iakXTolIB15oP4S31qIUHY43zSUtNXpeCCUQXWXI-lfym9e5OwqUXWFtSDziY3ciagtasU_KzbECVwd8ggoC2hvYjDenkNVpoCUSDXt1FqCBOs31YTT4QQBhSVGgqqmXF-r5X-CCGw",
+  "forge": "eyJhbGciOiJSUzI1NiIsImtpZCI6Im9yaW9uLXRlc3Qta2V5LTEiLCJ0eXAiOiJKV1QifQ.eyJhbXIiOlsicHdkIl0sImF1ZCI6ImZvcmdlIiwiZW1haWwiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZXhwIjoxNzkyMTUyNTQwLCJpYXQiOjE3OTIxNTE5NDAsImlzcyI6Imh0dHBzOi8vaWRwLm9yaW9uLnRlc3QvcmVhbG1zL29yaW9uIiwibmFtZSI6IkFsaWNlIEV4YW1wbGUiLCJvcmlvbl9jbGVhcmFuY2UiOjMsIm9yaW9uX3Byb2plY3RfaWQiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJvcmlvbl93b3Jrc3BhY2VfaWQiOiJhYWFhYWFhYS1hYWFhLTRhYWEtOGFhYS1hYWFhYWFhYWFhYWEiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbGljZUBleGFtcGxlLnRlc3QiLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsibm92YS1hZG1pbiIsIm9yYml0LWFkbWluIiwiZm9yZ2UtYWRtaW4iXX0sInNjb3BlIjoib3Jpb246Y29udGV4dC5yZWFkIiwic3ViIjoiNWIxZDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIn0.KtJehK-TzQcKTBUpmB3YWnOBCZ-s_UqqIaID_uw24tM8E3WuibHxKHK87Uh_O8F_kzoAvme8zEe-NQpS8co-N6XkGoNnS8aiXHMIENbT2dtw1asIMI_Dr7bTLYyUq8UHeiUAEZEecs0HHm-M-WCguGqL5VBarVCiGmdwo5omKy7tULgYWNpn6CCEYwZPCucW_qnLvhiJUj0qolZRzPWsdXE0d82kQGfB6qbQE3njnko0O9g1tlnwlELM0hWDfRI5mqDFurdl0dnGMWlxoO5dQuqEijJYzNgvjnLDxTioK8YB-kSp0-SlyykEcapKgWIBT3JMsjWfnzLYC2e6arOYww"
+ },
+ "services": {
+  "nova": {
+   "local": {
+    "clearance": 3,
+    "role": "editor"
+   },
+   "expect": {
+    "valid": false,
+    "error": "bad_signature",
+    "subject": null,
+    "workspace_id": null,
+    "project_id": null,
+    "space_access": false,
+    "platform_admin": false,
+    "role": null,
+    "effective_clearance": null,
+    "mfa": false,
+    "email_matchable": false,
+    "delegated_by": null,
+    "is_service": false,
+    "scopes": []
+   }
+  },
+  "orbit": {
+   "local": {
+    "clearance": 3,
+    "role": "editor"
+   },
+   "expect": {
+    "valid": false,
+    "error": "bad_signature",
+    "subject": null,
+    "workspace_id": null,
+    "project_id": null,
+    "space_access": false,
+    "platform_admin": false,
+    "role": null,
+    "effective_clearance": null,
+    "mfa": false,
+    "email_matchable": false,
+    "delegated_by": null,
+    "is_service": false,
+    "scopes": []
+   }
+  },
+  "forge": {
+   "local": {
+    "clearance": 3,
+    "role": "editor"
+   },
+   "expect": {
+    "valid": false,
+    "error": "bad_signature",
+    "subject": null,
+    "workspace_id": null,
+    "project_id": null,
+    "space_access": false,
+    "platform_admin": false,
+    "role": null,
+    "effective_clearance": null,
+    "mfa": false,
+    "email_matchable": false,
+    "delegated_by": null,
+    "is_service": false,
+    "scopes": []
+   }
+  }
+ }
+}

@@ -174,6 +174,7 @@ async def create_project(
         description=(description or "").strip(),
         settings=normalize_settings(settings),
         created_by=owner.id,
+        workspace_id=owner.workspace_id,  # the creator's workspace, never a request parameter
     )
     session.add(project)
     await session.flush()
@@ -188,6 +189,7 @@ async def create_project(
 def to_schema(project: Project, role: Role) -> ProjectOut:
     return ProjectOut(
         id=project.id,
+        orion_project_id=project.orion_project_id,
         slug=project.slug,
         name=project.name,
         description=project.description,

@@ -14,6 +14,7 @@ from app.models.evaluation import (  # §E
     EvalSet,
     RankingWeightChange,
 )
+from app.models.external_identity import ExternalIdentity
 from app.models.features_ask import *  # noqa: F403  (feature tables)
 from app.models.features_feed import *  # noqa: F403  (feature tables)
 from app.models.governance import Tombstone
@@ -22,6 +23,7 @@ from app.models.memory import Entity, EntityAlias, MemoryEvent, MemoryItem, Memo
 from app.models.project import Project, ProjectMember
 from app.models.source import DEFAULT_ACL, Source, default_acl
 from app.models.user import User
+from app.models.workspace import Workspace
 
 __all__ = [
     "DEFAULT_ACL",
@@ -42,6 +44,7 @@ __all__ = [
     "EvalCase",
     "EvalRun",
     "EvalSet",
+    "ExternalIdentity",
     "IngestionJob",
     "MemoryEvent",
     "MemoryItem",
@@ -53,5 +56,6 @@ __all__ = [
     "Source",
     "Tombstone",
     "User",
+    "Workspace",
     "default_acl",
 ]

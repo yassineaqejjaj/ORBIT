@@ -307,6 +307,7 @@ async def test_revocation_events_are_delivered_signed_to_explicit_subscribers_on
         assert set(body) == {
             "id", "type", "project", "target_type", "target_id", "created_at", "restricted", "title",
             "summary", "effective_at", "old_classification", "new_classification",
+            "workspace_id", "orion_project_id",  # NOV-106 (additive)
         }  # fmt: skip
         text = json.dumps(body)
         assert "role:owner" not in text and "user:" not in text and "Plan de salle" not in text

@@ -18,11 +18,11 @@ Les endpoints marqués **(agent)** acceptent aussi une clé API d'agent du proje
 ```ts
 User        = { id, email, full_name, is_admin: bool, clearance: 0|1|2|3, avatar_color: string, created_at, onboarding_completed_at: datetime|null }
 Member      = { user: User, role: Role, created_at }
-Project     = { id, slug, name, description, settings: ProjectSettings, role: Role /* rôle de l'appelant */, created_at, updated_at }
+Project     = { id, orion_project_id /* id commun ORION, immuable (= id) */, slug, name, description, settings: ProjectSettings, role: Role /* rôle de l'appelant */, created_at, updated_at }
 ProjectSettings = { freshness_days: Record<SourceKind, number>, default_token_budget: number, min_relevance: number, short_term_ttl_hours: number }
 ProjectSummary = Project & { stats: { sources: number, documents: number, memory_items: number, context_requests_7d: number } }
 
-Agent       = { id, name, kind: AgentKind, description, clearance, api_key_prefix, active, created_at, last_used_at }
+Agent       = { id, name, kind: AgentKind, description, clearance, api_key_prefix, active, created_at, last_used_at, role: "viewer"|"editor", expires_at: datetime|null, rotated_at: datetime|null }
 AgentCreated = { agent: Agent, api_key: string /* affichée une seule fois */ }
 
 Source      = { id, name, kind: SourceKind, description, default_classification, default_acl: string[], config: object,
@@ -81,8 +81,8 @@ AuditEvent  = { id, actor_type, actor_id, actor_label, action, target_type, targ
 | PATCH | `/projects/{slug}/members/{user_id}` | owner | `{role}` | `Member` |
 | DELETE | `/projects/{slug}/members/{user_id}` | owner | — | `204` (interdit de retirer le dernier owner → 409) |
 | GET | `/projects/{slug}/agents` | viewer | — | `Agent[]` |
-| POST | `/projects/{slug}/agents` | owner | `{name, kind, description?, clearance}` | `AgentCreated` |
-| POST | `/projects/{slug}/agents/{id}/rotate` | owner | — | `AgentCreated` |
+| POST | `/projects/{slug}/agents` | owner | `{name, kind, description?, clearance, role?: "viewer"\|"editor", expires_in_days?}` | `AgentCreated` |
+| POST | `/projects/{slug}/agents/{id}/rotate` | owner | `{expires_in_days?}` (optionnel) | `AgentCreated` |
 | DELETE | `/projects/{slug}/agents/{id}` | owner | — | `204` (révocation : `active=false`) |
 | GET | `/agents/self` | **clé d'agent** | — | `AgentSelf` (identité de la clé appelante, hors projet) |
 
@@ -91,6 +91,16 @@ AgentSelf = { id, name, kind: AgentKind, description, clearance: 0|1|2|3,
               project: { id, slug, name },
               key: { prefix, status: "active", created_at, last_used_at: string|null } }
 ```
+
+**Clés d'agent rattachées (ADR 001 §7, NOV-112).** Une clé `orb_…` appartient à un projet **et** à son espace (`workspace_id`, repris du
+projet à la création), porte une habilitation **explicite** (`clearance`), un rôle explicite (`viewer` ou `editor`, jamais `owner` ;
+`editor` par défaut, comme avant), une expiration facultative (`expires_in_days` ; une clé expirée répond `401`) et la date de sa
+dernière rotation. **Rotation** : `POST …/rotate` génère un nouveau secret (l'ancien est refusé aussitôt), garde espace, projet, rôle
+et habilitation, et renouvelle une clé expirée (avec `expires_in_days` ; sans corps l'expiration reste). L'audit nomme la clé
+(`actor_type=agent`), jamais un utilisateur. Outil d'administration, sans aucun secret :
+`python -m app.admin keys list [--workspace <uuid>] [--project <slug>] [--json]` (âge, dernière utilisation, statut
+`active|expired|revoked|misplaced`) et `python -m app.admin keys revoke-misplaced [--dry-run]` (révoque les clés dont l'espace n'est
+plus celui de leur projet).
 
 `GET /agents/self` répond avec une clé d'agent seulement (`Authorization: Bearer orb_…` ou `X-Orbit-Key`) : `403` avec une
 session utilisateur, `401` sans identifiants. Une clé révoquée, renouvelée ou inconnue reçoit `401` (« Clé d'agent révoquée » /
@@ -225,6 +235,7 @@ ContextPackage = {
   config: { retrieval: "hybrid-bm25-knn-rrf-v1", reranker: string, embedding_model: string, llm: string | null },
   warnings: string[],                    // ex. "Le contexte contient des informations classifiées C2 (Confidentiel)."
   max_classification: 0|1|2|3,           // plus haut niveau du contenu livré dans items[] (0 s'il n'y en a pas)
+  orion_project_id: uuid | null,         // id du projet commun aux services ORION (NOV-106, additif)
   schema_version: 2                      // version du contrat ; absent = 1 (cf. « Versions du contrat »)
 }
 
@@ -277,7 +288,7 @@ ContextRequestSummary = { id, trace_id, task, intent, agent: {id,name,kind}|null
 ```ts
 SnapshotSummary = { id, name, version, parent_version, task, intent, token_count, items_count, content_hash, created_by_label, created_at }
 Snapshot = SnapshotSummary & { content: string, items: SnapshotItem[], request_id,
-                               max_classification: 0|1|2|3, schema_version: 2 }
+                               max_classification: 0|1|2|3, orion_project_id: uuid | null, schema_version: 2 }
 SnapshotItem = { key /* "chunk:<id>" | "memory:<lineage_id>" */, citation, candidate_type, id, title, excerpt, source_kind?, memory_kind?, version?, forgotten: bool,
                  classification: 0|1|2|3|null /* null : item masqué, oublié ou niveau inconnu pour ce lecteur */ }
 ```
@@ -292,6 +303,45 @@ que les items dont le contenu est livré au lecteur (ni masqués, ni oubliés). 
 `max_classification`, `ContextItem.access_scope` et `SnapshotItem.classification`, ainsi que `GET /agents/self`. Les évolutions sont
 **additives** : aucun champ n'est renommé ni supprimé ; un consommateur v1 ignore les clés qu'il ne connaît pas, un consommateur v2
 traite l'absence de `schema_version` comme la v1 et celle des nouveaux champs comme « inconnu » (donc restreint).
+
+`orion_project_id` (NOV-106) est ajouté à `ContextPackage`, `Snapshot` et `Project` **sans changer `schema_version`** (2) : champ
+optionnel et additif, le sens des champs existants ne change pas. Les payloads de webhook portent en plus `workspace_id` et
+`orion_project_id` (clés de premier niveau, additives).
+
+## Espaces et isolation (ADR 001, NOV-106)
+
+Un **espace** (`workspaces`, `orion_workspace_id`) est la frontière d'isolation d'une entreprise. `workspace_id` figure sur les
+utilisateurs, projets, clés d'agent et webhooks (obligatoire, immuable, défaut = espace par défaut `ORION_DEFAULT_WORKSPACE_ID`
+créé par la migration `h009`). Documents, chunks, mémoires, snapshots, requêtes de contexte et index de recherche héritent de
+l'espace **par leur projet** (aucune réindexation). L'espace d'une requête vient de l'identité validée (compte ou clé d'agent),
+jamais d'un paramètre, d'un en-tête ou d'un corps. `ORBIT_WORKSPACE_ENFORCEMENT` :
+
+| Valeur | Effet |
+|---|---|
+| `off` (défaut) | aucun filtre : comportement historique à l'identique |
+| `shadow` | le filtre est évalué ; chaque accès inter-espaces incrémente `orbit_workspace_violations_total{mode,surface}` et est journalisé, la requête est servie |
+| `enforce` | une ressource d'un autre espace répond `404`, identique à un identifiant inconnu (projets, documents, recherche, contexte, listes, membres, comptes) ; l'administrateur de plateforme ne traverse pas non plus |
+
+En `enforce`, la mémoire d'organisation (`project_id NULL`) appartient à l'espace par défaut : elle n'est servie qu'aux projets de cet espace.
+
+## OIDC relying party (NOV-109)
+
+Désactivé par défaut (`ORBIT_OIDC_ENABLED=false` : aucune route d'authentification ne change, les routes `/auth/oidc/*` répondent 404).
+Activé, il s'ajoute au mot de passe, à la session et aux clés `orb_…` (double pile, inchangés).
+
+* **Jeton Bearer de l'IdP** (RS256, JWKS en cache rechargé à un `kid` inconnu) validé par le contrat de claims partagé
+  (`backend/app/orion_claims.py`, copie vérifiée par hash de NOVA, `contracts/claims/`) : `iss`, `aud=orbit`, `exp`, `nbf`.
+  Il désigne le compte **lié** (`external_identities`) ; l'espace est celui du jeton (`orion_workspace_id`, égal à celui du compte),
+  un jeton sans espace ou de compte de service est refusé (403), `orion_project_id` restreint l'accès à ce projet,
+  le rôle fonctionnel reste l'appartenance locale, `habilitation = min(User.clearance, orion_clearance)`, et `orbit-admin` ne
+  donne l'administration qu'à un compte déjà administrateur local.
+* **Navigateur** : `GET /auth/oidc/login` (Authorization Code + PKCE S256, state, nonce) puis `GET /auth/oidc/callback` :
+  sujet lié → cookie de session ORBIT ; sujet inconnu avec e-mail **vérifié** correspondant à un compte du même espace →
+  `202 {status: "link_required", link_token}` (rien n'est lié) ; sinon 403 (aucun compte n'est créé sauf `ORBIT_OIDC_AUTO_PROVISION=true`).
+* **Liaison confirmée** : `POST /auth/oidc/link/confirm {link_token, password}` (mot de passe local du compte) crée la liaison
+  et ouvre la session ; le jeton de liaison dure 10 min et se brûle après 5 mots de passe faux. `GET` / `DELETE /auth/oidc/identity` :
+  voir / supprimer ses propres liaisons.
+* Un utilisateur désactivé dans l'IdP perd l'accès à l'expiration du jeton ; les événements de révocation (NOV-80) sont inchangés.
 
 ## Observabilité & audit
 

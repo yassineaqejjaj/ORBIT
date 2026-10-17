@@ -38,6 +38,13 @@ Flux : `Sources métier → ingestion & normalisation → indexation → gouvern
 | `ORBIT_VALKEY_URL` | `redis://valkey:6379/0` | |
 | `ORBIT_JWT_SECRET` | (requis en prod, valeur dev dans `.env.example`) | HS256 |
 | `ORBIT_JWT_TTL_MINUTES` | `720` | |
+| `ORBIT_WORKSPACE_ENFORCEMENT` | `off` | `off` \| `shadow` \| `enforce` : isolation par espace (ADR 001 §9, NOV-106) ; voir [API.md](API.md#espaces-et-isolation-adr-001-nov-106) |
+| `ORBIT_OIDC_ENABLED` | `false` | relying party OIDC (ADR 001, NOV-109) ; voir [API.md](API.md#oidc-relying-party-nov-109) |
+| `ORBIT_OIDC_ISSUER` / `_AUDIENCE` / `_CLIENT_ID` / `_CLIENT_SECRET` / `_REDIRECT_URI` | (vide) / `orbit` / `orbit` / (vide) / (vide) | `iss` exact, `aud` attendu, client PKCE (secret facultatif), URL publique de `/auth/oidc/callback` |
+| `ORBIT_OIDC_JWKS_URL` / `_AUTHORIZATION_ENDPOINT` / `_TOKEN_ENDPOINT` | (découverte) | surcharges ; sinon `<issuer>/.well-known/openid-configuration` |
+| `ORBIT_OIDC_JWKS_CACHE_SECONDS` / `_LEEWAY_SECONDS` / `_AUTO_PROVISION` | `600` / `0` / `false` | cache JWKS (rechargé à un `kid` inconnu), tolérance d'horloge, création de compte (désactivée) |
+| `ORBIT_ACCOUNTS_APPROVAL_KEY` / `_BACKUP_DIR` / `_BACKUP_MAX_AGE_HOURS` / `_EXPORT_SALT` | (vide) / (vide) / `24` / (vide) | outil de migration des comptes (NOV-113) : clé HMAC d'approbation, dossier des manifestes de sauvegarde, âge maximal, sel des hachés d'e-mail ; voir [ACCOUNTS_MIGRATION.md](ACCOUNTS_MIGRATION.md) |
+| `ORION_DEFAULT_WORKSPACE_ID` | `6f5e1c00-0000-4000-8000-000000000001` | espace par défaut créé par la migration `h009` (à fixer **avant** la migration) |
 | `ORBIT_COOKIE_SECURE` | `false` | |
 | `ORBIT_OBJECT_STORE_BACKEND` | `local` | `local` (volume) \| `s3` (S3 ou compatible) ; voir [OBJECT_STORAGE.md](OBJECT_STORAGE.md) |
 | `ORBIT_OBJECT_STORE_PATH` | `/data/objects` | backend `local` |
