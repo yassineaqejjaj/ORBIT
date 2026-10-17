@@ -34,6 +34,8 @@ class AuditAction(StrEnum):
     auth_sso_link = "auth.sso_link"
     auth_sso_unlink = "auth.sso_unlink"
     auth_sso_refused = "auth.sso_refused"
+    account_link = "account.link"
+    account_flags = "account.flags"
     user_create = "user.create"
     user_update = "user.update"
     project_create = "project.create"

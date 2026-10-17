@@ -15,6 +15,10 @@ after restoring a backup (docs/FEATURES.md, « Oubli sélectif »).
 keys by workspace / project (role, clearance, age, last use, expiry, status) **without any secret**;
 ``keys revoke-misplaced [--dry-run]`` revokes the keys whose workspace is no longer their project's
 (NOV-112).
+
+``python -m app.admin accounts <inventory|reconcile|approve|disable-password|enable-password|
+break-glass>`` is the account migration tool of ADR 001 §8 (NOV-113): read-only unless ``--apply``;
+see ``docs/ACCOUNTS_MIGRATION.md``.
 """
 
 from __future__ import annotations
@@ -67,6 +71,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     krevoke.add_argument("--dry-run", action="store_true", help="Lister sans rien écrire")
     krevoke.add_argument("--json", action="store_true", help="Sortie JSON")
+    from app.admin import accounts
+
+    accounts.add_parsers(sub)
     return parser
 
 
@@ -239,6 +246,10 @@ async def _main(argv: Sequence[str] | None) -> int:
             return await run_purge_forgotten(args)
         if args.command == "keys":
             return await run_keys(args)
+        if args.command == "accounts":
+            from app.admin import accounts
+
+            return await accounts.run_accounts(args)
         return 2
     finally:
         await dispose_engine()
