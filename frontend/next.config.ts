@@ -19,10 +19,12 @@ const nextConfig: NextConfig = {
     // Long-running proxied calls (multipart uploads, NDJSON exports, MCP streams).
     proxyTimeout: 120_000,
   },
+  async redirects() {
+    // No public landing page: the root opens the application (the login screen when signed out).
+    return [{ source: "/", destination: "/projects", permanent: false }];
+  },
   async rewrites() {
     return [
-      // Public landing page (static bundle exported from the design tool).
-      { source: "/", destination: "/landing.html" },
       { source: "/api/:path*", destination: `${apiUrl}/api/:path*` },
       { source: "/mcp", destination: `${apiUrl}/mcp` },
       { source: "/mcp/:path*", destination: `${apiUrl}/mcp/:path*` },

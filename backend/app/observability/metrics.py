@@ -36,6 +36,12 @@ EXCLUSIONS_TOTAL = Counter(
     "Candidates excluded from context packages, by reason code.",
     ["reason"],
 )
+WORKSPACE_VIOLATIONS_TOTAL = Counter(
+    "orbit_workspace_violations_total",
+    "Accesses to a resource of another workspace (ADR 001 §9), by enforcement mode and surface. "
+    "`shadow` = would be refused, served anyway; `enforce` = refused with a 404.",
+    ["mode", "surface"],
+)
 WORKER_INFLIGHT = Gauge("orbit_worker_inflight_jobs", "Jobs currently processed by this worker.")
 
 CONTEXT_CACHE_PREFIX_TOTAL = Counter(
@@ -60,6 +66,11 @@ LIVE_EVENTS_DELIVERED_TOTAL = Counter(
     "orbit_live_events_delivered_total", "Live events written to SSE clients, by kind.", ["kind"]
 )
 LIVE_CONNECTIONS = Gauge("orbit_live_stream_connections", "Open SSE connections on this process.")
+
+
+def record_workspace_violation(*, mode: str, surface: str) -> None:
+    """One cross-workspace access seen by ``ORBIT_WORKSPACE_ENFORCEMENT`` (never labelled with ids)."""
+    WORKSPACE_VIOLATIONS_TOTAL.labels(mode=mode, surface=surface).inc()
 
 
 def observe_cache_prefix(*, reused: bool, tokens: int) -> None:

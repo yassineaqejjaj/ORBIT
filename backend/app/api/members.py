@@ -12,7 +12,7 @@ from app.errors import conflict, not_found
 from app.models import ProjectMember, User
 from app.schemas import Member, MemberAddIn, MemberUpdateIn
 from app.schemas import User as UserOut
-from app.services import audit
+from app.services import audit, workspaces
 from app.services import projects as project_service
 from app.services import users as user_service
 from app.services.audit import AuditAction
@@ -42,7 +42,9 @@ async def list_members(access: ViewerAccess, session: SessionDep) -> list[Member
 @router.post("", response_model=Member, status_code=status.HTTP_201_CREATED, summary="Ajouter un membre")
 async def add_member(body: MemberAddIn, access: OwnerAccess, session: SessionDep) -> Member:
     user = await user_service.get_by_email(session, body.email)
-    if user is None:
+    if user is None or not workspaces.allows(
+        access.project.workspace_id, user.workspace_id, surface="member_add"
+    ):  # an account of another workspace is indistinguishable from an unknown e-mail
         raise not_found("Aucun utilisateur ne correspond à cette adresse e-mail")
     if await project_service.get_member(session, access.project_id, user.id):
         raise conflict("Cet utilisateur est déjà membre du projet")

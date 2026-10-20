@@ -74,6 +74,7 @@ async def create_webhook(body: WebhookIn, access: OwnerAccess, session: SessionD
         raise validation_error(f"Nombre maximal de webhooks atteint ({MAX_WEBHOOKS})")
     hook = Webhook(
         project_id=access.project_id,
+        workspace_id=access.project.workspace_id,
         url=url,
         description=body.description,
         types=body.types,
@@ -165,6 +166,8 @@ async def test_webhook(webhook_id: uuid.UUID, access: OwnerAccess, session: Sess
             "id": str(uuid.uuid4()),
             "type": PING_TYPE,
             "project": {"id": str(access.project_id), "slug": access.project.slug},
+            "workspace_id": str(access.project.workspace_id),
+            "orion_project_id": str(access.project.orion_project_id),
             "title": "Test de webhook ORBIT",
             "summary": "Événement de test envoyé depuis les paramètres du projet",
             "created_at": utcnow().isoformat(),

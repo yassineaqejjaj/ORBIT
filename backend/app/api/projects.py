@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 
-from app.deps import CurrentUser, OwnerAccess, SessionDep, ViewerAccess
+from app.deps import CurrentUser, OwnerAccess, Principal, SessionDep, ViewerAccess, get_user_principal
 from app.enums import Role
 from app.errors import conflict
 from app.models import Project, ProjectMember
 from app.schemas import Project as ProjectOut
 from app.schemas import ProjectCreateIn, ProjectSummary, ProjectUpdateIn
-from app.services import audit
+from app.services import audit, workspaces
 from app.services import projects as project_service
 from app.services.audit import AuditAction
 
@@ -19,20 +21,30 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 
 @router.get("", response_model=list[ProjectSummary], summary="Projets de l'appelant (tous pour un admin)")
-async def list_projects(user: CurrentUser, session: SessionDep) -> list[ProjectSummary]:
+async def list_projects(
+    principal: Annotated[Principal, Depends(get_user_principal)], session: SessionDep
+) -> list[ProjectSummary]:
+    user = principal.user
+    assert user is not None
     memberships = {
         m.project_id: m.role
         for m in await session.scalars(select(ProjectMember).where(ProjectMember.user_id == user.id))
     }
     stmt = select(Project).order_by(Project.name)
-    if not user.is_admin:
+    if not principal.is_admin:
         if not memberships:
             return []
         stmt = stmt.where(Project.id.in_(list(memberships)))
-    projects = list(await session.scalars(stmt))
+    # Workspace filter (ADR 001 §9): a project of another workspace is not listed (``enforce``),
+    # or only counted (``shadow``).
+    projects = [
+        p
+        for p in await session.scalars(stmt)
+        if workspaces.allows(user.workspace_id, p.workspace_id, surface="project_list")
+    ]
     stats = await project_service.project_stats(session, [p.id for p in projects])
     return [
-        project_service.to_summary(p, Role.owner if user.is_admin else memberships[p.id], stats[p.id])
+        project_service.to_summary(p, Role.owner if principal.is_admin else memberships[p.id], stats[p.id])
         for p in projects
     ]
 

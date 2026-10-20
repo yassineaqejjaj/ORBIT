@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import uuid
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,8 +47,12 @@ async def create_user(
     password: str,
     clearance: int = 1,
     is_admin: bool = False,
+    workspace_id: uuid.UUID | None = None,
 ) -> User:
-    """Create (and flush) a user. The e-mail must already be unique (caller checks, DB enforces)."""
+    """Create (and flush) a user. The e-mail must already be unique (caller checks, DB enforces).
+
+    ``workspace_id`` is the creator's workspace (never a request parameter); ``None`` = default workspace.
+    """
     normalized = normalize_email(email)
     user = User(
         email=normalized,
@@ -56,6 +61,7 @@ async def create_user(
         clearance=clearance,
         is_admin=is_admin,
         avatar_color=avatar_color_for(normalized),
+        **({"workspace_id": workspace_id} if workspace_id is not None else {}),
     )
     session.add(user)
     await session.flush()

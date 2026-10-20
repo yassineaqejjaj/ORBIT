@@ -44,6 +44,10 @@ Légende des colonnes :
 | `classification` des items de snapshot, `max_classification`, `access_scope`, `schema_version`, `GET /agents/self` | NOV-73 | oui | `test_context_contract`, `test_api_context`, `test_acl`, `test_agents`, `test_mcp_server` | non | oui | non |
 | Événements de révocation (`*.acl_changed`, `document.classification_changed`, `member.removed`, `agent.revoked`) | NOV-80 | oui | `test_feature_feed`, `test_feature_webhooks` | non | oui | non |
 | L'oubli réécrit au repos les contextes et snapshots persistés ; `python -m app.admin purge-forgotten` | NOV-97 | oui | `test_forget_purge` | non | oui | non |
+| Entité espace : `workspaces`, `workspace_id` (utilisateurs, projets, clés d'agent, webhooks), `orion_project_id`, `ORBIT_WORKSPACE_ENFORCEMENT=off\|shadow\|enforce` (défaut `off`) | NOV-106 | oui | `test_workspace_migration` (base peuplée), `test_workspace_isolation`, `test_workspace_inventory`, `test_contract_fixtures` | non | en cours (PR) | non |
+| OIDC relying party (désactivé par défaut) : jetons de l'IdP, Authorization Code + PKCE, liaison confirmée, table `external_identities` | NOV-109 | oui | `test_oidc`, `test_claims_contract`, `test_workspace_migration`, `test_workspace_inventory` | non | en cours (PR) | non |
+| Clés d'agent rattachées espace/projet : rôle explicite, expiration facultative, rotation, `python -m app.admin keys list` / `revoke-misplaced` (sans secret) | NOV-112 (ORBIT) | oui | `test_agent_keys`, `test_workspace_migration` | non | en cours (PR) | non |
+| Outil de migration des comptes : inventaire en lecture seule, rapprochement dry-run, `--apply` (sauvegarde + approbation signée), drapeaux `password_login_disabled` / `sso_required`, break-glass | NOV-113 (ORBIT) | oui | `test_accounts_migration`, `test_workspace_migration` | non | en cours (PR) | non (exécution = décision séparée) |
 | CI GitHub Actions (ruff, mypy baseline, `alembic check`, pytest, web, builds Docker, audits informatifs) | NOV-87 | oui | exécutée sur la PR (voir l'onglet *Checks*) | non | voir la PR | sans objet |
 
 ## Pas encore fait

@@ -8,11 +8,12 @@ they are all documented in ``.env.example``.
 from __future__ import annotations
 
 import logging
+import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_VERSION = "1.0.0"
@@ -21,6 +22,9 @@ APP_VERSION = "1.0.0"
 DEV_JWT_SECRET = "orbit-dev-secret-change-me-0123456789abcdef"
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
+
+#: Default workspace of a fresh install (override with ``ORION_DEFAULT_WORKSPACE_ID``).
+DEFAULT_WORKSPACE_ID = uuid.UUID("6f5e1c00-0000-4000-8000-000000000001")
 
 
 class Settings(BaseSettings):
@@ -78,6 +82,54 @@ class Settings(BaseSettings):
     #: Candidates scored by the cross-encoder and passage length sent (latency bound, §B2).
     reranker_top_n: int = Field(default=20, ge=1, le=200)
     reranker_max_chars: int = Field(default=800, ge=100, le=8000)
+
+    # --- Workspaces (ADR 001 §5, §9 — NOV-106) -------------------------------------------------
+    #: ``off`` = no workspace filter (historical behaviour); ``shadow`` = evaluate and count violations
+    #: (``orbit_workspace_violations_total``) without blocking; ``enforce`` = a resource of another workspace
+    #: answers 404, indistinguishable from an unknown one.
+    workspace_enforcement: Literal["off", "shadow", "enforce"] = "off"
+    #: Id of the default workspace created by the migration; every pre-existing user, project, agent key and
+    #: webhook belongs to it. Read from ``ORION_DEFAULT_WORKSPACE_ID`` (also ``ORBIT_DEFAULT_WORKSPACE_ID``).
+    default_workspace_id: uuid.UUID = Field(
+        default=DEFAULT_WORKSPACE_ID,
+        validation_alias=AliasChoices("ORION_DEFAULT_WORKSPACE_ID", "ORBIT_DEFAULT_WORKSPACE_ID"),
+    )
+
+    # --- OIDC relying party (ADR 001 §2, §4, §8 — NOV-109); everything is off by default -------------
+    #: Accept IdP tokens and the Authorization Code + PKCE login next to the password / session / ``orb_``
+    #: keys.
+    oidc_enabled: bool = False
+    #: Exact ``iss`` of the IdP tokens (e.g. ``https://idp.example/realms/orion``). Required when enabled.
+    oidc_issuer: str = ""
+    #: Expected ``aud`` of access tokens (ADR §3: ``orbit``).
+    oidc_audience: str = "orbit"
+    oidc_client_id: str = "orbit"
+    #: Optional: a public client with PKCE needs none.
+    oidc_client_secret: str = ""
+    #: Public callback of the browser flow (``…/api/v1/auth/oidc/callback``). Required for the browser login.
+    oidc_redirect_uri: str = ""
+    oidc_scopes: str = "openid email profile"
+    #: Overrides of the endpoints otherwise read from ``<issuer>/.well-known/openid-configuration``.
+    oidc_jwks_url: str = ""
+    oidc_authorization_endpoint: str = ""
+    oidc_token_endpoint: str = ""
+    oidc_jwks_cache_seconds: int = Field(default=600, ge=30, le=86_400)
+    #: Clock-skew tolerance on ``exp`` / ``nbf`` (the contract default is none).
+    oidc_leeway_seconds: int = Field(default=0, ge=0, le=120)
+    oidc_http_timeout_seconds: float = Field(default=5.0, ge=0.5, le=30)
+    #: Create a local account (clearance C1, no password) for an unknown, e-mail-verified subject. Off by
+    #: default.
+    oidc_auto_provision: bool = False
+
+    # --- Account migration tool (ADR 001 §8, NOV-113): ``python -m app.admin accounts …`` -----------
+    #: HMAC key that signs / verifies the approval file of ``accounts reconcile --apply``. Empty = no apply.
+    accounts_approval_key: str = ""
+    #: Directory holding ``<backup id>.json`` manifests (``{"id", "created_at", "database"}``) that
+    #: ``--confirm-backup`` must point to. Empty = every write that needs a backup is refused.
+    accounts_backup_dir: str = ""
+    accounts_backup_max_age_hours: int = Field(default=24, ge=1, le=720)
+    #: Salt of the e-mail hashes of the inventory export (empty = unsalted).
+    accounts_export_salt: str = ""
 
     # --- Optional LLM (OpenAI-compatible) ---------------------------------------------------------
     llm_base_url: str = ""
@@ -305,6 +357,16 @@ class Settings(BaseSettings):
             raise ValueError(
                 "ORBIT_JWT_SECRET doit être défini (au moins 32 caractères) lorsque ORBIT_ENV=production."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _check_oidc(self) -> Settings:
+        if not self.oidc_enabled:
+            return self
+        if not self.oidc_issuer.strip():
+            raise ValueError("ORBIT_OIDC_ISSUER est requis lorsque ORBIT_OIDC_ENABLED=true.")
+        if self.env == "production" and not self.oidc_issuer.startswith("https://"):
+            raise ValueError("ORBIT_OIDC_ISSUER doit être une URL https en production.")
         return self
 
     @model_validator(mode="after")
