@@ -107,7 +107,7 @@ flowchart LR
 
 | Service | Rôle | Port hôte |
 |---|---|---|
-| `web` | Interface Next.js 15 (voir *Parcours dans l’interface*) et landing page | 3000 |
+| `web` | Interface Next.js 15 (voir *Parcours dans l’interface*) | 3000 |
 | `api` | FastAPI : REST `/api/v1`, MCP `/mcp`, webhook Teams, `/metrics`, `/health`, `/ready` | 8000 |
 | `worker` | Ingestion, synchronisation des connecteurs (natifs et MCP), extraction mémoire, consolidation, oubli sélectif, livraison des webhooks, résumés (file Postgres `SKIP LOCKED`) | — |
 | `postgres` | Source de vérité (documents, versions, chunks, mémoire, requêtes, snapshots, audit) | 5433 |
@@ -425,7 +425,6 @@ orbit/
     tests/            pytest (unitaires + intégration)
     Dockerfile        image standard ; Dockerfile.railway pour Railway (API + worker, Node.js et serveurs MCP inclus)
   frontend/           Next.js 15 (App Router), TypeScript strict, Tailwind CSS v4, Radix UI, TanStack Query, Recharts
-    public/landing.html  landing page servie à la racine du site
     src/assets/fonts/    Montserrat (latin, police variable, licence SIL OFL 1.1) embarquée : le build ne contacte pas Google Fonts
 ```
 
