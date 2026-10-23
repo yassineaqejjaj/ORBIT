@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="250" viewBox="0 0 1000 250" role="img" aria-labelledby="title desc">
+<title id="title">ORBIT</title><desc id="desc">Governed context for reliable agents</desc>
+<rect width="1000" height="250" rx="18" fill="#101825"/>
+<rect x="0" width="9" height="250" fill="#6FBEF8"/>
+<g fill="none" stroke="#6FBEF8" stroke-width="2" opacity="0.65">
+<circle cx="870" cy="125" r="77"/><circle cx="870" cy="125" r="42"/>
+<path d="M745 50 870 83 972 46M744 205 870 167 971 207"/>
+</g><g fill="#6FBEF8"><circle cx="745" cy="50" r="8"/><circle cx="972" cy="46" r="8"/><circle cx="744" cy="205" r="8"/><circle cx="971" cy="207" r="8"/><circle cx="870" cy="125" r="13"/></g>
+<text x="50" y="63" font-family="Arial,sans-serif" font-size="19" letter-spacing="2" fill="#6FBEF8">CONTEXT AND MEMORY</text>
+<text x="48" y="142" font-family="Arial,sans-serif" font-size="69" font-weight="bold" fill="#F8FAFC">ORBIT</text>
+<text x="50" y="193" font-family="Arial,sans-serif" font-size="23" fill="#C6D1E0">Governed context for reliable agents</text></svg>
