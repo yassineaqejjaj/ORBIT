@@ -2,6 +2,8 @@
 
 <!-- portfolio-summary:start -->
 
+![Project overview](docs/assets/github-cover.svg)
+
 > **Governed context and memory** | **Status:** Bêta publique, non validée pour un usage en production.
 >
 > [Live application](https://orbit-virid-psi-70.vercel.app) · [Architecture](docs/ARCHITECTURE.md) · [Demo / verification](docs/DEMO.md) · [Source code](https://github.com/yassineaqejjaj/ORBIT)
