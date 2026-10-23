@@ -1,5 +1,16 @@
 # ORBIT — Plateforme de contexte et de mémoire gouvernée pour agents IA
 
+<!-- portfolio-summary:start -->
+
+> **Governed context and memory** | **Status:** Bêta publique, non validée pour un usage en production.
+>
+> [Live application](https://orbit-virid-psi-70.vercel.app) · [Architecture](docs/ARCHITECTURE.md) · [Demo / verification](docs/DEMO.md) · [Source code](https://github.com/yassineaqejjaj/ORBIT)
+
+[![GitHub Actions](https://github.com/yassineaqejjaj/ORBIT/actions/workflows/ci.yml/badge.svg)](https://github.com/yassineaqejjaj/ORBIT/actions/workflows/ci.yml)
+
+<!-- portfolio-summary:end -->
+
+
 > **Le bon contexte, au bon agent, au bon moment — et la preuve de pourquoi.**
 
 Les agents IA d'une équipe produit (rédaction de spécifications, design, ingénierie) échouent rarement faute de
