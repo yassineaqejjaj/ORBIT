@@ -15,6 +15,15 @@
 <!-- portfolio-summary:end -->
 
 
+## En un coup d'œil
+
+* **Ce que c'est :** la couche de contexte et de mémoire gouvernée d'une entreprise pour ses agents IA : ORBIT ingère les sources de l'équipe, construit une mémoire vivante et assemble pour chaque tâche un contexte explicable, filtré par habilitations et classification.
+* **Problème :** les agents échouent faute de contexte fiable (décision remplacée, versions mélangées, document confidentiel exposé) ; voir le [cas d'étude](docs/PORTFOLIO_CASE_STUDY.md#the-problem).
+* **Statut :** Bêta publique, non validée pour un usage en production (voir [État et feuille de route](#état-et-feuille-de-route)).
+* **Liens :** [Application en ligne](https://orbit-virid-psi-70.vercel.app) · [Architecture](docs/ARCHITECTURE.md) · [Démo](docs/DEMO.md) · [Cas d'étude](docs/PORTFOLIO_CASE_STUDY.md) · [Fonctionnalités](docs/FEATURES.md)
+
+**Guide de lecture :** Problème et solution (introduction ci-dessous) · [Parcours dans l'interface](#parcours-dans-linterface) · [Architecture](#architecture) · [Stack technique](#stack-technique) · [Captures d'écran](#captures-décran) · [Démarrage rapide](#démarrage-rapide) · [Tests](#tests) · [État et feuille de route](#état-et-feuille-de-route) · [Limites connues](#limites-connues) · [Licence](#licence)
+
 > **Le bon contexte, au bon agent, au bon moment — et la preuve de pourquoi.**
 
 Les agents IA d'une équipe produit (rédaction de spécifications, design, ingénierie) échouent rarement faute de
@@ -465,6 +474,25 @@ heuristiques).
 | Connecteurs | CRM (Salesforce, HubSpot), OAuth interactif pour Microsoft 365 / Google / Linear via MCP ([docs/integrations/mcp-servers.md](docs/integrations/mcp-servers.md)) |
 | Autorisation externalisée | OpenFGA (ReBAC) pour les ACL, OPA pour les politiques de classification et de fraîcheur |
 | Évaluation | Les bancs, le juge LLM et l'apprentissage existent (`app/evaluation/`) ; reste la boucle continue et automatisée à partir des exports NDJSON et des feedbacks |
+
+## Stack technique
+
+D'après l'[organisation du dépôt](#organisation-du-dépôt) et la CI : backend FastAPI et worker (Python 3.12, uv) ; PostgreSQL, OpenSearch (recherche hybride BM25 + k-NN) et Valkey ; serveur MCP et API REST ; frontend Next.js 15 (App Router), TypeScript strict, Tailwind CSS v4, Radix UI, TanStack Query, Recharts ; métriques Prometheus et OpenTelemetry ; déploiement Railway (backend) et Vercel (frontend).
+
+## Captures d'écran
+
+Pas encore documenté : le dépôt ne contient pas de captures d'écran. Le [parcours dans l'interface](#parcours-dans-linterface) décrit les écrans et la [démo en ligne](#démo-en-ligne) permet de les voir.
+
+## Limites connues
+
+* Bêta publique, non validée pour un usage en production ; le durcissement (SSO OIDC, MFA, audit chaîné, sauvegardes, chart Helm) est en cours (voir la feuille de route).
+* Le jeu de démonstration contient des données C2 et C3 entièrement fictives : n'y mélangez jamais de vraies données.
+* Les identifiants de l'instance en ligne sont communiqués séparément.
+* Les indicateurs du [cas d'étude](docs/PORTFOLIO_CASE_STUDY.md#limitations-and-honest-disclosure) sont des mesures proposées, pas des résultats obtenus.
+
+## Licence
+
+Pas encore de fichier de licence.
 
 ---
 
