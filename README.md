@@ -465,3 +465,9 @@ heuristiques).
 | Connecteurs | CRM (Salesforce, HubSpot), OAuth interactif pour Microsoft 365 / Google / Linear via MCP ([docs/integrations/mcp-servers.md](docs/integrations/mcp-servers.md)) |
 | Autorisation externalisée | OpenFGA (ReBAC) pour les ACL, OPA pour les politiques de classification et de fraîcheur |
 | Évaluation | Les bancs, le juge LLM et l'apprentissage existent (`app/evaluation/`) ; reste la boucle continue et automatisée à partir des exports NDJSON et des feedbacks |
+
+---
+
+## Part of an engineering approach
+
+Built with the [Agentic SDLC framework](https://github.com/yassineaqejjaj/agentic-sdlc) (earned autonomy). Read how this project was built and what its checks caught in the [case study](https://github.com/yassineaqejjaj/agentic-sdlc/blob/main/docs/case-studies/orbit.md).
