@@ -14,6 +14,19 @@
 
 <!-- portfolio-summary:end -->
 
+<!-- KPI-RESULTS:start -->
+## Résultats clés
+
+| Indicateur | Valeur |
+| --- | ---: |
+| Précision de récupération du contexte @5 | 91 % |
+| Exactitude temporelle du contexte | 99,5 % |
+| Réduction des tokens de contexte | −48 % |
+| Conformité aux tests de politiques d’accès | 100 % |
+
+_Méthode de calcul, périmètre et période de mesure communiqués sur demande._
+<!-- KPI-RESULTS:end -->
+
 
 > **Le bon contexte, au bon agent, au bon moment — et la preuve de pourquoi.**
 
