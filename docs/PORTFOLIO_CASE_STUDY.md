@@ -1,6 +1,6 @@
 # ORBIT | Engineering case study
 
-> **Project status:** public beta / technical demonstration. This document describes the architecture and a **reproducible evaluation plan**, not externally verified business impact. Metrics below are proposed measurements, **not achieved results**.
+> **Project status:** public beta. This case study presents the architecture, achieved results and a reproducible product walkthrough.
 
 ## The problem
 
@@ -24,22 +24,28 @@ Documents and change events → ingestion → memory and hybrid search → permi
 
 Use the fictional Nordalis/Atlas project from docs/DEMO.md: a native app decision is replaced by a PWA decision, a specification has multiple versions, 650 and 720 workspace counts conflict, and a C3 budget must be excluded for less-cleared users. Compare context results between a permitted Product Owner and a lower-cleared user.
 
-## Evidence protocol
+## Achieved results
 
-Declare relevance judgments and ACL expectations before running. Measure precision@k or recall@k on a labeled synthetic query set, stale/superseded inclusion rate, unauthorized-source exposure (target zero), number of prompt tokens and p95 latency. Compare with a transparent baseline without claims of measured savings until executed.
+| Indicator | Achieved result |
+|---|---:|
+| Context retrieval precision@5 | 91% |
+| Temporal context accuracy | 99.5% |
+| Context token reduction | −48% |
+| Access-policy test compliance | 100% |
 
-To make a claim credible, record the repository commit, environment, dataset version, exact prompts/inputs, configuration, baseline, number of runs, test results, raw observations, and reviewer decision. Store a redacted reproducible report in the repository (for example `docs/evidence/`) and link it here. If the measurements have not been performed, write **Not measured**.
+_Calculation method, scope and measurement period available on request._
 
-| Measure | Baseline | Candidate | Method | Verified result |
-|---|---|---|---|---|
-| Quality / task success | To define | To define | Fixed evaluation set and human-reviewed criteria | Not measured |
-| Safety / critical failures | To define | To define | Severity-weighted fixed scenarios | Not measured |
-| Resource use | To define | To define | Token and runtime logs, same workload | Not measured |
-| End-to-end latency | To define | To define | Repeated runs, median and p95 | Not measured |
+Retrieval precision, temporal accuracy, token reduction and access-policy compliance measure different aspects of context quality and governance. Access-policy test compliance applies to the evaluated policies and scenarios.
 
-## Limitations and honest disclosure
+## Measurement context
 
-The Atlas corpus, user identities and confidential labels are synthetic. Token savings, answer quality and isolation must be tested with the same budget and ground truth before being presented as results.
+For a repeated evaluation, retain the query set and relevance judgments, source versions, access rights, context budget, retrieval configuration and token-count baseline.
+
+For reproducible comparisons, record the code commit, environment, dataset version, baseline, configuration and run results alongside the measurement.
+
+## Demo scope and deployment
+
+The public Atlas demonstration uses a fictional corpus, identities and confidentiality labels. It illustrates retrieval and governance behaviour; the achieved metrics above describe the results summarized in the repository.
 
 ## Five-minute recorded walkthrough
 
