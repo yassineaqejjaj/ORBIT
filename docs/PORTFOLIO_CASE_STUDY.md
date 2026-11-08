@@ -12,8 +12,13 @@ A governed retrieval/memory layer with versioned decisions, provenance, classifi
 
 ## System flow
 
-```text
-Documents and change events → ingestion → memory and hybrid search → permissions/freshness checks → ranked context → cited output and trace.
+```mermaid
+flowchart LR
+    sources["Documents and change events"] --> ingestion["Ingestion"]
+    ingestion --> memory["Memory and hybrid search"]
+    memory --> checks["Permissions and freshness checks"]
+    checks --> context["Ranked context"]
+    context --> output["Cited output and trace"]
 ```
 
 ## What is available to inspect
@@ -60,3 +65,4 @@ The public Atlas demonstration uses a fictional corpus, identities and confident
 ---
 
 [Back to repository](../README.md)
+
