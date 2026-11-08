@@ -10,7 +10,7 @@
 
 [![GitHub Actions](https://github.com/yassineaqejjaj/ORBIT/actions/workflows/ci.yml/badge.svg)](https://github.com/yassineaqejjaj/ORBIT/actions/workflows/ci.yml)
 
-[Technical case study and measurement plan](docs/PORTFOLIO_CASE_STUDY.md)
+[Technical case study and achieved results](docs/PORTFOLIO_CASE_STUDY.md)
 
 <!-- portfolio-summary:end -->
 
